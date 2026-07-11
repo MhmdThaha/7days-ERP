@@ -170,6 +170,7 @@ export function ProductsPage() {
               totalPages={data.totalPages}
               total={data.total}
               pageSize={data.pageSize}
+              entityName="products"
               disabled={isFetching || isDeleting}
               onPageChange={setPage}
             />

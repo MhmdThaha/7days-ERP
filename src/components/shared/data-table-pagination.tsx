@@ -8,6 +8,7 @@ type DataTablePaginationProps = {
   totalPages: number;
   total: number;
   pageSize: number;
+  entityName?: string;
   disabled?: boolean;
   onPageChange: (page: number) => void;
 };
@@ -17,6 +18,7 @@ export function DataTablePagination({
   totalPages,
   total,
   pageSize,
+  entityName = 'items',
   disabled = false,
   onPageChange,
 }: DataTablePaginationProps) {
@@ -32,7 +34,7 @@ export function DataTablePagination({
       aria-busy={disabled}
     >
       <p className="text-sm text-muted-foreground">
-        Showing {start}–{end} of {total} products
+        Showing {start}–{end} of {total} {entityName}
       </p>
       <div className="flex items-center gap-2">
         <Button

@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Trash2,
   Wallet,
+  Wheat,
 } from 'lucide-react';
 
 export type MemberRole = 'owner' | 'manager' | 'production' | 'sales' | 'store';
@@ -52,6 +53,13 @@ export const navGroups: NavGroup[] = [
         icon: Package,
         module: 'products',
         roles: allRoles,
+      },
+      {
+        href: '/raw-materials',
+        label: 'Raw Materials',
+        icon: Wheat,
+        module: 'raw-materials',
+        roles: productionRoles,
       },
       {
         href: '/recipes',
