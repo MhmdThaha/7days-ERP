@@ -1,0 +1,173 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { getPurchaseAction, updatePurchaseAction } from '@/actions/purchases';
+import { PurchaseForm } from '@/components/purchases/purchase-form';
+import { PageHeader } from '@/components/shared/page-header';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
+import {
+  mapPurchaseActionError,
+  type PurchaseFieldError,
+} from '@/lib/utils/purchase-form-errors';
+
+const FORM_ID = 'purchase-edit-form';
+
+type PurchaseEditPageProps = {
+  purchaseId: string;
+};
+
+export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverFieldError, setServerFieldError] = useState<PurchaseFieldError | null>(null);
+
+  const {
+    data: purchase,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['purchase', purchaseId],
+    queryFn: async () => {
+      const result = await getPurchaseAction(purchaseId);
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    },
+  });
+
+  async function handleSubmit(values: PurchaseFormValues) {
+    if (isSubmitting || !purchase) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setServerFieldError(null);
+
+    try {
+      const result = await updatePurchaseAction(purchaseId, {
+        purchaseDate: values.purchaseDate,
+        supplierName: values.supplierName,
+        invoiceNumber: values.invoiceNumber || null,
+        paymentStatus: values.paymentStatus,
+        lineItems: values.lineItems,
+        notes: values.notes ?? null,
+      });
+
+      if (!result.success) {
+        const fieldError = mapPurchaseActionError(result.code);
+
+        if (fieldError) {
+          setServerFieldError(fieldError);
+        }
+
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success('Purchase updated successfully');
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['purchases'] }),
+        queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
+      ]);
+
+      router.push(`/purchases/${purchaseId}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4" aria-busy="true" aria-label="Loading purchase">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (error || !purchase) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Purchase not found</AlertTitle>
+        <AlertDescription>
+          {error?.message ?? 'The requested purchase could not be loaded.'}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (purchase.status !== 'draft') {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Cannot edit purchase</AlertTitle>
+        <AlertDescription>Only draft purchases can be edited.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Button
+          nativeButton={false}
+          variant="ghost"
+          size="sm"
+          render={<Link href={`/purchases/${purchaseId}`} />}
+        >
+          <ArrowLeft />
+          Back to Purchase
+        </Button>
+      </div>
+
+      <PageHeader
+        title="Edit Purchase"
+        description={`Update draft purchase ${purchase.purchaseNumber}.`}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Purchase Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PurchaseForm
+            formId={FORM_ID}
+            purchase={purchase}
+            onSubmit={handleSubmit}
+            isSubmitting={isSubmitting}
+            serverFieldError={serverFieldError}
+            onServerFieldErrorHandled={() => setServerFieldError(null)}
+          />
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          nativeButton={false}
+          variant="outline"
+          render={<Link href={`/purchases/${purchaseId}`} />}
+          disabled={isSubmitting}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+          {isSubmitting ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -68,6 +68,7 @@ function toListItem(product: Product): ProductListItem {
     description: product.description,
     isActive: product.isActive,
     currentStock: product.currentStock,
+    activeRecipeId: product.activeRecipeId,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
   };
@@ -295,6 +296,21 @@ export const productRepository = {
       updatedAt: now,
       updatedBy: userId,
       isActive: false,
+    });
+  },
+
+  async updateActiveRecipeId(
+    orgId: string,
+    productId: string,
+    recipeId: string | null,
+    userId: string,
+  ): Promise<void> {
+    const docRef = getOrgCollection(orgId, 'products').doc(productId);
+    const audit = buildAuditFields(userId, false);
+
+    await docRef.update({
+      activeRecipeId: recipeId,
+      ...audit,
     });
   },
 };

@@ -1,5 +1,5 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { RecipesPage } from '@/components/recipes/recipes-page';
 
-export default function RecipesPage() {
-  return <PageHeader title="Recipes" />;
+export default function Page() {
+  return <RecipesPage />;
 }

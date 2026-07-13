@@ -31,6 +31,7 @@ export type ProductListItem = Pick<
   | 'description'
   | 'isActive'
   | 'currentStock'
+  | 'activeRecipeId'
   | 'createdAt'
   | 'updatedAt'
 >;

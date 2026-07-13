@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
+import { HasRecipeBadge } from '@/components/shared/has-recipe-badge';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
@@ -35,7 +36,7 @@ type ProductTableProps = {
   onDelete: (product: ProductListItem) => void;
 };
 
-const TABLE_COLUMNS = ['Code', 'Name', 'Category', 'Selling Price', 'Status', 'Actions'];
+const TABLE_COLUMNS = ['Code', 'Name', 'Category', 'Selling Price', 'Recipe', 'Status', 'Actions'];
 
 function ProductTableSkeleton() {
   return (
@@ -92,6 +93,7 @@ export function ProductTable({
             <TableHead className="min-w-[160px]">Name</TableHead>
             <TableHead className="hidden w-[140px] md:table-cell">Category</TableHead>
             <TableHead className="w-[120px]">Selling Price</TableHead>
+            <TableHead className="hidden w-[110px] lg:table-cell">Recipe</TableHead>
             <TableHead className="w-[100px]">Status</TableHead>
             <TableHead className="w-12 text-right">
               <span className="sr-only">Actions</span>
@@ -101,7 +103,7 @@ export function ProductTable({
         <TableBody>
           {products.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-32 text-center">
+              <TableCell colSpan={7} className="h-32 text-center">
                 <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
                   <SearchX className="size-8 opacity-50" aria-hidden="true" />
                   <p className="text-sm">No products to display.</p>
@@ -126,6 +128,9 @@ export function ProductTable({
                 </TableCell>
                 <TableCell>
                   <MoneyDisplay amount={product.sellingPrice} />
+                </TableCell>
+                <TableCell className="hidden lg:table-cell">
+                  <HasRecipeBadge hasRecipe={Boolean(product.activeRecipeId)} />
                 </TableCell>
                 <TableCell>
                   <StatusBadge isActive={product.isActive} />

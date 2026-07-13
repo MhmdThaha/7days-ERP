@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { RawMaterialInventoryNotice } from '@/components/raw-materials/raw-material-inventory-notice';
+import { AverageCostLabel } from '@/components/shared/average-cost-label';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { AVERAGE_COST_HELP_TEXT } from '@/lib/domain/constants/inventory';
 import {
   DEFAULT_RAW_MATERIAL_CATEGORIES,
   DEFAULT_RAW_MATERIAL_UNITS,
@@ -328,9 +330,8 @@ export function RawMaterialForm({
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Average Cost
-              </p>
+              <AverageCostLabel />
+              <p className="text-xs text-muted-foreground">{AVERAGE_COST_HELP_TEXT}</p>
               <p className="text-sm font-medium tabular-nums">
                 {rawMaterial.averageCost > 0 ? (
                   <MoneyDisplay amount={rawMaterial.averageCost} />

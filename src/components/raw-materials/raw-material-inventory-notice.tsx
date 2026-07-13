@@ -2,6 +2,7 @@ import { Info } from 'lucide-react';
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { AVERAGE_COST_HELP_TEXT } from '@/lib/domain/constants/inventory';
 
 type RawMaterialInventoryNoticeProps = {
   compact?: boolean;
@@ -24,10 +25,9 @@ export function RawMaterialInventoryNotice({
           </p>
         ) : (
           <p>
-            <strong>Current Stock</strong> increases when you record purchases and decreases when
-            ingredients are used in production. <strong>Average Cost</strong> is calculated from
-            your purchase history. These values appear in the table below and update automatically
-            — you only manage the material details here.
+            <strong>Current Stock</strong> increases when you receive purchases and decreases when
+            ingredients are used in production. {AVERAGE_COST_HELP_TEXT} These values appear in the
+            table below and update automatically — you only manage the material details here.
           </p>
         )}
       </AlertDescription>

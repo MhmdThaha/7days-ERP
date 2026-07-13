@@ -28,6 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { AVERAGE_COST_HELP_TEXT } from '@/lib/domain/constants/inventory';
 import { cn } from '@/lib/utils';
 import type { RawMaterialListItem } from '@/types/raw-material';
 
@@ -126,13 +127,26 @@ function AverageCostCell({ amount }: { amount: number }) {
           }
         />
         <TooltipContent side="top" className="max-w-xs">
-          Average cost appears after you record purchases for this material.
+          {AVERAGE_COST_HELP_TEXT}
         </TooltipContent>
       </Tooltip>
     );
   }
 
-  return <MoneyDisplay amount={amount} />;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="cursor-help" tabIndex={0}>
+            <MoneyDisplay amount={amount} />
+          </span>
+        }
+      />
+      <TooltipContent side="top" className="max-w-xs">
+        {AVERAGE_COST_HELP_TEXT}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function RawMaterialTable({
@@ -170,10 +184,7 @@ export function RawMaterialTable({
                 />
               </TableHead>
               <TableHead className="hidden min-w-[96px] sm:table-cell">
-                <InventoryColumnHeader
-                  label="Avg. Cost"
-                  tooltip="Weighted average cost from purchase history. Used for recipe costing."
-                />
+                <InventoryColumnHeader label="Avg. Cost" tooltip={AVERAGE_COST_HELP_TEXT} />
               </TableHead>
               <TableHead className="hidden w-[88px] lg:table-cell">Reorder</TableHead>
               <TableHead className="min-w-[130px]">Status</TableHead>
