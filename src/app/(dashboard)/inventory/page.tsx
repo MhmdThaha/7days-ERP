@@ -1,5 +1,5 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { StockOverviewPage } from '@/components/inventory/stock-overview-page';
 
-export default function InventoryPage() {
-  return <PageHeader title="Inventory" />;
+export default function Page() {
+  return <StockOverviewPage />;
 }

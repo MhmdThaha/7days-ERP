@@ -12,6 +12,7 @@ export function usePurchases(params: PurchaseListParams) {
     queryFn: async () => {
       const result = await listPurchasesAction({
         search: params.search,
+        status: params.status,
         page: params.page ?? 1,
         pageSize: params.pageSize ?? PURCHASE_PAGE_SIZE,
       });

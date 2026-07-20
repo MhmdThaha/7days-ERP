@@ -1,5 +1,5 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { ExpensesPage } from '@/components/expenses/expenses-page';
 
-export default function ExpensesPage() {
-  return <PageHeader title="Expenses" />;
+export default function Page() {
+  return <ExpensesPage />;
 }

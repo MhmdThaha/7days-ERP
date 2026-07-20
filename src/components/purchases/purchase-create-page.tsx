@@ -17,6 +17,7 @@ import {
   mapPurchaseActionError,
   type PurchaseFieldError,
 } from '@/lib/utils/purchase-form-errors';
+import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'purchase-create-form';
 
@@ -57,7 +58,10 @@ export function PurchaseCreatePage() {
 
       toast.success('Purchase saved as draft');
 
-      await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['purchases'] }),
+        invalidateDashboardQueries(queryClient),
+      ]);
 
       router.push(`/purchases/${result.data.id}`);
     } finally {

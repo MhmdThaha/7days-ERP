@@ -19,6 +19,7 @@ import {
   mapPurchaseActionError,
   type PurchaseFieldError,
 } from '@/lib/utils/purchase-form-errors';
+import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'purchase-edit-form';
 
@@ -83,6 +84,7 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['purchases'] }),
         queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
+        invalidateDashboardQueries(queryClient),
       ]);
 
       router.push(`/purchases/${purchaseId}`);

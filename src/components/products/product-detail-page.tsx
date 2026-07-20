@@ -150,6 +150,15 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
             label="Selling Price"
             value={<MoneyDisplay amount={product.sellingPrice} />}
           />
+          <DetailField
+            label="Current Stock"
+            value={
+              <span className="font-medium tabular-nums">
+                {product.currentStock.toLocaleString('en-IN', { maximumFractionDigits: 3 })}{' '}
+                {product.unit}
+              </span>
+            }
+          />
           <DetailField label="Status" value={<StatusBadge isActive={product.isActive} />} />
           <DetailField
             label="Description"
@@ -190,6 +199,8 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
         title="Delete product?"
         description={`This will soft-delete "${product.name}". It will no longer appear in active lists but historical data is preserved.`}
         confirmLabel="Delete"
+        confirmVariant="destructive"
+        loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
       />

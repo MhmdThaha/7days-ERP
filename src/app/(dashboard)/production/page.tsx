@@ -1,5 +1,5 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { ProductionsPage } from '@/components/production/productions-page';
 
-export default function ProductionPage() {
-  return <PageHeader title="Production" />;
+export default function Page() {
+  return <ProductionsPage />;
 }

@@ -19,6 +19,8 @@ type ConfirmDialogProps = {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  confirmVariant?: 'default' | 'destructive';
+  loadingLabel?: string;
   isLoading?: boolean;
   onConfirm: () => void;
 };
@@ -30,9 +32,14 @@ export function ConfirmDialog({
   description,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  confirmVariant = 'default',
+  loadingLabel,
   isLoading = false,
   onConfirm,
 }: ConfirmDialogProps) {
+  const resolvedLoadingLabel =
+    loadingLabel ?? (confirmVariant === 'destructive' ? 'Deleting...' : 'Confirming...');
+
   function handleOpenChange(nextOpen: boolean) {
     if (isLoading && !nextOpen) {
       return;
@@ -57,11 +64,16 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </Button>
-          <Button type="button" variant="destructive" onClick={onConfirm} disabled={isLoading}>
+          <Button
+            type="button"
+            variant={confirmVariant}
+            onClick={onConfirm}
+            disabled={isLoading}
+          >
             {isLoading ? (
               <>
                 <Loader2 className="animate-spin" aria-hidden="true" />
-                Deleting...
+                {resolvedLoadingLabel}
               </>
             ) : (
               confirmLabel

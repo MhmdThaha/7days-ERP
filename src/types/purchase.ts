@@ -2,6 +2,8 @@ export type PurchaseId = string;
 
 export type PurchaseStatus = 'draft' | 'received';
 
+export type PurchaseStatusFilter = 'all' | 'draft' | 'received';
+
 export type PaymentStatus = 'paid' | 'credit';
 
 export type PurchaseLineItem = {
@@ -54,6 +56,7 @@ export type PurchaseListItem = {
 
 export type PurchaseListParams = {
   search?: string;
+  status?: PurchaseStatusFilter;
   page?: number;
   pageSize?: number;
 };

@@ -7,6 +7,7 @@ import {
   generateLineItemId,
   purchaseRepository,
 } from '@/lib/repositories/purchase.repository';
+import { dailySummaryService } from '@/lib/services/daily-summary.service';
 import type {
   CreatePurchaseInput,
   Purchase,
@@ -173,6 +174,8 @@ export const purchaseService = {
       throw new DomainError('VALIDATION_ERROR', 'Purchase must have at least one line item');
     }
 
-    return purchaseRepository.receive(orgId, purchaseId, userId);
+    const received = await purchaseRepository.receive(orgId, purchaseId, userId);
+    await dailySummaryService.recalculate(orgId, received.purchaseDate);
+    return received;
   },
 };

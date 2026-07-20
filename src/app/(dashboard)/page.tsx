@@ -1,5 +1,14 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { DashboardPage } from '@/components/dashboard/dashboard-page';
+import { getDevMemberRole } from '@/lib/auth/member-role';
+import { canAccessModule } from '@/lib/auth/route-access';
 
-export default function DashboardPage() {
-  return <PageHeader title="Dashboard" />;
+const quickActionModules = ['sales', 'production', 'purchases', 'expenses'] as const;
+
+export default function Page() {
+  const role = getDevMemberRole();
+  const allowedQuickActionModules = quickActionModules.filter((module) =>
+    canAccessModule(module, role),
+  );
+
+  return <DashboardPage allowedQuickActionModules={allowedQuickActionModules} />;
 }

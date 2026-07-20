@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { navGroups } from '@/components/layout/nav-items';
+import { NAV_ICONS } from '@/components/layout/nav-icons';
+import type { NavGroupConfig } from '@/components/layout/nav-items';
 import { isNavItemActive } from '@/components/layout/nav-utils';
 import {
   Sidebar,
@@ -18,7 +19,11 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar';
 
-export function AppSidebar() {
+type AppSidebarProps = {
+  navGroups: NavGroupConfig[];
+};
+
+export function AppSidebar({ navGroups }: AppSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -44,21 +49,25 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         {navGroups.map((group, groupIndex) => (
-          <SidebarGroup key={groupIndex}>
+          <SidebarGroup key={group.id}>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      isActive={isNavItemActive(pathname, item.href)}
-                      tooltip={item.label}
-                      render={<Link href={item.href} />}
-                    >
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {group.items.map((item) => {
+                  const Icon = NAV_ICONS[item.icon];
+
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isNavItemActive(pathname, item.href)}
+                        tooltip={item.label}
+                        render={<Link href={item.href} />}
+                      >
+                        <Icon className="size-4" aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
             {groupIndex < navGroups.length - 1 ? <SidebarSeparator /> : null}

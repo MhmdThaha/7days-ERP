@@ -17,6 +17,7 @@ import type {
   PurchaseListParams,
   PurchaseListResult,
   PurchaseStatus,
+  PurchaseStatusFilter,
 } from '@/types/purchase';
 
 type PurchaseLineItemDocument = {
@@ -120,6 +121,14 @@ function matchesSearch(purchase: PurchaseListItem, search: string): boolean {
   );
 }
 
+function matchesStatus(purchase: PurchaseListItem, status: PurchaseStatusFilter | undefined): boolean {
+  if (!status || status === 'all') {
+    return true;
+  }
+
+  return purchase.status === status;
+}
+
 export const purchaseRepository = {
   async list(orgId: string, params: PurchaseListParams): Promise<PurchaseListResult> {
     const page = params.page ?? 1;
@@ -134,6 +143,7 @@ export const purchaseRepository = {
       .map((doc) => toPurchase(doc.id, doc.data() as PurchaseDocument))
       .map(toListItem)
       .filter((purchase) => matchesSearch(purchase, search))
+      .filter((purchase) => matchesStatus(purchase, params.status))
       .sort((a, b) => {
         const dateCompare = b.purchaseDate.localeCompare(a.purchaseDate);
 

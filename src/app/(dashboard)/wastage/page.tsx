@@ -1,5 +1,5 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { WastagePage } from '@/components/wastage/wastage-page';
 
-export default function WastagePage() {
-  return <PageHeader title="Wastage" />;
+export default function Page() {
+  return <WastagePage />;
 }

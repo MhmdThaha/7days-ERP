@@ -1,0 +1,420 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { listProductsAction } from '@/actions/products';
+import { completeWastageAction, deleteWastageAction, getWastageAction } from '@/actions/wastage';
+import { WastageStatusBadge } from '@/components/wastage/wastage-status-badge';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { PageHeader } from '@/components/shared/page-header';
+import { TruncatedText } from '@/components/shared/truncated-text';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { WASTAGE_REASON_LABELS } from '@/lib/domain/constants/wastage';
+import {
+  formatWastageStock,
+  getWastageLineStockErrors,
+  hasWastageLinesStockErrors,
+} from '@/lib/utils/wastage-stock-validation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import type { ProductListItem } from '@/types/product';
+
+type WastageDetailPageProps = {
+  wastageId: string;
+};
+
+function formatDateTime(date: Date): string {
+  return date.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDate(date: string): string {
+  const [year, month, day] = date.split('-');
+
+  if (!year || !month || !day) {
+    return date;
+  }
+
+  return `${day}/${month}/${year}`;
+}
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 3 });
+}
+
+export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isCompleteOpen, setIsCompleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const { data: wastage, isLoading, error } = useQuery({
+    queryKey: ['wastage-entry', wastageId],
+    queryFn: async () => {
+      const result = await getWastageAction(wastageId);
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    },
+  });
+
+  const isDraft = wastage?.status === 'draft';
+
+  const { data: productsResult, isLoading: isLoadingProducts } = useQuery({
+    queryKey: ['products', 'wastage-stock-check'],
+    queryFn: async () => {
+      const result = await listProductsAction({
+        status: 'active',
+        page: 1,
+        pageSize: 100,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    },
+    enabled: isDraft,
+  });
+
+  const productsById = useMemo(() => {
+    const map = new Map<string, ProductListItem>();
+
+    for (const product of productsResult?.items ?? []) {
+      map.set(product.id, product);
+    }
+
+    return map;
+  }, [productsResult?.items]);
+
+  const lineStockErrors = useMemo(() => {
+    if (!wastage) {
+      return [];
+    }
+
+    return getWastageLineStockErrors(
+      wastage.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+      })),
+      productsById,
+    );
+  }, [wastage, productsById]);
+
+  const hasInsufficientStock = useMemo(() => {
+    if (!wastage) {
+      return false;
+    }
+
+    return hasWastageLinesStockErrors(
+      wastage.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+      })),
+      productsById,
+    );
+  }, [wastage, productsById]);
+
+  async function invalidateWastageQueries() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['wastage'] }),
+      queryClient.invalidateQueries({ queryKey: ['wastage-entry', wastageId] }),
+      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      invalidateDashboardQueries(queryClient),
+      invalidateDailyReportQueries(queryClient),
+      invalidateMonthlyReportQueries(queryClient),
+    ]);
+  }
+
+  async function handleComplete() {
+    if (isCompleting || hasInsufficientStock || isLoadingProducts) {
+      return;
+    }
+
+    setIsCompleting(true);
+
+    try {
+      const result = await completeWastageAction(wastageId);
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success('Wastage completed successfully. Product stock has been updated.');
+      setIsCompleteOpen(false);
+
+      await invalidateWastageQueries();
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (isDeleting) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      const result = await deleteWastageAction(wastageId);
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success('Wastage draft deleted successfully');
+      setIsDeleteOpen(false);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['wastage'] }),
+        invalidateDashboardQueries(queryClient),
+        invalidateDailyReportQueries(queryClient),
+        invalidateMonthlyReportQueries(queryClient),
+      ]);
+
+      router.push('/wastage');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4" aria-busy="true" aria-label="Loading wastage entry">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (error || !wastage) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Wastage entry not found</AlertTitle>
+        <AlertDescription>
+          {error?.message ?? 'The requested wastage entry could not be loaded.'}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const canEdit = wastage.status === 'draft';
+  const isBusy = isDeleting || isCompleting;
+  const canComplete = canEdit && !hasInsufficientStock && !isLoadingProducts;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/wastage" />}>
+          <ArrowLeft />
+          Back to Wastage
+        </Button>
+      </div>
+
+      <PageHeader
+        title={
+          <TruncatedText
+            text={wastage.wastageNumber}
+            maxWidthClassName="max-w-[min(100%,480px)]"
+            className="text-left font-heading text-2xl font-semibold tracking-tight"
+          />
+        }
+      >
+        {canEdit ? (
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button onClick={() => setIsCompleteOpen(true)} disabled={isBusy || !canComplete}>
+              <CheckCircle2 />
+              Complete Wastage
+            </Button>
+            <Button
+              nativeButton={false}
+              variant="outline"
+              render={<Link href={`/wastage/${wastageId}/edit`} />}
+              disabled={isBusy}
+            >
+              <Pencil />
+              Edit
+            </Button>
+            <Button variant="destructive" onClick={() => setIsDeleteOpen(true)} disabled={isBusy}>
+              <Trash2 />
+              Delete
+            </Button>
+          </div>
+        ) : null}
+      </PageHeader>
+
+      {canEdit && hasInsufficientStock && !isLoadingProducts ? (
+        <Alert variant="destructive">
+          <AlertTitle>Insufficient stock</AlertTitle>
+          <AlertDescription>
+            One or more product lines exceed available stock. Edit the wastage entry to adjust
+            quantities before completing.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Wastage Details</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+          <DetailField label="Wastage Date" value={formatDate(wastage.wastageDate)} />
+          <DetailField label="Status" value={<WastageStatusBadge status={wastage.status} />} />
+          <DetailField label="Reason" value={WASTAGE_REASON_LABELS[wastage.reason]} />
+          <DetailField label="Product Lines" value={wastage.lineCount} />
+          <DetailField label="Total Units" value={formatQuantity(wastage.totalUnits)} />
+          <DetailField
+            label="Notes"
+            value={
+              <span className="break-words whitespace-pre-wrap">{wastage.notes ?? '—'}</span>
+            }
+            className="sm:col-span-2"
+          />
+          <DetailField label="Created At" value={formatDateTime(wastage.createdAt)} />
+          <DetailField label="Updated At" value={formatDateTime(wastage.updatedAt)} />
+          {wastage.completedAt ? (
+            <DetailField label="Completed At" value={formatDateTime(wastage.completedAt)} />
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Product Lines</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead className="min-w-[180px]">Product</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Quantity</TableHead>
+                  {canEdit ? (
+                    <TableHead className="text-right whitespace-nowrap">Available</TableHead>
+                  ) : null}
+                  <TableHead className="whitespace-nowrap">Unit</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {wastage.lines.map((line, index) => {
+                  const product = productsById.get(line.productId);
+                  const stockError = lineStockErrors[index];
+
+                  return (
+                    <TableRow key={line.id}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>
+                        {line.productCodeSnapshot} - {line.productNameSnapshot}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatQuantity(line.quantity)}
+                      </TableCell>
+                      {canEdit ? (
+                        <TableCell className="text-right">
+                          {product ? (
+                            <span className={stockError ? 'text-destructive tabular-nums' : 'tabular-nums'}>
+                              {formatWastageStock(product.currentStock, line.unit)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                          {stockError ? (
+                            <p className="mt-1 text-xs text-destructive">{stockError}</p>
+                          ) : null}
+                        </TableCell>
+                      ) : null}
+                      <TableCell>{line.unit}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={isDeleteOpen}
+        onOpenChange={(open) => {
+          if (isDeleting) {
+            return;
+          }
+
+          setIsDeleteOpen(open);
+        }}
+        title="Delete wastage draft?"
+        description={`This will soft-delete "${wastage.wastageNumber}". It will no longer appear in active lists but historical data is preserved.`}
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        loadingLabel="Deleting..."
+        isLoading={isDeleting}
+        onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={isCompleteOpen}
+        onOpenChange={(open) => {
+          if (isCompleting) {
+            return;
+          }
+
+          setIsCompleteOpen(open);
+        }}
+        title="Complete Wastage"
+        description="Are you sure you want to complete this wastage entry?"
+        confirmLabel="Complete Wastage"
+        loadingLabel="Completing..."
+        isLoading={isCompleting}
+        onConfirm={handleComplete}
+      />
+    </div>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+      <div className="mt-1.5 text-sm">{value}</div>
+    </div>
+  );
+}

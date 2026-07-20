@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
@@ -18,13 +18,19 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PURCHASE_PAGE_SIZE } from '@/lib/domain/constants/purchase';
 import { usePurchases } from '@/hooks/queries/use-purchases';
-import type { PurchaseListItem } from '@/types/purchase';
+import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { parseStatusFilter } from '@/lib/utils/list-url-filters';
+import type { PurchaseListItem, PurchaseStatusFilter } from '@/types/purchase';
 
 export function PurchasesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [status, setStatus] = useState<PurchaseStatusFilter>(() =>
+    parseStatusFilter(searchParams.get('status'), ['all', 'draft', 'received'], 'all'),
+  );
   const [page, setPage] = useState(1);
   const [deletingPurchase, setDeletingPurchase] = useState<PurchaseListItem | null>(null);
   const [receivingPurchase, setReceivingPurchase] = useState<PurchaseListItem | null>(null);
@@ -40,23 +46,36 @@ export function PurchasesPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [status]);
+
   const { data, isLoading, isFetching, error } = usePurchases({
     search: debouncedSearch,
+    status,
     page,
     pageSize: PURCHASE_PAGE_SIZE,
   });
 
   const isSearching = search !== debouncedSearch;
-  const hasActiveFilters = Boolean(debouncedSearch.trim());
+  const hasActiveFilters = Boolean(debouncedSearch.trim()) || status !== 'all';
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
   const isBusy = isDeleting || isReceiving;
 
+  function clearFilters() {
+    setSearch('');
+    setDebouncedSearch('');
+    setStatus('all');
+    setPage(1);
+  }
+
   async function invalidateAfterMutation(purchaseId?: string) {
     const invalidations = [
       queryClient.invalidateQueries({ queryKey: ['purchases'] }),
       queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+      invalidateDashboardQueries(queryClient),
     ];
 
     if (purchaseId) {
@@ -142,9 +161,11 @@ export function PurchasesPage() {
 
       <PurchaseFilters
         search={search}
+        status={status}
         isSearching={isSearching}
         disabled={isLoading || isBusy}
         onSearchChange={setSearch}
+        onStatusChange={setStatus}
       />
 
       {error && !isOrgError ? (
@@ -166,8 +187,10 @@ export function PurchasesPage() {
           {showNoResults ? (
             <EmptyState
               icon={SearchX}
-              title="No purchases found"
-              description="Try adjusting your search to find what you are looking for."
+              title="No matching records."
+              description="Try clearing your filters to see all purchases."
+              actionLabel="Clear Filters"
+              onAction={clearFilters}
             />
           ) : (
             <PurchaseTable
@@ -212,6 +235,8 @@ export function PurchasesPage() {
             : ''
         }
         confirmLabel="Delete"
+        confirmVariant="destructive"
+        loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
       />
@@ -227,13 +252,10 @@ export function PurchasesPage() {
             setReceivingPurchase(null);
           }
         }}
-        title="Receive purchase?"
-        description={
-          receivingPurchase
-            ? `This will mark "${receivingPurchase.purchaseNumber}" as received and update raw material stock and average cost. This action cannot be undone.`
-            : ''
-        }
+        title="Receive Purchase"
+        description="Are you sure you want to receive this purchase?"
         confirmLabel="Receive Purchase"
+        loadingLabel="Receiving..."
         isLoading={isReceiving}
         onConfirm={handleReceive}
       />

@@ -52,6 +52,13 @@ export function RecipesPage() {
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
 
+  function clearFilters() {
+    setSearch('');
+    setDebouncedSearch('');
+    setStatus('active');
+    setPage(1);
+  }
+
   async function handleDelete() {
     if (!deletingRecipe || isDeleting) {
       return;
@@ -133,8 +140,10 @@ export function RecipesPage() {
           {showNoResults ? (
             <EmptyState
               icon={SearchX}
-              title="No recipes found"
-              description="Try adjusting your search or filter to find what you are looking for."
+              title="No matching records."
+              description="Try clearing your filters to see all recipes."
+              actionLabel="Clear Filters"
+              onAction={clearFilters}
             />
           ) : (
             <RecipeTable
@@ -178,6 +187,8 @@ export function RecipesPage() {
             : ''
         }
         confirmLabel="Delete"
+        confirmVariant="destructive"
+        loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
       />

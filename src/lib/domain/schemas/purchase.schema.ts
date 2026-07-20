@@ -97,6 +97,7 @@ export const updatePurchaseSchema = purchaseFormBaseSchema
 
 export const purchaseListParamsSchema = z.object({
   search: z.string().trim().optional(),
+  status: z.enum(['all', 'draft', 'received']).optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().max(100).default(25),
 });

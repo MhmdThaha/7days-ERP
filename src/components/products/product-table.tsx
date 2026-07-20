@@ -36,7 +36,20 @@ type ProductTableProps = {
   onDelete: (product: ProductListItem) => void;
 };
 
-const TABLE_COLUMNS = ['Code', 'Name', 'Category', 'Selling Price', 'Recipe', 'Status', 'Actions'];
+const TABLE_COLUMNS = [
+  'Code',
+  'Name',
+  'Category',
+  'Selling Price',
+  'Current Stock',
+  'Recipe',
+  'Status',
+  'Actions',
+];
+
+function formatStock(quantity: number, unit: string): string {
+  return `${quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${unit}`;
+}
 
 function ProductTableSkeleton() {
   return (
@@ -93,6 +106,7 @@ export function ProductTable({
             <TableHead className="min-w-[160px]">Name</TableHead>
             <TableHead className="hidden w-[140px] md:table-cell">Category</TableHead>
             <TableHead className="w-[120px]">Selling Price</TableHead>
+            <TableHead className="hidden w-[120px] sm:table-cell">Current Stock</TableHead>
             <TableHead className="hidden w-[110px] lg:table-cell">Recipe</TableHead>
             <TableHead className="w-[100px]">Status</TableHead>
             <TableHead className="w-12 text-right">
@@ -103,7 +117,7 @@ export function ProductTable({
         <TableBody>
           {products.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="h-32 text-center">
+              <TableCell colSpan={8} className="h-32 text-center">
                 <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
                   <SearchX className="size-8 opacity-50" aria-hidden="true" />
                   <p className="text-sm">No products to display.</p>
@@ -128,6 +142,9 @@ export function ProductTable({
                 </TableCell>
                 <TableCell>
                   <MoneyDisplay amount={product.sellingPrice} />
+                </TableCell>
+                <TableCell className="hidden whitespace-nowrap tabular-nums sm:table-cell">
+                  {formatStock(product.currentStock, product.unit)}
                 </TableCell>
                 <TableCell className="hidden lg:table-cell">
                   <HasRecipeBadge hasRecipe={Boolean(product.activeRecipeId)} />

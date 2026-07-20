@@ -1,0 +1,89 @@
+'use server';
+
+import {
+  createReturnSchema,
+  returnListParamsSchema,
+  updateReturnSchema,
+} from '@/lib/domain/schemas/return.schema';
+import { DomainError } from '@/lib/domain/errors';
+import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { returnService } from '@/lib/services/return.service';
+import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
+import type {
+  CreateReturnInput,
+  ReturnEntry,
+  ReturnListParams,
+  ReturnListResult,
+  UpdateReturnInput,
+} from '@/types/return';
+
+export async function listReturnsAction(
+  params: ReturnListParams,
+): Promise<ActionResult<ReturnListResult>> {
+  return wrapAction(async () => {
+    const { orgId } = await getServerOrgContext();
+    const validated = returnListParamsSchema.parse(params);
+    return returnService.list(orgId, validated);
+  });
+}
+
+export async function getReturnAction(returnId: string): Promise<ActionResult<ReturnEntry>> {
+  return wrapAction(async () => {
+    const { orgId } = await getServerOrgContext();
+    return returnService.getById(orgId, returnId);
+  });
+}
+
+export async function createReturnAction(input: CreateReturnInput): Promise<ActionResult<ReturnEntry>> {
+  return wrapAction(async () => {
+    const { orgId, userId } = await getServerOrgContext();
+    const validated = createReturnSchema.parse({
+      ...input,
+      notes: input.notes ?? null,
+    });
+
+    return returnService.create(
+      orgId,
+      {
+        returnDate: validated.returnDate,
+        reason: validated.reason,
+        lines: validated.lines,
+        notes: validated.notes ?? null,
+      },
+      userId,
+    );
+  });
+}
+
+export async function updateReturnAction(
+  returnId: string,
+  input: UpdateReturnInput,
+): Promise<ActionResult<ReturnEntry>> {
+  return wrapAction(async () => {
+    const { orgId, userId } = await getServerOrgContext();
+    const validated = updateReturnSchema.parse({
+      ...input,
+      notes: input.notes ?? undefined,
+    });
+
+    if (Object.keys(validated).length === 0) {
+      throw new DomainError('VALIDATION_ERROR', 'No changes provided');
+    }
+
+    return returnService.update(orgId, returnId, validated, userId);
+  });
+}
+
+export async function deleteReturnAction(returnId: string): Promise<ActionResult<void>> {
+  return wrapAction(async () => {
+    const { orgId, userId } = await getServerOrgContext();
+    await returnService.softDelete(orgId, returnId, userId);
+  });
+}
+
+export async function completeReturnAction(returnId: string): Promise<ActionResult<ReturnEntry>> {
+  return wrapAction(async () => {
+    const { orgId, userId } = await getServerOrgContext();
+    return returnService.complete(orgId, returnId, userId);
+  });
+}

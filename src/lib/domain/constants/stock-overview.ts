@@ -1,0 +1,1 @@
+export const STOCK_OVERVIEW_FETCH_PAGE_SIZE = 10_000;

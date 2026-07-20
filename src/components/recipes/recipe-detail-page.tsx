@@ -246,6 +246,8 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
           title="Delete recipe?"
           description={`This will soft-delete "${recipe.recipeName}". The linked product will no longer show a recipe badge.`}
           confirmLabel="Delete"
+          confirmVariant="destructive"
+          loadingLabel="Deleting..."
           isLoading={isDeleting}
           onConfirm={handleDelete}
         />

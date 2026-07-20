@@ -28,6 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 
 type PurchaseDetailPageProps = {
   purchaseId: string;
@@ -83,6 +84,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
       queryClient.invalidateQueries({ queryKey: ['purchases'] }),
       queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
       queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+      invalidateDashboardQueries(queryClient),
     ]);
   }
 
@@ -104,7 +106,10 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
       toast.success('Purchase deleted successfully');
       setIsDeleteOpen(false);
 
-      await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['purchases'] }),
+        invalidateDashboardQueries(queryClient),
+      ]);
 
       router.push('/purchases');
     } finally {
@@ -287,6 +292,8 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
           title="Delete purchase?"
           description={`This will soft-delete "${purchase.purchaseNumber}". It will no longer appear in active lists but historical data is preserved.`}
           confirmLabel="Delete"
+          confirmVariant="destructive"
+          loadingLabel="Deleting..."
           isLoading={isDeleting}
           onConfirm={handleDelete}
         />
@@ -300,9 +307,10 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
 
             setIsReceiveOpen(open);
           }}
-          title="Receive purchase?"
-          description={`This will mark "${purchase.purchaseNumber}" as received and update raw material stock and average cost. This action cannot be undone.`}
+          title="Receive Purchase"
+          description="Are you sure you want to receive this purchase?"
           confirmLabel="Receive Purchase"
+          loadingLabel="Receiving..."
           isLoading={isReceiving}
           onConfirm={handleReceive}
         />

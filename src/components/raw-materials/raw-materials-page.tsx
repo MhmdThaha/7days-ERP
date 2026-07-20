@@ -79,6 +79,15 @@ export function RawMaterialsPage() {
   const showNoResults = !isLoading && !isError && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
 
+  function clearFilters() {
+    setSearch('');
+    setDebouncedSearch('');
+    setStatus('active');
+    setCategory('all');
+    setLowStockOnly(false);
+    setPage(1);
+  }
+
   async function handleDelete() {
     if (!deletingRawMaterial || isDeleting) {
       return;
@@ -186,8 +195,10 @@ export function RawMaterialsPage() {
           {showNoResults ? (
             <EmptyState
               icon={SearchX}
-              title="No raw materials found"
-              description="Try a different search term, category, or turn off the low-stock filter."
+              title="No matching records."
+              description="Try clearing your filters to see all raw materials."
+              actionLabel="Clear Filters"
+              onAction={clearFilters}
             />
           ) : (
             <RawMaterialTable
@@ -246,6 +257,8 @@ export function RawMaterialsPage() {
             : ''
         }
         confirmLabel="Delete"
+        confirmVariant="destructive"
+        loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
       />

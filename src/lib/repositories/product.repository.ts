@@ -25,6 +25,7 @@ type ProductDocument = {
   description: string | null;
   isActive: boolean;
   currentStock: number;
+  averageCost: number;
   activeRecipeId: string | null;
   imageUrl: string | null;
   createdAt: Timestamp;
@@ -47,6 +48,7 @@ function toProduct(id: string, data: ProductDocument): Product {
     description: data.description,
     isActive: data.isActive,
     currentStock: data.currentStock,
+    averageCost: data.averageCost ?? 0,
     activeRecipeId: data.activeRecipeId,
     imageUrl: data.imageUrl,
     createdAt: timestampToDate(data.createdAt) ?? new Date(),
@@ -64,6 +66,7 @@ function toListItem(product: Product): ProductListItem {
     code: product.code,
     name: product.name,
     category: product.category,
+    unit: product.unit,
     sellingPrice: product.sellingPrice,
     description: product.description,
     isActive: product.isActive,
@@ -124,6 +127,17 @@ export const productRepository = {
       pageSize,
       totalPages,
     };
+  },
+
+  async sumStockValue(orgId: string): Promise<number> {
+    const snapshot = await getOrgCollection(orgId, 'products')
+      .where('deletedAt', '==', null)
+      .get();
+
+    return snapshot.docs.reduce((total, doc) => {
+      const data = doc.data() as ProductDocument;
+      return total + (data.currentStock ?? 0) * (data.averageCost ?? 0);
+    }, 0);
   },
 
   async getById(orgId: string, productId: string): Promise<Product | null> {
@@ -223,6 +237,7 @@ export const productRepository = {
       description: normalizeNullableString(input.description),
       isActive: input.isActive ?? true,
       currentStock: 0,
+      averageCost: 0,
       activeRecipeId: null,
       imageUrl: null,
       createdAt: now,

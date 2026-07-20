@@ -11,6 +11,7 @@ export type Product = {
   description: string | null;
   isActive: boolean;
   currentStock: number;
+  averageCost: number;
   activeRecipeId: string | null;
   imageUrl: string | null;
   createdAt: Date;
@@ -27,6 +28,7 @@ export type ProductListItem = Pick<
   | 'code'
   | 'name'
   | 'category'
+  | 'unit'
   | 'sellingPrice'
   | 'description'
   | 'isActive'
