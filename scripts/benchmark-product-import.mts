@@ -85,8 +85,8 @@ function buildExistingProductIndex(count: number): {
   byName: ProductNameIndex;
   byCode: ProductCodeIndex;
 } {
-  const byName: ProductNameIndex = new Map();
-  const byCode: ProductCodeIndex = new Map();
+  const byName = new Map();
+  const byCode = new Map();
 
   for (let i = 0; i < count; i += 1) {
     const name = `Existing Product ${i + 1}`;
@@ -102,8 +102,8 @@ function buildExistingProductIndex(count: number): {
 
 /** Simulates Firestore .get() response processing into lookup maps. */
 function simulateFirestoreIndexBuild(docs: ReadonlyArray<{ id: string; data: ProductDocument }>) {
-  const byName: ProductNameIndex = new Map();
-  const byCode: ProductCodeIndex = new Map();
+  const byName = new Map();
+  const byCode = new Map();
 
   for (const doc of docs) {
     const nameKey = normalizeProductName(doc.data.name);

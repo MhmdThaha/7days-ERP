@@ -124,7 +124,9 @@ const IMPORT_CONFLICT_HANDLERS: Partial<Record<ImportEntityType, ImportConflictH
 
 const IMPORT_COMMIT_HANDLERS: Partial<Record<ImportEntityType, ImportCommitHandler>> = {
   product: (report, conflicts, strategy, context) => {
-    assertConflictResultMatchesEntity('product', conflicts);
+    if (!isProductConflictDetectionResult(conflicts)) {
+      throw new DomainError('VALIDATION_ERROR', 'Product conflict results are required.');
+    }
 
     return commitProductImportWithResolution(
       context.db,
@@ -135,7 +137,9 @@ const IMPORT_COMMIT_HANDLERS: Partial<Record<ImportEntityType, ImportCommitHandl
     );
   },
   sale: async (_report, conflicts, strategy, context) => {
-    assertConflictResultMatchesEntity('sale', conflicts);
+    if (!isSaleConflictDetectionResult(conflicts)) {
+      throw new DomainError('VALIDATION_ERROR', 'Sale conflict results are required.');
+    }
 
     return commitSaleImportFromConflicts(conflicts, context, strategy);
   },
