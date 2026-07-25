@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
@@ -31,14 +31,14 @@ type ProductionTableProps = {
   isFetching?: boolean;
   disabled?: boolean;
   onDelete: (production: ProductionListItem) => void;
+  onComplete: (production: ProductionListItem) => void;
 };
 
 const TABLE_COLUMNS = ['Number', 'Date', 'Products', 'Total Units', 'Status', 'Actions'];
 
 function ProductionTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -58,7 +58,6 @@ function ProductionTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -82,6 +81,7 @@ export function ProductionTable({
   isFetching = false,
   disabled = false,
   onDelete,
+  onComplete,
 }: ProductionTableProps) {
   if (isLoading) {
     return <ProductionTableSkeleton />;
@@ -91,7 +91,7 @@ export function ProductionTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}
@@ -126,12 +126,16 @@ export function ProductionTable({
                 return (
                 <TableRow key={production.id} className="group hover:bg-muted/40">
                   <TableCell className="font-medium">
-                    <TruncatedText
-                      text={production.productionNumber}
-                      maxWidthClassName="max-w-[100px]"
-                      className="font-mono text-xs sm:text-sm"
-                    />
-                  </TableCell>
+                      <Link
+                        href={`/production/${production.id}`}
+                        className="font-mono text-xs hover:underline sm:text-sm"
+                      >
+                        <TruncatedText
+                          text={production.productionNumber}
+                          maxWidthClassName="max-w-[100px]"
+                        />
+                      </Link>
+                    </TableCell>
                   <TableCell>{formatDate(production.productionDate)}</TableCell>
                   <TableCell className="hidden sm:table-cell">{production.lineCount}</TableCell>
                   <TableCell className="tabular-nums">
@@ -154,22 +158,33 @@ export function ProductionTable({
                           <Eye />
                           View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          render={<Link href={`/production/${production.id}/edit`} />}
-                          disabled={disabled || !isDraft}
-                        >
-                          <Pencil />
-                          Edit
-                        </DropdownMenuItem>
-                        {isDraft ? <DropdownMenuSeparator /> : null}
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => onDelete(production)}
-                          disabled={disabled || !isDraft}
-                        >
-                          <Trash2 />
-                          Delete
-                        </DropdownMenuItem>
+                        {isDraft ? (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => onComplete(production)}
+                              disabled={disabled}
+                            >
+                              <CheckCircle2 />
+                              Complete Production
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              render={<Link href={`/production/${production.id}/edit`} />}
+                              disabled={disabled}
+                            >
+                              <Pencil />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => onDelete(production)}
+                              disabled={disabled}
+                            >
+                              <Trash2 />
+                              Delete
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

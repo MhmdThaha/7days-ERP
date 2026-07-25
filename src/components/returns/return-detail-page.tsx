@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { completeReturnAction, deleteReturnAction, getReturnAction } from '@/actions/returns';
 import { ReturnStatusBadge } from '@/components/returns/return-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { DraftActionBanner } from '@/components/shared/draft-action-banner';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -26,7 +28,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { RETURN_REASON_LABELS } from '@/lib/domain/constants/return';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type ReturnDetailPageProps = {
   returnId: string;
@@ -64,7 +68,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
-  const { data: returnEntry, isLoading, error } = useQuery({
+  const { data: returnEntry, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['return-entry', returnId],
     queryFn: async () => {
       const result = await getReturnAction(returnId);
@@ -99,11 +103,16 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
       const result = await completeReturnAction(returnId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Return completed successfully. Product stock has been updated.');
+      toastWorkflowComplete('Return completed. Product stock has been restored.', {
+        recordAnother: {
+          label: 'Record another',
+          onClick: () => router.push('/returns/new'),
+        },
+      });
       setIsCompleteOpen(false);
 
       await invalidateReturnQueries();
@@ -123,7 +132,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
       const result = await deleteReturnAction(returnId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -154,12 +163,20 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
 
   if (error || !returnEntry) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Return not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested return could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load return"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Return not found</AlertTitle>
+            <AlertDescription>The requested return could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -171,7 +188,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
       <div className="flex items-center gap-2">
         <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/returns" />}>
           <ArrowLeft />
-          Back to Returns
+          Back to Customer Returns
         </Button>
       </div>
 
@@ -186,10 +203,6 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
       >
         {canEdit ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Button onClick={() => setIsCompleteOpen(true)} disabled={isBusy}>
-              <CheckCircle2 />
-              Complete Return
-            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -206,6 +219,17 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
           </div>
         ) : null}
       </PageHeader>
+
+      {canEdit ? (
+        <DraftActionBanner
+          title="Draft return — stock not updated yet"
+          description="Complete this return to restore product stock for returned items."
+          actionLabel="Complete Return"
+          onAction={() => setIsCompleteOpen(true)}
+          icon={CheckCircle2}
+          disabled={isBusy}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -237,8 +261,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
           <CardTitle>Product Lines</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
+                      <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
@@ -262,7 +285,6 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
                 ))}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
 
@@ -294,7 +316,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
           setIsCompleteOpen(open);
         }}
         title="Complete Return"
-        description="Are you sure you want to complete this return?"
+        description={`Complete "${returnEntry.returnNumber}"? Product stock will be restored for ${returnEntry.lineCount} line${returnEntry.lineCount === 1 ? '' : 's'}. This cannot be undone.`}
         confirmLabel="Complete Return"
         loadingLabel="Completing..."
         isLoading={isCompleting}

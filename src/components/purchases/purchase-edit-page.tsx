@@ -9,12 +9,14 @@ import { toast } from 'sonner';
 
 import { getPurchaseAction, updatePurchaseAction } from '@/actions/purchases';
 import { PurchaseForm } from '@/components/purchases/purchase-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
   mapPurchaseActionError,
   type PurchaseFieldError,
@@ -37,6 +39,8 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
     data: purchase,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['purchase', purchaseId],
     queryFn: async () => {
@@ -75,7 +79,7 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -104,12 +108,20 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
 
   if (error || !purchase) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Purchase not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested purchase could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load purchase"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Purchase not found</AlertTitle>
+            <AlertDescription>The requested purchase could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 

@@ -1,5 +1,5 @@
-import { PageHeader } from '@/components/shared/page-header';
+import { SettingsPage } from '@/components/settings/settings-page';
 
-export default function SettingsPage() {
-  return <PageHeader title="Settings" />;
+export default function Page() {
+  return <SettingsPage />;
 }

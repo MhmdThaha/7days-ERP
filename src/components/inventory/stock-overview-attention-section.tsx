@@ -41,8 +41,7 @@ export function StockOverviewAttentionSection({ items }: StockOverviewAttentionS
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item</TableHead>
@@ -79,7 +78,6 @@ export function StockOverviewAttentionSection({ items }: StockOverviewAttentionS
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

@@ -13,11 +13,13 @@ import { RecipeTable } from '@/components/recipes/recipe-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { RECIPE_PAGE_SIZE } from '@/lib/domain/constants/recipe';
 import { useRecipes } from '@/hooks/queries/use-recipes';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { RecipeListItem, RecipeStatusFilter } from '@/types/recipe';
 
 export function RecipesPage() {
@@ -39,7 +41,7 @@ export function RecipesPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, isFetching, error } = useRecipes({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useRecipes({
     search: debouncedSearch,
     status,
     page,
@@ -70,7 +72,7 @@ export function RecipesPage() {
       const result = await deleteRecipeAction(deletingRecipe.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -93,10 +95,12 @@ export function RecipesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Recipes" description="Define how finished products are made from raw materials.">
-        <Button nativeButton={false} render={<Link href="/recipes/new" />}>
-          <Plus />
-          Add Recipe
-        </Button>
+        {!showEmptyCatalog ? (
+          <Button nativeButton={false} render={<Link href="/recipes/new" />}>
+            <Plus />
+            Add Recipe
+          </Button>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -122,10 +126,12 @@ export function RecipesPage() {
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load recipes</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load recipes"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (

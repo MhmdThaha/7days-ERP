@@ -5,12 +5,13 @@ import { StockOverviewProductsSection } from '@/components/inventory/stock-overv
 import { StockOverviewRawMaterialsSection } from '@/components/inventory/stock-overview-raw-materials-section';
 import { StockOverviewSkeleton } from '@/components/inventory/stock-overview-skeleton';
 import { StockOverviewSummarySection } from '@/components/inventory/stock-overview-summary-section';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useStockOverview } from '@/hooks/queries/use-stock-overview';
 
 export function StockOverviewPage() {
-  const { data, isLoading, isFetching, error } = useStockOverview();
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useStockOverview();
   const showSkeleton = isLoading || (isFetching && !data);
 
   if (showSkeleton) {
@@ -35,12 +36,20 @@ export function StockOverviewPage() {
             </AlertDescription>
           </Alert>
         ) : (
-          <Alert variant="destructive">
-            <AlertTitle>Failed to load stock overview</AlertTitle>
-            <AlertDescription>
-              {error?.message ?? 'Unable to load inventory data.'}
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <LoadErrorAlert
+              title="Failed to load stock overview"
+              error={error}
+              onRetry={() => void refetch()}
+              isRetrying={isRefetching}
+            />
+            {!error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Inventory unavailable</AlertTitle>
+                <AlertDescription>Unable to load inventory data.</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
         )}
       </div>
     );

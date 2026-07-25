@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 import { createRecipeAction } from '@/actions/recipes';
 import { RecipeForm } from '@/components/recipes/recipe-form';
@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { RecipeFormValues } from '@/lib/domain/schemas/recipe.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
   mapRecipeActionError,
   type RecipeFieldError,
@@ -22,6 +23,8 @@ const FORM_ID = 'recipe-create-form';
 
 export function RecipeCreatePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialProductId = searchParams.get('productId') ?? undefined;
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<RecipeFieldError | null>(null);
@@ -51,11 +54,16 @@ export function RecipeCreatePage() {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Recipe created successfully');
+      toastWorkflowComplete('Recipe created successfully', {
+        nextStep: {
+          label: 'Record Production',
+          onClick: () => router.push('/production/new'),
+        },
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['recipes'] }),
@@ -89,6 +97,7 @@ export function RecipeCreatePage() {
         <CardContent>
           <RecipeForm
             formId={FORM_ID}
+            initialProductId={initialProductId}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}

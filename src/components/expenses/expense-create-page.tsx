@@ -5,16 +5,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
 
-import { createExpenseAction } from '@/actions/expenses';
+import { completeExpenseAction, createExpenseAction } from '@/actions/expenses';
 import { ExpenseForm } from '@/components/expenses/expense-form';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ExpenseFormValues } from '@/lib/domain/schemas/expense.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapExpenseActionError, type ExpenseFieldError } from '@/lib/utils/expense-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'expense-create-form';
 
@@ -47,11 +48,37 @@ export function ExpenseCreatePage() {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Expense saved as draft');
+      const expenseId = result.data.id;
+
+      toastDraftSaved('Expense saved as draft', 'Complete expense', () => {
+        void (async () => {
+          const completeResult = await completeExpenseAction(expenseId);
+
+          if (!completeResult.success) {
+            toastFormError(completeResult.error);
+            return;
+          }
+
+          toastWorkflowComplete('Expense completed and recorded in reports.', {
+            recordAnother: {
+              label: 'Record another',
+              onClick: () => router.push('/expenses/new'),
+            },
+          });
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+            queryClient.invalidateQueries({ queryKey: ['expense-entry', expenseId] }),
+            invalidateDashboardQueries(queryClient),
+            invalidateDailyReportQueries(queryClient),
+            invalidateMonthlyReportQueries(queryClient),
+          ]);
+        })();
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['expenses'] }),
@@ -60,7 +87,7 @@ export function ExpenseCreatePage() {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
-      router.push(`/expenses/${result.data.id}`);
+      router.push(`/expenses/${expenseId}`);
     } finally {
       setIsSubmitting(false);
     }

@@ -63,8 +63,7 @@ function isLowStock(rawMaterial: RawMaterialListItem): boolean {
 
 function RawMaterialTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -84,7 +83,6 @@ function RawMaterialTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -165,7 +163,7 @@ export function RawMaterialTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}

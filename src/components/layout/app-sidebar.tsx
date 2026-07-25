@@ -11,12 +11,12 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarSeparator,
 } from '@/components/ui/sidebar';
 
 type AppSidebarProps = {
@@ -33,23 +33,24 @@ export function AppSidebar({ navGroups }: AppSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              tooltip="7Days Bakery ERP"
+              tooltip="BakeryOS — Run your bakery"
               render={<Link href="/" />}
             >
               <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                <span className="text-sm font-semibold">7D</span>
+                <span className="text-sm font-semibold">BO</span>
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">7Days Bakery</span>
-                <span className="truncate text-xs text-muted-foreground">ERP</span>
+                <span className="truncate font-semibold">BakeryOS</span>
+                <span className="truncate text-xs text-muted-foreground">Run your bakery</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {navGroups.map((group, groupIndex) => (
+        {navGroups.map((group) => (
           <SidebarGroup key={group.id}>
+            {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
@@ -70,7 +71,6 @@ export function AppSidebar({ navGroups }: AppSidebarProps) {
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
-            {groupIndex < navGroups.length - 1 ? <SidebarSeparator /> : null}
           </SidebarGroup>
         ))}
       </SidebarContent>

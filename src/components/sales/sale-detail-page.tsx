@@ -11,9 +11,11 @@ import { toast } from 'sonner';
 import { completeSaleAction, deleteSaleAction, getSaleAction } from '@/actions/sales';
 import { SaleStatusBadge } from '@/components/sales/sale-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { DraftActionBanner } from '@/components/shared/draft-action-banner';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { TruncatedText } from '@/components/shared/truncated-text';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +28,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type SaleDetailPageProps = {
   saleId: string;
@@ -64,7 +68,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
-  const { data: sale, isLoading, error } = useQuery({
+  const { data: sale, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['sale', saleId],
     queryFn: async () => {
       const result = await getSaleAction(saleId);
@@ -99,7 +103,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
       const result = await deleteSaleAction(saleId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -130,11 +134,16 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
       const result = await completeSaleAction(saleId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Sale completed successfully. Product stock has been updated.');
+      toastWorkflowComplete('Sale completed. Product stock has been updated.', {
+        recordAnother: {
+          label: 'Record another',
+          onClick: () => router.push('/sales/new'),
+        },
+      });
       setIsCompleteOpen(false);
 
       await invalidateSaleQueries();
@@ -154,12 +163,20 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
 
   if (error || !sale) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Sale not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested sale could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load sale"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Sale not found</AlertTitle>
+            <AlertDescription>The requested sale could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -186,10 +203,6 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
       >
         {canEdit ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Button onClick={() => setIsCompleteOpen(true)} disabled={isBusy}>
-              <CheckCircle2 />
-              Complete Sale
-            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -206,6 +219,17 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
           </div>
         ) : null}
       </PageHeader>
+
+      {canEdit ? (
+        <DraftActionBanner
+          title="Draft sale — stock not updated yet"
+          description="Review the lines below, then complete this sale to deduct product stock."
+          actionLabel="Complete Sale"
+          onAction={() => setIsCompleteOpen(true)}
+          icon={CheckCircle2}
+          disabled={isBusy}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -256,8 +280,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
           <CardTitle>Product Lines</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
+                      <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
@@ -289,7 +312,6 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
                 ))}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
 
@@ -321,7 +343,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
           setIsCompleteOpen(open);
         }}
         title="Complete Sale"
-        description="Are you sure you want to complete this sale?"
+        description={`Complete "${sale.saleNumber}"? Product stock will be deducted for all ${sale.lineCount} line${sale.lineCount === 1 ? '' : 's'}. This cannot be undone.`}
         confirmLabel="Complete Sale"
         loadingLabel="Completing..."
         isLoading={isCompleting}

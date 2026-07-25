@@ -1,7 +1,9 @@
 import Link from 'next/link';
-import { Banknote, Factory, Plus, ShoppingCart, Wallet } from 'lucide-react';
+import { Banknote, Factory, ShoppingCart, Wallet } from 'lucide-react';
 
+import { SectionHeader } from '@/components/shared/section-header';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const actions = [
   {
@@ -42,25 +44,37 @@ export function DashboardQuickActions({ allowedModules }: DashboardQuickActionsP
   }
 
   return (
-    <section aria-labelledby="dashboard-actions-heading" className="space-y-3">
-      <h2 id="dashboard-actions-heading" className="text-sm font-medium text-muted-foreground">
-        Quick Actions
-      </h2>
-      <div className="flex flex-wrap gap-2 sm:gap-3">
-        {visibleActions.map((action) => (
-          <Button
-            key={action.label}
-            nativeButton={false}
-            variant="outline"
-            size="sm"
-            className="shadow-sm"
-            aria-label={action.label}
-            render={<Link href={action.href} aria-label={action.label} />}
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            {action.label}
-          </Button>
-        ))}
+    <section aria-labelledby="dashboard-actions-heading" className="section-stack">
+      <SectionHeader
+        title="What should you do next?"
+        description="Start a common task with one tap."
+        headingId="dashboard-actions-heading"
+      />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {visibleActions.map((action) => {
+          const Icon = action.icon;
+
+          return (
+            <Button
+              key={action.label}
+              nativeButton={false}
+              variant="outline"
+              size="lg"
+              className={cn(
+                'h-auto min-h-24 flex-col gap-2.5 rounded-xl px-3 py-4 text-center text-sm font-semibold shadow-xs',
+                'hover:border-primary/30 hover:bg-primary/5',
+              )}
+              aria-label={action.label}
+              render={<Link href={action.href} aria-label={action.label} />}
+            >
+              <span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Icon className="size-5" aria-hidden="true" />
+              </span>
+              {action.label}
+            </Button>
+          );
+        })}
       </div>
     </section>
   );

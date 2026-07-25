@@ -8,16 +8,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { listProductsAction } from '@/actions/products';
 import { completeWastageAction, deleteWastageAction, getWastageAction } from '@/actions/wastage';
 import { WastageStatusBadge } from '@/components/wastage/wastage-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { DraftActionBanner } from '@/components/shared/draft-action-banner';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useProductsByIds } from '@/hooks/use-products-by-ids';
 import {
   Table,
   TableBody,
@@ -32,8 +34,9 @@ import {
   getWastageLineStockErrors,
   hasWastageLinesStockErrors,
 } from '@/lib/utils/wastage-stock-validation';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
-import type { ProductListItem } from '@/types/product';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type WastageDetailPageProps = {
   wastageId: string;
@@ -71,7 +74,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
-  const { data: wastage, isLoading, error } = useQuery({
+  const { data: wastage, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['wastage-entry', wastageId],
     queryFn: async () => {
       const result = await getWastageAction(wastageId);
@@ -86,33 +89,14 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
 
   const isDraft = wastage?.status === 'draft';
 
-  const { data: productsResult, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', 'wastage-stock-check'],
-    queryFn: async () => {
-      const result = await listProductsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
+  const wastageProductIds = useMemo(
+    () => wastage?.lines.map((line) => line.productId).filter(Boolean) ?? [],
+    [wastage?.lines],
+  );
 
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result.data;
-    },
-    enabled: isDraft,
-  });
-
-  const productsById = useMemo(() => {
-    const map = new Map<string, ProductListItem>();
-
-    for (const product of productsResult?.items ?? []) {
-      map.set(product.id, product);
-    }
-
-    return map;
-  }, [productsResult?.items]);
+  const { productsById, isLoading: isLoadingProducts } = useProductsByIds(
+    isDraft ? wastageProductIds : [],
+  );
 
   const lineStockErrors = useMemo(() => {
     if (!wastage) {
@@ -164,11 +148,16 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
       const result = await completeWastageAction(wastageId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Wastage completed successfully. Product stock has been updated.');
+      toastWorkflowComplete('Wastage completed. Product stock has been deducted.', {
+        recordAnother: {
+          label: 'Record another',
+          onClick: () => router.push('/wastage/new'),
+        },
+      });
       setIsCompleteOpen(false);
 
       await invalidateWastageQueries();
@@ -188,7 +177,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
       const result = await deleteWastageAction(wastageId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -219,12 +208,20 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
 
   if (error || !wastage) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Wastage entry not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested wastage entry could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load wastage entry"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Wastage entry not found</AlertTitle>
+            <AlertDescription>The requested wastage entry could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -237,7 +234,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
       <div className="flex items-center gap-2">
         <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/wastage" />}>
           <ArrowLeft />
-          Back to Wastage
+          Back to Waste & Spoilage
         </Button>
       </div>
 
@@ -252,10 +249,6 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
       >
         {canEdit ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Button onClick={() => setIsCompleteOpen(true)} disabled={isBusy || !canComplete}>
-              <CheckCircle2 />
-              Complete Wastage
-            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -272,6 +265,17 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
           </div>
         ) : null}
       </PageHeader>
+
+      {canEdit ? (
+        <DraftActionBanner
+          title="Draft wastage — stock not updated yet"
+          description="Complete this entry to deduct spoiled or wasted products from inventory."
+          actionLabel="Complete Wastage"
+          onAction={() => setIsCompleteOpen(true)}
+          icon={CheckCircle2}
+          disabled={isBusy || !canComplete}
+        />
+      ) : null}
 
       {canEdit && hasInsufficientStock && !isLoadingProducts ? (
         <Alert variant="destructive">
@@ -313,8 +317,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
           <CardTitle>Product Lines</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
+                      <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
@@ -360,7 +363,6 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
                 })}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
 
@@ -392,7 +394,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
           setIsCompleteOpen(open);
         }}
         title="Complete Wastage"
-        description="Are you sure you want to complete this wastage entry?"
+        description={`Complete "${wastage.wastageNumber}"? ${formatQuantity(wastage.totalUnits)} units will be deducted from product stock. This cannot be undone.`}
         confirmLabel="Complete Wastage"
         loadingLabel="Completing..."
         isLoading={isCompleting}

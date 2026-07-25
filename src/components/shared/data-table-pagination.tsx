@@ -28,7 +28,7 @@ export function DataTablePagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
+        'flex flex-col gap-3 rounded-xl border bg-muted/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
         disabled && 'pointer-events-none opacity-60',
       )}
       aria-busy={disabled}

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { ReturnStatusBadge } from '@/components/returns/return-status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
@@ -32,14 +32,14 @@ type ReturnTableProps = {
   isFetching?: boolean;
   disabled?: boolean;
   onDelete: (returnEntry: ReturnListItem) => void;
+  onComplete: (returnEntry: ReturnListItem) => void;
 };
 
 const TABLE_COLUMNS = ['Number', 'Date', 'Reason', 'Lines', 'Total Units', 'Status', 'Actions'];
 
 function ReturnTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -59,7 +59,6 @@ function ReturnTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -83,6 +82,7 @@ export function ReturnTable({
   isFetching = false,
   disabled = false,
   onDelete,
+  onComplete,
 }: ReturnTableProps) {
   if (isLoading) {
     return <ReturnTableSkeleton />;
@@ -92,7 +92,7 @@ export function ReturnTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}
@@ -157,22 +157,33 @@ export function ReturnTable({
                             <Eye />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={`/returns/${returnEntry.id}/edit`} />}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Pencil />
-                            Edit
-                          </DropdownMenuItem>
-                          {isDraft ? <DropdownMenuSeparator /> : null}
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => onDelete(returnEntry)}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Trash2 />
-                            Delete
-                          </DropdownMenuItem>
+                          {isDraft ? (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => onComplete(returnEntry)}
+                                disabled={disabled}
+                              >
+                                <CheckCircle2 />
+                                Complete Return
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                render={<Link href={`/returns/${returnEntry.id}/edit`} />}
+                                disabled={disabled}
+                              >
+                                <Pencil />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => onDelete(returnEntry)}
+                                disabled={disabled}
+                              >
+                                <Trash2 />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

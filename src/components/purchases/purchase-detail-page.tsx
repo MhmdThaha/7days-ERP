@@ -12,7 +12,9 @@ import { deletePurchaseAction, getPurchaseAction, receivePurchaseAction } from '
 import { PaymentStatusBadge } from '@/components/purchases/payment-status-badge';
 import { PurchaseStatusBadge } from '@/components/purchases/purchase-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { DraftActionBanner } from '@/components/shared/draft-action-banner';
 import { MoneyDisplay } from '@/components/shared/money-display';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -28,7 +30,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type PurchaseDetailPageProps = {
   purchaseId: string;
@@ -66,7 +70,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
 
-  const { data: purchase, isLoading, error } = useQuery({
+  const { data: purchase, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['purchase', purchaseId],
     queryFn: async () => {
       const result = await getPurchaseAction(purchaseId);
@@ -99,7 +103,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
       const result = await deletePurchaseAction(purchaseId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -128,11 +132,16 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
       const result = await receivePurchaseAction(purchaseId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Purchase received successfully. Raw material stock has been updated.');
+      toastWorkflowComplete('Purchase received. Raw material stock has been updated.', {
+        nextStep: {
+          label: 'Record Production',
+          onClick: () => router.push('/production/new'),
+        },
+      });
       setIsReceiveOpen(false);
 
       await invalidatePurchaseQueries();
@@ -152,12 +161,20 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
 
   if (error || !purchase) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Purchase not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested purchase could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load purchase"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Purchase not found</AlertTitle>
+            <AlertDescription>The requested purchase could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -206,6 +223,17 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
           ) : null}
         </PageHeader>
 
+        {canModify ? (
+          <DraftActionBanner
+            title="Draft purchase — stock not updated yet"
+            description="When goods arrive, receive this purchase to add raw materials to inventory."
+            actionLabel="Receive Purchase"
+            onAction={() => setIsReceiveOpen(true)}
+            icon={PackageCheck}
+            disabled={isBusy}
+          />
+        ) : null}
+
         <Card>
           <CardHeader>
             <CardTitle>Purchase Details</CardTitle>
@@ -243,8 +271,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
             <CardTitle>Line Items</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
@@ -276,7 +303,6 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
                   ))}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
 
@@ -308,7 +334,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
             setIsReceiveOpen(open);
           }}
           title="Receive Purchase"
-          description="Are you sure you want to receive this purchase?"
+          description={`Receive "${purchase.purchaseNumber}"? Raw material stock will increase for ${purchase.lineItemCount} line${purchase.lineItemCount === 1 ? '' : 's'}. This cannot be undone.`}
           confirmLabel="Receive Purchase"
           loadingLabel="Receiving..."
           isLoading={isReceiving}

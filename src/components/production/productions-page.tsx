@@ -1,26 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { deleteProductionAction } from '@/actions/production';
+import { completeProductionAction, deleteProductionAction } from '@/actions/production';
 import { ProductionFilters } from '@/components/production/production-filters';
 import { ProductionTable } from '@/components/production/production-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PRODUCTION_PAGE_SIZE } from '@/lib/domain/constants/production';
 import { useProductions } from '@/hooks/queries/use-productions';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
-import { parseStatusFilter } from '@/lib/utils/list-url-filters';
-import type { ProductionListItem, ProductionStatusFilter } from '@/types/production';
+import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
+import type { ProductionListItem } from '@/types/production';
 
 export function ProductionsPage() {
   const router = useRouter();
@@ -28,12 +31,18 @@ export function ProductionsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [status, setStatus] = useState<ProductionStatusFilter>(() =>
-    parseStatusFilter(searchParams.get('status'), ['all', 'draft', 'completed'], 'all'),
-  );
   const [page, setPage] = useState(1);
+  const resetPage = useCallback(() => setPage(1), []);
+  const [status, setStatus] = useStatusFilterFromSearchParams(
+    searchParams,
+    ['all', 'draft', 'completed'],
+    'all',
+    resetPage,
+  );
   const [deletingProduction, setDeletingProduction] = useState<ProductionListItem | null>(null);
+  const [completingProduction, setCompletingProduction] = useState<ProductionListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -44,11 +53,7 @@ export function ProductionsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [status]);
-
-  const { data, isLoading, isFetching, error } = useProductions({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useProductions({
     search: debouncedSearch,
     status,
     page,
@@ -60,6 +65,7 @@ export function ProductionsPage() {
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
+  const isBusy = isDeleting || isCompleting;
 
   function clearFilters() {
     setSearch('');
@@ -79,7 +85,7 @@ export function ProductionsPage() {
       const result = await deleteProductionAction(deletingProduction.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -101,16 +107,58 @@ export function ProductionsPage() {
     }
   }
 
+  async function handleComplete() {
+    if (!completingProduction || isCompleting) {
+      return;
+    }
+
+    setIsCompleting(true);
+
+    try {
+      const result = await completeProductionAction(completingProduction.id);
+
+      if (!result.success) {
+        toastFormError(result.error);
+        return;
+      }
+
+      toastWorkflowComplete(
+        'Production completed. Raw materials deducted and product stock updated.',
+        {
+          nextStep: {
+            label: 'Record Sale',
+            onClick: () => router.push('/sales/new'),
+          },
+        },
+      );
+      setCompletingProduction(null);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['productions'] }),
+        queryClient.invalidateQueries({ queryKey: ['production', completingProduction.id] }),
+        queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateDashboardQueries(queryClient),
+        invalidateDailyReportQueries(queryClient),
+        invalidateMonthlyReportQueries(queryClient),
+      ]);
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Production"
         description="Record daily production and complete it to update inventory automatically."
       >
-        <Button nativeButton={false} render={<Link href="/production/new" />}>
-          <Plus />
-          Record Production
-        </Button>
+        {!showEmptyCatalog ? (
+          <Button nativeButton={false} render={<Link href="/production/new" />}>
+            <Plus />
+            Record Production
+          </Button>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -127,16 +175,21 @@ export function ProductionsPage() {
         search={search}
         status={status}
         isSearching={isSearching}
-        disabled={isLoading || isDeleting}
+        disabled={isLoading || isBusy}
         onSearchChange={setSearch}
-        onStatusChange={setStatus}
+        onStatusChange={(value) => {
+          setStatus(value);
+          setPage(1);
+        }}
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load production entries</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load production entries"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (
@@ -161,8 +214,9 @@ export function ProductionsPage() {
               productions={data?.items ?? []}
               isLoading={isLoading}
               isFetching={isFetching}
-              disabled={isDeleting}
+              disabled={isBusy}
               onDelete={(production) => setDeletingProduction(production)}
+              onComplete={(production) => setCompletingProduction(production)}
             />
           )}
 
@@ -173,7 +227,7 @@ export function ProductionsPage() {
               total={data.total}
               pageSize={data.pageSize}
               entityName="production entries"
-              disabled={isFetching || isDeleting}
+              disabled={isFetching || isBusy}
               onPageChange={setPage}
             />
           ) : null}
@@ -202,6 +256,29 @@ export function ProductionsPage() {
         loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(completingProduction)}
+        onOpenChange={(open) => {
+          if (isCompleting) {
+            return;
+          }
+
+          if (!open) {
+            setCompletingProduction(null);
+          }
+        }}
+        title="Complete Production"
+        description={
+          completingProduction
+            ? `Complete "${completingProduction.productionNumber}"? Raw materials will be deducted and ${completingProduction.totalUnits.toLocaleString('en-IN')} units added to product stock. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Complete Production"
+        loadingLabel="Completing..."
+        isLoading={isCompleting}
+        onConfirm={handleComplete}
       />
     </div>
   );

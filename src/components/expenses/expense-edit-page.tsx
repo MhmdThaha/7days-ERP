@@ -9,12 +9,14 @@ import { toast } from 'sonner';
 
 import { getExpenseAction, updateExpenseAction } from '@/actions/expenses';
 import { ExpenseForm } from '@/components/expenses/expense-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ExpenseFormValues } from '@/lib/domain/schemas/expense.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapExpenseActionError, type ExpenseFieldError } from '@/lib/utils/expense-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
@@ -34,6 +36,8 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
     data: expense,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['expense-entry', expenseId],
     queryFn: async () => {
@@ -70,7 +74,7 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -101,12 +105,20 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
 
   if (error || !expense) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Expense not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested expense could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load expense"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Expense not found</AlertTitle>
+            <AlertDescription>The requested expense could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 

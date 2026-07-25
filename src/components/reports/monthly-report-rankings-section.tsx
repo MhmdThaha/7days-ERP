@@ -50,8 +50,7 @@ function ProductRankingTable({
         {products.length === 0 ? (
           <EmptyState title={emptyTitle} description={emptyDescription} icon={Icon} />
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
+                      <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
@@ -73,7 +72,6 @@ function ProductRankingTable({
                 ))}
               </TableBody>
             </Table>
-          </div>
         )}
       </CardContent>
     </Card>

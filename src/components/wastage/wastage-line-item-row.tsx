@@ -1,28 +1,16 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
 import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/wastage';
 import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
 import { cn } from '@/lib/utils';
 import { formatWastageStock } from '@/lib/utils/wastage-stock-validation';
-import type { ProductListItem } from '@/types/product';
-
-function formatProductLabel(product: ProductListItem): string {
-  return `${product.code} - ${product.name}`;
-}
 
 type WastageLineItemRowProps = {
   index: number;
@@ -33,7 +21,6 @@ type WastageLineItemRowProps = {
   unit: string;
   availableStock: number | null;
   stockErrorMessage: string | null;
-  products: ProductListItem[];
   selectedProductIds: string[];
   disabled?: boolean;
   onRemove: () => void;
@@ -50,7 +37,6 @@ export function WastageLineItemRow({
   unit,
   availableStock,
   stockErrorMessage,
-  products,
   selectedProductIds,
   disabled = false,
   onRemove,
@@ -65,20 +51,7 @@ export function WastageLineItemRow({
   const hasStockError = Boolean(stockErrorMessage);
   const showAvailableStock = availableStock !== null && productId;
 
-  const productSelectItems = useMemo(
-    () =>
-      products.map((product) => ({
-        value: product.id,
-        label: formatProductLabel(product),
-      })),
-    [products],
-  );
-
-  function handleProductSelect(value: string | null) {
-    if (!value) {
-      return;
-    }
-
+  function handleProductSelect(value: string) {
     if (selectedProductIds.includes(value)) {
       onDuplicateProduct(index);
       return;
@@ -113,40 +86,15 @@ export function WastageLineItemRow({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
         <div className="space-y-2 sm:col-span-2 xl:col-span-1">
           <Label htmlFor={`wastage-line-${index}-productId`}>Product *</Label>
-          <Select
+          <ProductPickerCombobox
+            id={`wastage-line-${index}-productId`}
             value={productId || null}
-            items={productSelectItems}
+            disabledProductIds={selectedProductIds}
             onValueChange={handleProductSelect}
             disabled={disabled}
-          >
-            <SelectTrigger
-              id={`wastage-line-${index}-productId`}
-              className="w-full"
-              aria-invalid={Boolean(lineErrors?.productId)}
-              aria-describedby={lineErrors?.productId ? productErrorId : undefined}
-            >
-              <SelectValue placeholder="Select product" />
-            </SelectTrigger>
-            <SelectContent>
-              {products.map((product) => {
-                const isAlreadyAdded = selectedProductIds.includes(product.id);
-                const label = isAlreadyAdded
-                  ? `${formatProductLabel(product)} (already added)`
-                  : formatProductLabel(product);
-
-                return (
-                  <SelectItem
-                    key={product.id}
-                    value={product.id}
-                    label={label}
-                    disabled={isAlreadyAdded}
-                  >
-                    {label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+            aria-invalid={Boolean(lineErrors?.productId)}
+            aria-describedby={lineErrors?.productId ? productErrorId : undefined}
+          />
           {lineErrors?.productId ? (
             <p id={productErrorId} className="text-sm text-destructive" role="alert">
               {lineErrors.productId.message === DUPLICATE_PRODUCT_MESSAGE

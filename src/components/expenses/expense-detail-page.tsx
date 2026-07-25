@@ -11,7 +11,9 @@ import { toast } from 'sonner';
 import { completeExpenseAction, deleteExpenseAction, getExpenseAction } from '@/actions/expenses';
 import { ExpenseStatusBadge } from '@/components/expenses/expense-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { DraftActionBanner } from '@/components/shared/draft-action-banner';
 import { MoneyDisplay } from '@/components/shared/money-display';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -19,7 +21,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/domain/constants/expense';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type ExpenseDetailPageProps = {
   expenseId: string;
@@ -53,7 +57,7 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
-  const { data: expense, isLoading, error } = useQuery({
+  const { data: expense, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['expense-entry', expenseId],
     queryFn: async () => {
       const result = await getExpenseAction(expenseId);
@@ -87,11 +91,16 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
       const result = await completeExpenseAction(expenseId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Expense completed successfully.');
+      toastWorkflowComplete('Expense completed and recorded in reports.', {
+        recordAnother: {
+          label: 'Record another',
+          onClick: () => router.push('/expenses/new'),
+        },
+      });
       setIsCompleteOpen(false);
 
       await invalidateExpenseQueries();
@@ -111,7 +120,7 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
       const result = await deleteExpenseAction(expenseId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -142,12 +151,20 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
 
   if (error || !expense) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Expense not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested expense could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load expense"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Expense not found</AlertTitle>
+            <AlertDescription>The requested expense could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -174,10 +191,6 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
       >
         {canEdit ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Button onClick={() => setIsCompleteOpen(true)} disabled={isBusy}>
-              <CheckCircle2 />
-              Complete Expense
-            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -194,6 +207,17 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
           </div>
         ) : null}
       </PageHeader>
+
+      {canEdit ? (
+        <DraftActionBanner
+          title="Draft expense — not recorded yet"
+          description="Complete this expense to include it in daily and monthly reports."
+          actionLabel="Complete Expense"
+          onAction={() => setIsCompleteOpen(true)}
+          icon={CheckCircle2}
+          disabled={isBusy}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -250,7 +274,7 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
           setIsCompleteOpen(open);
         }}
         title="Complete Expense"
-        description="Are you sure you want to complete this expense?"
+        description={`Complete "${expense.expenseNumber}"? This ${EXPENSE_CATEGORY_LABELS[expense.category].toLowerCase()} expense will be included in reports. This cannot be undone.`}
         confirmLabel="Complete Expense"
         loadingLabel="Completing..."
         isLoading={isCompleting}

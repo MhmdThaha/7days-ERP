@@ -9,12 +9,14 @@ import { toast } from 'sonner';
 
 import { getSaleAction, updateSaleAction } from '@/actions/sales';
 import { SaleForm } from '@/components/sales/sale-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapSaleActionError, type SaleFieldError } from '@/lib/utils/sale-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
@@ -34,6 +36,8 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
     data: sale,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['sale', saleId],
     queryFn: async () => {
@@ -70,7 +74,7 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -101,12 +105,20 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
 
   if (error || !sale) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Sale not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested sale could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load sale"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Sale not found</AlertTitle>
+            <AlertDescription>The requested sale could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 

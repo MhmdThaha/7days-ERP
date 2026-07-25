@@ -9,12 +9,14 @@ import { toast } from 'sonner';
 
 import { getProductionAction, updateProductionAction } from '@/actions/production';
 import { ProductionForm } from '@/components/production/production-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
   mapProductionActionError,
   type ProductionFieldError,
@@ -37,6 +39,8 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
     data: production,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['production', productionId],
     queryFn: async () => {
@@ -72,7 +76,7 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -103,12 +107,20 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
 
   if (error || !production) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Production entry not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested production entry could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load production entry"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Production entry not found</AlertTitle>
+            <AlertDescription>The requested production entry could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 

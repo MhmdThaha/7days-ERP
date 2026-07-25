@@ -37,8 +37,7 @@ export function MonthlyReportTransactionsSection({
               No completed transactions recorded this month.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Type</TableHead>
@@ -76,7 +75,6 @@ export function MonthlyReportTransactionsSection({
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

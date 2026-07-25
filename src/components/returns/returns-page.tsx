@@ -7,18 +7,21 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { deleteReturnAction } from '@/actions/returns';
+import { completeReturnAction, deleteReturnAction } from '@/actions/returns';
 import { ReturnFilters } from '@/components/returns/return-filters';
 import { ReturnTable } from '@/components/returns/return-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { RETURN_PAGE_SIZE } from '@/lib/domain/constants/return';
 import { useReturns } from '@/hooks/queries/use-returns';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import type { ReturnListItem } from '@/types/return';
 
 export function ReturnsPage() {
@@ -28,7 +31,9 @@ export function ReturnsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [deletingReturn, setDeletingReturn] = useState<ReturnListItem | null>(null);
+  const [completingReturn, setCompletingReturn] = useState<ReturnListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -39,7 +44,7 @@ export function ReturnsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, isFetching, error } = useReturns({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useReturns({
     search: debouncedSearch,
     page,
     pageSize: RETURN_PAGE_SIZE,
@@ -50,6 +55,7 @@ export function ReturnsPage() {
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
+  const isBusy = isDeleting || isCompleting;
 
   function clearFilters() {
     setSearch('');
@@ -68,7 +74,7 @@ export function ReturnsPage() {
       const result = await deleteReturnAction(deletingReturn.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -90,16 +96,54 @@ export function ReturnsPage() {
     }
   }
 
+  async function handleComplete() {
+    if (!completingReturn || isCompleting) {
+      return;
+    }
+
+    setIsCompleting(true);
+
+    try {
+      const result = await completeReturnAction(completingReturn.id);
+
+      if (!result.success) {
+        toastFormError(result.error);
+        return;
+      }
+
+      toastWorkflowComplete('Return completed. Product stock has been restored.', {
+        recordAnother: {
+          label: 'Record another',
+          onClick: () => router.push('/returns/new'),
+        },
+      });
+      setCompletingReturn(null);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['returns'] }),
+        queryClient.invalidateQueries({ queryKey: ['return-entry', completingReturn.id] }),
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateDashboardQueries(queryClient),
+        invalidateDailyReportQueries(queryClient),
+        invalidateMonthlyReportQueries(queryClient),
+      ]);
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Returns"
-        description="Record product return drafts from shops and customers. Inventory is updated when completing a return in a later phase."
+        title="Customer Returns"
+        description="Record product return drafts from shops and customers. Inventory is restored when you complete a return."
       >
-        <Button nativeButton={false} render={<Link href="/returns/new" />}>
-          <Plus />
-          Record Return
-        </Button>
+        {!showEmptyCatalog ? (
+          <Button nativeButton={false} render={<Link href="/returns/new" />}>
+            <Plus />
+            Record Return
+          </Button>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -115,15 +159,17 @@ export function ReturnsPage() {
       <ReturnFilters
         search={search}
         isSearching={isSearching}
-        disabled={isLoading || isDeleting}
+        disabled={isLoading || isBusy}
         onSearchChange={setSearch}
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load returns</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load returns"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (
@@ -148,8 +194,9 @@ export function ReturnsPage() {
               returns={data?.items ?? []}
               isLoading={isLoading}
               isFetching={isFetching}
-              disabled={isDeleting}
+              disabled={isBusy}
               onDelete={(returnEntry) => setDeletingReturn(returnEntry)}
+              onComplete={(returnEntry) => setCompletingReturn(returnEntry)}
             />
           )}
 
@@ -160,7 +207,7 @@ export function ReturnsPage() {
               total={data.total}
               pageSize={data.pageSize}
               entityName="returns"
-              disabled={isFetching || isDeleting}
+              disabled={isFetching || isBusy}
               onPageChange={setPage}
             />
           ) : null}
@@ -189,6 +236,29 @@ export function ReturnsPage() {
         loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(completingReturn)}
+        onOpenChange={(open) => {
+          if (isCompleting) {
+            return;
+          }
+
+          if (!open) {
+            setCompletingReturn(null);
+          }
+        }}
+        title="Complete Return"
+        description={
+          completingReturn
+            ? `Complete "${completingReturn.returnNumber}"? Product stock will be restored for ${completingReturn.lineCount} line${completingReturn.lineCount === 1 ? '' : 's'}. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Complete Return"
+        loadingLabel="Completing..."
+        isLoading={isCompleting}
+        onConfirm={handleComplete}
       />
     </div>
   );

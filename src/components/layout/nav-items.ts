@@ -23,16 +23,20 @@ export type NavItemConfig = {
   icon: NavIconName;
   module: string;
   roles: readonly MemberRole[];
+  /** Hidden from primary sidebar groups for cashier/store roles; shown under "More". */
+  operatorSecondary?: boolean;
 };
 
 export type NavGroupConfig = {
   id: string;
+  label?: string;
   items: readonly NavItemConfig[];
 };
 
 const allRoles = ['owner', 'manager', 'production', 'sales', 'store'] as const satisfies readonly MemberRole[];
 const managementRoles = ['owner', 'manager'] as const satisfies readonly MemberRole[];
 const productionRoles = ['owner', 'manager', 'production'] as const satisfies readonly MemberRole[];
+const operatorRoles = ['sales', 'store'] as const satisfies readonly MemberRole[];
 
 export const navGroups: readonly NavGroupConfig[] = [
   {
@@ -48,48 +52,9 @@ export const navGroups: readonly NavGroupConfig[] = [
     ],
   },
   {
-    id: 'catalog',
+    id: 'daily-work',
+    label: "Today's Work",
     items: [
-      {
-        href: '/products',
-        label: 'Products',
-        icon: 'Package',
-        module: 'products',
-        roles: allRoles,
-      },
-      {
-        href: '/raw-materials',
-        label: 'Raw Materials',
-        icon: 'Wheat',
-        module: 'raw-materials',
-        roles: productionRoles,
-      },
-      {
-        href: '/recipes',
-        label: 'Recipes',
-        icon: 'ClipboardList',
-        module: 'recipes',
-        roles: productionRoles,
-      },
-    ],
-  },
-  {
-    id: 'operations',
-    items: [
-      {
-        href: '/purchases',
-        label: 'Purchases',
-        icon: 'ShoppingCart',
-        module: 'purchases',
-        roles: managementRoles,
-      },
-      {
-        href: '/production',
-        label: 'Production',
-        icon: 'Factory',
-        module: 'production',
-        roles: allRoles,
-      },
       {
         href: '/sales',
         label: 'Sales',
@@ -98,11 +63,27 @@ export const navGroups: readonly NavGroupConfig[] = [
         roles: allRoles,
       },
       {
+        href: '/production',
+        label: 'Production',
+        icon: 'Factory',
+        module: 'production',
+        roles: allRoles,
+        operatorSecondary: true,
+      },
+      {
+        href: '/purchases',
+        label: 'Purchases',
+        icon: 'ShoppingCart',
+        module: 'purchases',
+        roles: managementRoles,
+      },
+      {
         href: '/returns',
-        label: 'Returns',
+        label: 'Customer Returns',
         icon: 'RotateCcw',
         module: 'returns',
         roles: allRoles,
+        operatorSecondary: true,
       },
       {
         href: '/expenses',
@@ -113,7 +94,7 @@ export const navGroups: readonly NavGroupConfig[] = [
       },
       {
         href: '/wastage',
-        label: 'Wastage',
+        label: 'Waste & Spoilage',
         icon: 'Trash2',
         module: 'wastage',
         roles: ['owner', 'manager', 'production', 'store'],
@@ -121,15 +102,36 @@ export const navGroups: readonly NavGroupConfig[] = [
     ],
   },
   {
-    id: 'reporting',
+    id: 'setup',
+    label: 'Your Bakery',
     items: [
       {
-        href: '/reports',
-        label: 'Daily Report',
-        icon: 'FileText',
-        module: 'reports',
-        roles: managementRoles,
+        href: '/products',
+        label: 'Products',
+        icon: 'Package',
+        module: 'products',
+        roles: allRoles,
       },
+      {
+        href: '/recipes',
+        label: 'Recipes',
+        icon: 'ClipboardList',
+        module: 'recipes',
+        roles: productionRoles,
+      },
+      {
+        href: '/raw-materials',
+        label: 'Ingredients',
+        icon: 'Wheat',
+        module: 'raw-materials',
+        roles: productionRoles,
+      },
+    ],
+  },
+  {
+    id: 'stock-reports',
+    label: 'Stock & Reports',
+    items: [
       {
         href: '/inventory',
         label: 'Inventory',
@@ -138,15 +140,22 @@ export const navGroups: readonly NavGroupConfig[] = [
         roles: allRoles,
       },
       {
+        href: '/reports',
+        label: "Today's Report",
+        icon: 'FileText',
+        module: 'reports',
+        roles: managementRoles,
+      },
+      {
         href: '/daily-summary',
-        label: 'Daily Summary',
+        label: 'Kitchen Dashboard',
         icon: 'CalendarDays',
         module: 'daily-summary',
         roles: productionRoles,
       },
       {
         href: '/monthly-summary',
-        label: 'Monthly Summary',
+        label: 'Month Summary',
         icon: 'CalendarRange',
         module: 'monthly-summary',
         roles: managementRoles,
@@ -155,6 +164,7 @@ export const navGroups: readonly NavGroupConfig[] = [
   },
   {
     id: 'settings',
+    label: 'Settings',
     items: [
       {
         href: '/settings',
@@ -173,14 +183,62 @@ export const routeLabels: Record<string, string> = Object.fromEntries(
   navItems.map((item) => [item.href, item.label]),
 );
 
+function isOperatorRole(role: MemberRole): role is (typeof operatorRoles)[number] {
+  return (operatorRoles as readonly MemberRole[]).includes(role);
+}
+
+function splitOperatorNavGroups(groups: NavGroupConfig[]): NavGroupConfig[] {
+  const moreItems: NavItemConfig[] = [];
+  const primaryGroups: NavGroupConfig[] = [];
+
+  for (const group of groups) {
+    const primaryItems = group.items.filter((item) => {
+      if (!item.operatorSecondary) {
+        return true;
+      }
+
+      moreItems.push(item);
+      return false;
+    });
+
+    if (primaryItems.length > 0) {
+      primaryGroups.push({
+        id: group.id,
+        label: group.label,
+        items: primaryItems,
+      });
+    }
+  }
+
+  if (moreItems.length === 0) {
+    return primaryGroups;
+  }
+
+  return [
+    ...primaryGroups,
+    {
+      id: 'more',
+      label: 'More',
+      items: moreItems,
+    },
+  ];
+}
+
 export function filterNavGroupsByRole(
   groups: readonly NavGroupConfig[],
   role: MemberRole,
 ): NavGroupConfig[] {
-  return groups
+  const filtered = groups
     .map((group) => ({
       id: group.id,
+      label: group.label,
       items: group.items.filter((item) => item.roles.includes(role)),
     }))
     .filter((group) => group.items.length > 0);
+
+  if (isOperatorRole(role)) {
+    return splitOperatorNavGroups(filtered);
+  }
+
+  return filtered;
 }

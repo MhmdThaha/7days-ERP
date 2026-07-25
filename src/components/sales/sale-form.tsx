@@ -2,20 +2,21 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 
-import { listProductsAction } from '@/actions/products';
+import { getProductAction } from '@/actions/products';
 import { SaleLineItemRow } from '@/components/sales/sale-line-item-row';
 import { SaleTotalBar } from '@/components/sales/sale-total-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
+import { useProductsByIds } from '@/hooks/use-products-by-ids';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/sale';
 import { saleFormSchema, type SaleFormValues } from '@/lib/domain/schemas/sale.schema';
+import { getRecentCustomers } from '@/lib/utils/form-recent-values';
 import {
   focusFirstSaleFormError,
   focusSaleFormField,
@@ -23,8 +24,8 @@ import {
   getLocalSaleDateString,
   type SaleFieldError,
 } from '@/lib/utils/sale-form-errors';
+import { toProductListItem } from '@/lib/utils/catalog-list-item';
 import type { Sale } from '@/types/sale';
-import type { ProductListItem } from '@/types/product';
 
 type SaleFormProps = {
   sale?: Sale;
@@ -70,36 +71,25 @@ export function SaleForm({
     name: 'lines',
   });
 
+  const [recentCustomers, setRecentCustomers] = useState<string[]>([]);
+
   const lines = watch('lines');
 
-  const { data: productsResult, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', 'sale-picker'],
-    queryFn: async () => {
-      const result = await listProductsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
+  const appendEmptyLine = useCallback(() => {
+    append({
+      productId: '',
+      quantity: Number.NaN,
+      sellingPrice: 0,
+    });
+  }, [append]);
 
-      if (!result.success) {
-        throw new Error(result.error);
-      }
+  const selectedProductIds = useMemo(
+    () => lines.map((line) => line.productId).filter(Boolean),
+    [lines],
+  );
 
-      return result.data;
-    },
-  });
-
-  const products = productsResult?.items ?? [];
-
-  const productsById = useMemo(() => {
-    const map = new Map<string, ProductListItem>();
-
-    for (const product of products) {
-      map.set(product.id, product);
-    }
-
-    return map;
-  }, [products]);
+  const { productsById, isLoading: isLoadingSelectedProducts } =
+    useProductsByIds(selectedProductIds);
 
   const selectedProductIdsByIndex = useMemo(
     () =>
@@ -126,6 +116,12 @@ export function SaleForm({
       }, 0),
     [lines],
   );
+
+  useEffect(() => {
+    setRecentCustomers(getRecentCustomers());
+  }, []);
+
+  useAutoFirstLine(Boolean(sale), fields.length, true, appendEmptyLine);
 
   useEffect(() => {
     if (sale) {
@@ -159,15 +155,19 @@ export function SaleForm({
   }, [serverFieldError, setError, onServerFieldErrorHandled]);
 
   function handleAddLine() {
-    append({
-      productId: '',
-      quantity: Number.NaN,
-      sellingPrice: 0,
-    });
+    appendEmptyLine();
   }
 
-  function handleProductChange(index: number, productId: string) {
-    const product = productsById.get(productId);
+  async function handleProductChange(index: number, productId: string) {
+    let product = productsById.get(productId);
+
+    if (!product) {
+      const result = await getProductAction(productId);
+
+      if (result.success) {
+        product = toProductListItem(result.data);
+      }
+    }
 
     if (product) {
       setValue(`lines.${index}.sellingPrice`, product.sellingPrice, { shouldValidate: true });
@@ -188,7 +188,7 @@ export function SaleForm({
     focusFirstSaleFormError(fieldErrors);
   }
 
-  const isFormDisabled = isSubmitting || isLoadingProducts;
+  const isFormDisabled = isSubmitting || (Boolean(sale) && isLoadingSelectedProducts);
 
   return (
     <form
@@ -228,6 +228,7 @@ export function SaleForm({
             <Label htmlFor="customerName">Customer Name</Label>
             <Input
               id="customerName"
+              list="sale-customer-suggestions"
               placeholder="Optional — e.g. Corner Shop, Walk-in"
               aria-invalid={Boolean(errors.customerName)}
               aria-describedby={
@@ -235,6 +236,11 @@ export function SaleForm({
               }
               {...register('customerName')}
             />
+            <datalist id="sale-customer-suggestions">
+              {recentCustomers.map((customer) => (
+                <option key={customer} value={customer} />
+              ))}
+            </datalist>
             {errors.customerName ? (
               <p id="customerName-error" className="text-sm text-destructive" role="alert">
                 {errors.customerName.message}
@@ -271,8 +277,7 @@ export function SaleForm({
             <h2 className="text-base font-semibold">Product Lines</h2>
             <p className="text-sm text-muted-foreground">
               Add each product once. Selling price defaults from the product master but can be
-              changed for this sale only. Inventory is not updated until the sale is completed in a
-              later phase.
+              changed for this sale only. Product stock is updated when you complete the sale.
             </p>
           </div>
           <Button
@@ -298,13 +303,7 @@ export function SaleForm({
           </p>
         ) : null}
 
-        {isLoadingProducts ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading products">
-            {Array.from({ length: Math.max(fields.length, 1) }).map((_, index) => (
-              <Skeleton key={index} className="h-40 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : fields.length === 0 ? (
+        {fields.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
             No products yet. Add at least one product to record this sale.
           </div>
@@ -324,7 +323,7 @@ export function SaleForm({
                   unit={product?.unit ?? '—'}
                   sellingPrice={lines[index]?.sellingPrice ?? 0}
                   quantity={lines[index]?.quantity ?? 0}
-                  products={products}
+                  selectedProduct={product ?? null}
                   selectedProductIds={selectedProductIdsByIndex[index] ?? []}
                   disabled={isFormDisabled}
                   onRemove={() => remove(index)}

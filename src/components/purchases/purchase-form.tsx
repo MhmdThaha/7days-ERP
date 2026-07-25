@@ -2,11 +2,10 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 
-import { listRawMaterialsAction } from '@/actions/raw-materials';
+import { getRawMaterialAction } from '@/actions/raw-materials';
 import { PurchaseLineItemRow } from '@/components/purchases/purchase-line-item-row';
 import { PurchaseTotalBar } from '@/components/purchases/purchase-total-bar';
 import { Button } from '@/components/ui/button';
@@ -19,13 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
+import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
 import {
   purchaseFormSchema,
   type PurchaseFormValues,
 } from '@/lib/domain/schemas/purchase.schema';
+import { getRecentSuppliers } from '@/lib/utils/form-recent-values';
 import {
   focusFirstPurchaseFormError,
   focusPurchaseFormField,
@@ -33,6 +34,7 @@ import {
   getLocalDateString,
   type PurchaseFieldError,
 } from '@/lib/utils/purchase-form-errors';
+import { toRawMaterialListItem } from '@/lib/utils/catalog-list-item';
 import type { Purchase } from '@/types/purchase';
 
 type PurchaseFormProps = {
@@ -81,27 +83,33 @@ export function PurchaseForm({
     name: 'lineItems',
   });
 
+  const [recentSuppliers, setRecentSuppliers] = useState<string[]>([]);
+
   const lineItems = watch('lineItems');
   const paymentStatus = watch('paymentStatus');
 
-  const { data: rawMaterialsResult, isLoading: isLoadingRawMaterials } = useQuery({
-    queryKey: ['raw-materials', 'purchase-picker'],
-    queryFn: async () => {
-      const result = await listRawMaterialsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
+  const appendEmptyLineItem = useCallback(() => {
+    append({
+      rawMaterialId: '',
+      quantity: Number.NaN,
+      unit: '',
+      unitCost: 0,
+    });
+  }, [append]);
 
-      if (!result.success) {
-        throw new Error(result.error);
-      }
+  const selectedRawMaterialIds = useMemo(
+    () => lineItems.map((lineItem) => lineItem.rawMaterialId).filter(Boolean),
+    [lineItems],
+  );
 
-      return result.data;
-    },
-  });
+  const { rawMaterialsById, isLoading: isLoadingSelectedMaterials } =
+    useRawMaterialsByIds(selectedRawMaterialIds);
 
-  const rawMaterials = rawMaterialsResult?.items ?? [];
+  useEffect(() => {
+    setRecentSuppliers(getRecentSuppliers());
+  }, []);
+
+  useAutoFirstLine(Boolean(purchase), fields.length, true, appendEmptyLineItem);
 
   const selectedRawMaterialIdsByIndex = useMemo(
     () =>
@@ -164,16 +172,19 @@ export function PurchaseForm({
   }, [serverFieldError, setError, onServerFieldErrorHandled]);
 
   function handleAddLineItem() {
-    append({
-      rawMaterialId: '',
-      quantity: Number.NaN,
-      unit: '',
-      unitCost: 0,
-    });
+    appendEmptyLineItem();
   }
 
-  function handleRawMaterialChange(index: number, rawMaterialId: string) {
-    const material = rawMaterials.find((item) => item.id === rawMaterialId);
+  async function handleRawMaterialChange(index: number, rawMaterialId: string) {
+    let material = rawMaterialsById.get(rawMaterialId);
+
+    if (!material) {
+      const result = await getRawMaterialAction(rawMaterialId);
+
+      if (result.success) {
+        material = toRawMaterialListItem(result.data);
+      }
+    }
 
     if (material) {
       setValue(`lineItems.${index}.unit`, material.unit, { shouldValidate: true });
@@ -202,8 +213,7 @@ export function PurchaseForm({
     [],
   );
 
-  const isLoadingPickers = isLoadingRawMaterials;
-  const isFormDisabled = isSubmitting || isLoadingPickers;
+  const isFormDisabled = isSubmitting || (Boolean(purchase) && isLoadingSelectedMaterials);
 
   return (
     <form
@@ -243,6 +253,7 @@ export function PurchaseForm({
             <Label htmlFor="supplierName">Supplier Name *</Label>
             <Input
               id="supplierName"
+              list="purchase-supplier-suggestions"
               placeholder="e.g. Local Flour Supplier"
               aria-invalid={Boolean(errors.supplierName)}
               aria-describedby={
@@ -250,6 +261,11 @@ export function PurchaseForm({
               }
               {...register('supplierName')}
             />
+            <datalist id="purchase-supplier-suggestions">
+              {recentSuppliers.map((supplier) => (
+                <option key={supplier} value={supplier} />
+              ))}
+            </datalist>
             {errors.supplierName ? (
               <p id="supplierName-error" className="text-sm text-destructive" role="alert">
                 {errors.supplierName.message}
@@ -363,13 +379,7 @@ export function PurchaseForm({
           </p>
         ) : null}
 
-        {isLoadingPickers ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading raw materials">
-            {Array.from({ length: Math.max(fields.length, 1) }).map((_, index) => (
-              <Skeleton key={index} className="h-40 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : fields.length === 0 ? (
+        {fields.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
             No line items yet. Add at least one raw material to record this purchase.
           </div>
@@ -386,7 +396,6 @@ export function PurchaseForm({
                 unit={lineItems[index]?.unit ?? ''}
                 unitCost={lineItems[index]?.unitCost ?? 0}
                 quantity={lineItems[index]?.quantity ?? 0}
-                rawMaterials={rawMaterials}
                 selectedRawMaterialIds={selectedRawMaterialIdsByIndex[index] ?? []}
                 disabled={isFormDisabled}
                 onRemove={() => remove(index)}

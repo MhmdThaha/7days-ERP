@@ -90,8 +90,7 @@ export function StockOverviewRawMaterialsSection({
               No raw materials match your search.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Raw Material</TableHead>
@@ -132,7 +131,6 @@ export function StockOverviewRawMaterialsSection({
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

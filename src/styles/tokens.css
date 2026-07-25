@@ -1,0 +1,247 @@
+/**
+ * BakeryOS Design Tokens — Phase 1
+ * Slate Blue theme. Source of truth for all visual constants.
+ */
+
+:root {
+  /* ── Brand colors ── */
+  --bos-color-primary: #334155;
+  --bos-color-primary-hover: #1e293b;
+  --bos-color-primary-soft: #e2e8f0;
+  --bos-color-primary-foreground: #ffffff;
+
+  --bos-color-background: #f8fafc;
+  --bos-color-surface: #ffffff;
+
+  --bos-color-text-primary: #0f172a;
+  --bos-color-text-secondary: #64748b;
+
+  --bos-color-border: #e2e8f0;
+  --bos-color-border-strong: #cbd5e1;
+
+  --bos-color-success: #22c55e;
+  --bos-color-success-foreground: #14532d;
+  --bos-color-success-soft: #dcfce7;
+
+  --bos-color-warning: #f59e0b;
+  --bos-color-warning-foreground: #78350f;
+  --bos-color-warning-soft: #fef3c7;
+
+  --bos-color-danger: #ef4444;
+  --bos-color-danger-foreground: #ffffff;
+  --bos-color-danger-soft: #fee2e2;
+
+  --bos-color-info: #3b82f6;
+  --bos-color-info-foreground: #1e3a8a;
+  --bos-color-info-soft: #dbeafe;
+
+  /* ── Semantic aliases (shadcn-compatible) ── */
+  --background: var(--bos-color-background);
+  --foreground: var(--bos-color-text-primary);
+  --card: var(--bos-color-surface);
+  --card-foreground: var(--bos-color-text-primary);
+  --popover: var(--bos-color-surface);
+  --popover-foreground: var(--bos-color-text-primary);
+  --primary: var(--bos-color-primary);
+  --primary-foreground: var(--bos-color-primary-foreground);
+  --primary-hover: var(--bos-color-primary-hover);
+  --secondary: var(--bos-color-primary-soft);
+  --secondary-foreground: var(--bos-color-text-primary);
+  --muted: var(--bos-color-primary-soft);
+  --muted-foreground: var(--bos-color-text-secondary);
+  --accent: var(--bos-color-primary-soft);
+  --accent-foreground: var(--bos-color-text-primary);
+  --destructive: var(--bos-color-danger);
+  --destructive-foreground: var(--bos-color-danger-foreground);
+  --success: var(--bos-color-success);
+  --success-foreground: var(--bos-color-success-foreground);
+  --warning: var(--bos-color-warning);
+  --warning-foreground: var(--bos-color-warning-foreground);
+  --info: var(--bos-color-info);
+  --info-foreground: var(--bos-color-info-foreground);
+  --border: var(--bos-color-border);
+  --input: var(--bos-color-border);
+  --ring: var(--bos-color-primary);
+
+  /* ── Chart palette ── */
+  --chart-1: var(--bos-color-primary);
+  --chart-2: var(--bos-color-success);
+  --chart-3: var(--bos-color-warning);
+  --chart-4: var(--bos-color-danger);
+  --chart-5: var(--bos-color-info);
+
+  /* ── Sidebar ── */
+  --sidebar: var(--bos-color-surface);
+  --sidebar-foreground: var(--bos-color-text-primary);
+  --sidebar-primary: var(--bos-color-primary);
+  --sidebar-primary-foreground: var(--bos-color-primary-foreground);
+  --sidebar-accent: var(--bos-color-primary-soft);
+  --sidebar-accent-foreground: var(--bos-color-text-primary);
+  --sidebar-border: var(--bos-color-border);
+  --sidebar-ring: var(--bos-color-primary);
+
+  /* ── Spacing scale (px) ── */
+  --bos-space-1: 4px;
+  --bos-space-2: 8px;
+  --bos-space-3: 12px;
+  --bos-space-4: 16px;
+  --bos-space-5: 20px;
+  --bos-space-6: 24px;
+  --bos-space-8: 32px;
+  --bos-space-10: 40px;
+  --bos-space-12: 48px;
+  --bos-space-16: 64px;
+
+  /* ── Border radius ── */
+  --bos-radius-sm: 6px;
+  --bos-radius-md: 8px;
+  --bos-radius-lg: 12px;
+  --bos-radius-xl: 16px;
+  --bos-radius-full: 9999px;
+  --radius: var(--bos-radius-lg);
+
+  /* ── Shadows / elevation ── */
+  --bos-shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --bos-shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --bos-shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.06);
+  --bos-shadow-focus: 0 0 0 3px rgb(51 65 85 / 0.25);
+
+  /* ── Opacity ── */
+  --bos-opacity-disabled: 0.5;
+  --bos-opacity-muted: 0.7;
+  --bos-opacity-overlay: 0.6;
+
+  /* ── Z-index ── */
+  --bos-z-base: 0;
+  --bos-z-dropdown: 1000;
+  --bos-z-sticky: 1100;
+  --bos-z-overlay: 1200;
+  --bos-z-modal: 1300;
+  --bos-z-toast: 1400;
+  --bos-z-tooltip: 1500;
+
+  /* ── Motion ── */
+  --bos-duration-instant: 100ms;
+  --bos-duration-fast: 150ms;
+  --bos-duration-normal: 200ms;
+  --bos-duration-slow: 300ms;
+  --bos-duration-dialog: 250ms;
+  --bos-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --bos-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --bos-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ── Typography: font families ── */
+  --bos-font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, sans-serif);
+  --bos-font-mono: var(--font-geist-mono, ui-monospace, monospace);
+
+  /* ── Typography: weights ── */
+  --bos-font-weight-regular: 400;
+  --bos-font-weight-medium: 500;
+  --bos-font-weight-semibold: 600;
+  --bos-font-weight-bold: 700;
+
+  /* ── Typography: sizes & line heights ── */
+  --bos-text-page-title-size: 1.875rem;
+  --bos-text-page-title-line: 2.25rem;
+  --bos-text-page-title-weight: var(--bos-font-weight-semibold);
+  --bos-text-page-title-tracking: -0.025em;
+
+  --bos-text-section-title-size: 1.125rem;
+  --bos-text-section-title-line: 1.75rem;
+  --bos-text-section-title-weight: var(--bos-font-weight-semibold);
+  --bos-text-section-title-tracking: -0.015em;
+
+  --bos-text-card-title-size: 1rem;
+  --bos-text-card-title-line: 1.5rem;
+  --bos-text-card-title-weight: var(--bos-font-weight-medium);
+  --bos-text-card-title-tracking: -0.01em;
+
+  --bos-text-body-size: 0.875rem;
+  --bos-text-body-line: 1.375rem;
+  --bos-text-body-weight: var(--bos-font-weight-regular);
+
+  --bos-text-small-size: 0.8125rem;
+  --bos-text-small-line: 1.25rem;
+  --bos-text-small-weight: var(--bos-font-weight-regular);
+
+  --bos-text-caption-size: 0.75rem;
+  --bos-text-caption-line: 1rem;
+  --bos-text-caption-weight: var(--bos-font-weight-regular);
+
+  --bos-text-label-size: 0.875rem;
+  --bos-text-label-line: 1.25rem;
+  --bos-text-label-weight: var(--bos-font-weight-medium);
+
+  --bos-text-button-size: 0.875rem;
+  --bos-text-button-line: 1.25rem;
+  --bos-text-button-weight: var(--bos-font-weight-medium);
+
+  /* ── Icon sizes ── */
+  --bos-icon-sm: 16px;
+  --bos-icon-md: 20px;
+  --bos-icon-lg: 24px;
+  --bos-icon-nav: 20px;
+  --bos-icon-action: 18px;
+  --bos-icon-card: 20px;
+
+  /* ── Container widths ── */
+  --bos-container-sm: 640px;
+  --bos-container-md: 768px;
+  --bos-container-lg: 1024px;
+  --bos-container-xl: 1280px;
+  --bos-container-2xl: 1536px;
+  --bos-container-content: 72rem;
+
+  /* ── Breakpoints (reference; Tailwind handles responsive) ── */
+  --bos-breakpoint-sm: 640px;
+  --bos-breakpoint-md: 768px;
+  --bos-breakpoint-lg: 1024px;
+  --bos-breakpoint-xl: 1280px;
+  --bos-breakpoint-2xl: 1536px;
+}
+
+.dark {
+  --bos-color-background: #0f172a;
+  --bos-color-surface: #1e293b;
+  --bos-color-text-primary: #f8fafc;
+  --bos-color-text-secondary: #94a3b8;
+  --bos-color-border: #334155;
+  --bos-color-border-strong: #475569;
+  --bos-color-primary: #94a3b8;
+  --bos-color-primary-hover: #cbd5e1;
+  --bos-color-primary-soft: #334155;
+  --bos-color-primary-foreground: #0f172a;
+
+  --background: var(--bos-color-background);
+  --foreground: var(--bos-color-text-primary);
+  --card: var(--bos-color-surface);
+  --card-foreground: var(--bos-color-text-primary);
+  --popover: var(--bos-color-surface);
+  --popover-foreground: var(--bos-color-text-primary);
+  --primary: var(--bos-color-primary);
+  --primary-foreground: var(--bos-color-primary-foreground);
+  --primary-hover: var(--bos-color-primary-hover);
+  --secondary: var(--bos-color-primary-soft);
+  --secondary-foreground: var(--bos-color-text-primary);
+  --muted: var(--bos-color-primary-soft);
+  --muted-foreground: var(--bos-color-text-secondary);
+  --accent: var(--bos-color-primary-soft);
+  --accent-foreground: var(--bos-color-text-primary);
+  --border: var(--bos-color-border);
+  --input: var(--bos-color-border);
+  --ring: var(--bos-color-primary-hover);
+
+  --bos-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+  --bos-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+  --bos-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.35), 0 4px 6px -4px rgb(0 0 0 / 0.25);
+  --bos-shadow-focus: 0 0 0 3px rgb(148 163 184 / 0.35);
+
+  --sidebar: var(--bos-color-surface);
+  --sidebar-foreground: var(--bos-color-text-primary);
+  --sidebar-primary: var(--bos-color-primary);
+  --sidebar-primary-foreground: var(--bos-color-primary-foreground);
+  --sidebar-accent: var(--bos-color-primary-soft);
+  --sidebar-accent-foreground: var(--bos-color-text-primary);
+  --sidebar-border: var(--bos-color-border);
+  --sidebar-ring: var(--bos-color-primary-hover);
+}

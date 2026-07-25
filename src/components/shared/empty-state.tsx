@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Package } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 type EmptyStateProps = {
   title: string;
@@ -9,6 +10,7 @@ type EmptyStateProps = {
   icon?: LucideIcon;
   actionLabel?: string;
   onAction?: () => void;
+  className?: string;
 };
 
 export function EmptyState({
@@ -17,18 +19,23 @@ export function EmptyState({
   icon: Icon = Package,
   actionLabel,
   onAction,
+  className,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-16 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-        <Icon className="size-6 text-muted-foreground" />
+    <div className={cn('empty-state-shell', className)}>
+      <div className="flex size-14 items-center justify-center rounded-full bg-primary/10">
+        <Icon className="size-7 text-primary" aria-hidden="true" />
       </div>
-      <div className="space-y-1">
-        <h3 className="text-lg font-medium">{title}</h3>
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
+      <div className="space-y-1.5">
+        <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+        <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
+          {description}
+        </p>
       </div>
       {actionLabel && onAction ? (
-        <Button onClick={onAction}>{actionLabel}</Button>
+        <Button onClick={onAction} size="default">
+          {actionLabel}
+        </Button>
       ) : null}
     </div>
   );

@@ -53,8 +53,7 @@ function formatStock(quantity: number, unit: string): string {
 
 function ProductTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -74,7 +73,6 @@ function ProductTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -94,7 +92,7 @@ export function ProductTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}

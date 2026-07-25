@@ -1,42 +1,22 @@
 'use client';
 
-import { DashboardLowStockSection } from '@/components/dashboard/dashboard-low-stock-section';
+import { DashboardAttentionSection } from '@/components/dashboard/dashboard-attention-section';
+import { DashboardHeroSection } from '@/components/dashboard/dashboard-hero-section';
 import { DashboardQuickActions } from '@/components/dashboard/dashboard-quick-actions';
-import { DashboardQuickCountsSection } from '@/components/dashboard/dashboard-quick-counts';
 import { DashboardRecentActivitySection } from '@/components/dashboard/dashboard-recent-activity-section';
-import { DashboardSummaryCards } from '@/components/dashboard/dashboard-summary-cards';
+import { DashboardSkeleton } from '@/components/dashboard/dashboard-skeleton';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboard } from '@/hooks/queries/use-dashboard';
 import { formatDisplayDate } from '@/lib/utils/date';
 
-function DashboardSkeleton() {
-  return (
-    <div className="min-w-0 space-y-10" aria-busy="true" aria-label="Loading dashboard">
-      <Skeleton className="h-10 w-48" />
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-40" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-36 rounded-xl" />
-          ))}
-        </div>
-      </div>
-      <Skeleton className="h-10 w-full max-w-xl" />
-      <Skeleton className="h-32 w-full rounded-xl" />
-      <Skeleton className="h-64 w-full rounded-xl" />
-      <div className="grid gap-4 border-t pt-8 lg:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-48 rounded-xl" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function DashboardPage({ allowedQuickActionModules }: { allowedQuickActionModules: readonly string[] }) {
-  const { data, isLoading, error } = useDashboard();
+export function DashboardPage({
+  allowedQuickActionModules,
+}: {
+  allowedQuickActionModules: readonly string[];
+}) {
+  const { data, isLoading, error, refetch, isRefetching } = useDashboard();
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -46,7 +26,7 @@ export function DashboardPage({ allowedQuickActionModules }: { allowedQuickActio
 
   if (error || !data) {
     return (
-      <div className="space-y-6">
+      <div className="page-stack">
         <PageHeader title="Dashboard" />
         {isOrgError ? (
           <Alert variant="destructive">
@@ -57,31 +37,50 @@ export function DashboardPage({ allowedQuickActionModules }: { allowedQuickActio
             </AlertDescription>
           </Alert>
         ) : (
-          <Alert variant="destructive">
-            <AlertTitle>Failed to load dashboard</AlertTitle>
-            <AlertDescription>{error?.message ?? 'Unable to load dashboard data.'}</AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <LoadErrorAlert
+              title="Failed to load dashboard"
+              error={error}
+              onRetry={() => void refetch()}
+              isRetrying={isRefetching}
+            />
+            {!error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Dashboard unavailable</AlertTitle>
+                <AlertDescription>Unable to load dashboard data.</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
         )}
       </div>
     );
   }
 
+  const todayLabel = formatDisplayDate(data.summary.todayDate);
+
   return (
-    <div className="min-w-0 space-y-10">
+    <div className="page-stack-loose">
       <PageHeader
         title="Dashboard"
-        description={`Here's how your bakery is doing on ${formatDisplayDate(data.summary.todayDate)}.`}
+        description={`Today is ${todayLabel}. Here is how your bakery is doing.`}
       />
 
-      <DashboardSummaryCards summary={data.summary} />
+      <DashboardHeroSection summary={data.summary} />
 
       <DashboardQuickActions allowedModules={allowedQuickActionModules} />
 
-      <DashboardQuickCountsSection counts={data.quickCounts} />
+      <div className="grid gap-6 xl:grid-cols-5 xl:gap-8">
+        <div className="min-w-0 xl:col-span-3">
+          <DashboardAttentionSection
+            lowStockProducts={data.lowStockProducts}
+            counts={data.quickCounts}
+          />
+        </div>
 
-      <DashboardLowStockSection products={data.lowStockProducts} />
-
-      <DashboardRecentActivitySection activity={data.recentActivity} />
+        <div className="min-w-0 xl:col-span-2">
+          <DashboardRecentActivitySection activity={data.recentActivity} />
+        </div>
+      </div>
     </div>
   );
 }

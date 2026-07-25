@@ -80,6 +80,8 @@ export type CreateSaleInput = {
   customerName?: string | null;
   lines: SaleLineItemInput[];
   notes?: string | null;
+  /** When provided (e.g. sales import), used instead of auto-generating a number. */
+  saleNumber?: string;
 };
 
 export type UpdateSaleInput = {

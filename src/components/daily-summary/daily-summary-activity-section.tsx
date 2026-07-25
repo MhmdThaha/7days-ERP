@@ -36,8 +36,7 @@ export function DailySummaryActivitySection({ activity }: DailySummaryActivitySe
               No completed activity recorded today yet.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Time</TableHead>
@@ -82,7 +81,6 @@ export function DailySummaryActivitySection({ activity }: DailySummaryActivitySe
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

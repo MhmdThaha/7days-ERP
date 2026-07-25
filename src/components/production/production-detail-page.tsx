@@ -14,16 +14,18 @@ import {
   getProductionAction,
 } from '@/actions/production';
 import { getRecipeAction } from '@/actions/recipes';
-import { listRawMaterialsAction } from '@/actions/raw-materials';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { DraftActionBanner } from '@/components/shared/draft-action-banner';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
 import {
   Table,
   TableBody,
@@ -33,9 +35,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { buildMaterialPreview } from '@/lib/domain/calculations/production-materials';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import type { Recipe } from '@/types/recipe';
-import type { RawMaterialListItem } from '@/types/raw-material';
 
 type ProductionDetailPageProps = {
   productionId: string;
@@ -73,7 +76,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
-  const { data: production, isLoading, error } = useQuery({
+  const { data: production, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['production', productionId],
     queryFn: async () => {
       const result = await getProductionAction(productionId);
@@ -108,22 +111,20 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
     },
   });
 
-  const { data: rawMaterialsResult, isLoading: isLoadingRawMaterials } = useQuery({
-    queryKey: ['raw-materials', 'production-detail'],
-    queryFn: async () => {
-      const result = await listRawMaterialsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
+  const previewMaterialIds = useMemo(() => {
+    const ids = new Set<string>();
 
-      if (!result.success) {
-        throw new Error(result.error);
+    for (const recipe of recipes ?? []) {
+      for (const ingredient of recipe.ingredients) {
+        ids.add(ingredient.rawMaterialId);
       }
+    }
 
-      return result.data;
-    },
-  });
+    return [...ids];
+  }, [recipes]);
+
+  const { rawMaterialsById, isLoading: isLoadingRawMaterials } =
+    useRawMaterialsByIds(previewMaterialIds);
 
   const recipesById = useMemo(() => {
     const map = new Map<string, Recipe>();
@@ -134,16 +135,6 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
     return map;
   }, [recipes]);
-
-  const rawMaterialsById = useMemo(() => {
-    const map = new Map<string, RawMaterialListItem>();
-
-    for (const item of rawMaterialsResult?.items ?? []) {
-      map.set(item.id, item);
-    }
-
-    return map;
-  }, [rawMaterialsResult?.items]);
 
   const materialPreviewRows = useMemo(() => {
     if (!production) {
@@ -184,7 +175,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       const result = await deleteProductionAction(productionId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -215,12 +206,18 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       const result = await completeProductionAction(productionId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success(
-        'Production completed successfully. Raw material and product stock have been updated.',
+      toastWorkflowComplete(
+        'Production completed. Raw materials deducted and product stock updated.',
+        {
+          nextStep: {
+            label: 'Record Sale',
+            onClick: () => router.push('/sales/new'),
+          },
+        },
       );
       setIsCompleteOpen(false);
 
@@ -241,12 +238,20 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
   if (error || !production) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Production entry not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested production entry could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load production entry"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Production entry not found</AlertTitle>
+            <AlertDescription>The requested production entry could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -274,10 +279,6 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       >
         {canEdit ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Button onClick={() => setIsCompleteOpen(true)} disabled={isBusy}>
-              <CheckCircle2 />
-              Complete Production
-            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -294,6 +295,17 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
           </div>
         ) : null}
       </PageHeader>
+
+      {canEdit ? (
+        <DraftActionBanner
+          title="Draft production — stock not updated yet"
+          description="Review material usage below, then complete to deduct ingredients and add finished goods."
+          actionLabel="Complete Production"
+          onAction={() => setIsCompleteOpen(true)}
+          icon={CheckCircle2}
+          disabled={isBusy}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -327,8 +339,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
           <CardTitle>Product Lines</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
+                      <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
@@ -356,7 +367,6 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
                 ))}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
 
@@ -394,7 +404,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
           setIsCompleteOpen(open);
         }}
         title="Complete Production"
-        description="Are you sure you want to complete this production?"
+        description={`Complete "${production.productionNumber}"? Raw materials will be deducted and ${formatQuantity(production.totalUnits)} units added to product stock. This cannot be undone.`}
         confirmLabel="Complete Production"
         loadingLabel="Completing..."
         isLoading={isCompleting}

@@ -16,11 +16,13 @@ import { RawMaterialTable } from '@/components/raw-materials/raw-material-table'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { RAW_MATERIAL_PAGE_SIZE } from '@/lib/domain/constants/raw-material';
 import { useRawMaterials } from '@/hooks/queries/use-raw-materials';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { RawMaterialListItem, RawMaterialStatusFilter } from '@/types/raw-material';
 
 export function RawMaterialsPage() {
@@ -46,7 +48,7 @@ export function RawMaterialsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, isFetching, error, refetch, isError } = useRawMaterials({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useRawMaterials({
     search: debouncedSearch,
     status,
     category: category === 'all' ? undefined : category,
@@ -75,8 +77,8 @@ export function RawMaterialsPage() {
     status !== 'active' ||
     category !== 'all' ||
     lowStockOnly;
-  const showEmptyCatalog = !isLoading && !isError && data?.total === 0 && !hasActiveFilters;
-  const showNoResults = !isLoading && !isError && data?.total === 0 && hasActiveFilters;
+  const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
+  const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
 
   function clearFilters() {
@@ -99,7 +101,7 @@ export function RawMaterialsPage() {
       const result = await deleteRawMaterialAction(deletingRawMaterial.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -119,13 +121,15 @@ export function RawMaterialsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Raw Materials"
+        title="Ingredients"
         description="Manage ingredients and supplies used in recipes. Stock and costs update automatically from Purchases and Production."
       >
-        <Button onClick={() => setIsCreateOpen(true)} className="shrink-0">
-          <Plus />
-          Add Raw Material
-        </Button>
+        {!showEmptyCatalog ? (
+          <Button onClick={() => setIsCreateOpen(true)} className="shrink-0">
+            <Plus />
+            Add Raw Material
+          </Button>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -165,21 +169,12 @@ export function RawMaterialsPage() {
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load raw materials</AlertTitle>
-          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>{error.message}</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 border-destructive/30 bg-background"
-              onClick={() => void refetch()}
-            >
-              Try again
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load raw materials"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (

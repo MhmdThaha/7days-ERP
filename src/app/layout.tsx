@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: '7Days Bakery ERP',
-  description: 'Cloud-based ERP for bakery businesses',
+  title: 'BakeryOS',
+  description: 'Simple bakery management for small business owners',
 };
 
 export default function RootLayout({

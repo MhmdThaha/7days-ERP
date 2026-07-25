@@ -50,8 +50,7 @@ const TABLE_COLUMNS = [
 
 function PurchaseTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -71,7 +70,6 @@ function PurchaseTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -101,7 +99,7 @@ export function PurchaseTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}
@@ -139,11 +137,15 @@ export function PurchaseTable({
                 return (
                   <TableRow key={purchase.id} className="group hover:bg-muted/40">
                     <TableCell className="font-medium">
-                      <TruncatedText
-                        text={purchase.purchaseNumber}
-                        maxWidthClassName="max-w-[100px]"
-                        className="font-mono text-xs sm:text-sm"
-                      />
+                      <Link
+                        href={`/purchases/${purchase.id}`}
+                        className="font-mono text-xs hover:underline sm:text-sm"
+                      >
+                        <TruncatedText
+                          text={purchase.purchaseNumber}
+                          maxWidthClassName="max-w-[100px]"
+                        />
+                      </Link>
                     </TableCell>
                     <TableCell>{formatDate(purchase.purchaseDate)}</TableCell>
                     <TableCell>

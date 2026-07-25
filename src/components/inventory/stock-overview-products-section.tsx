@@ -80,8 +80,7 @@ export function StockOverviewProductsSection({ products }: StockOverviewProducts
               No products match your search.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product Name</TableHead>
@@ -118,7 +117,6 @@ export function StockOverviewProductsSection({ products }: StockOverviewProducts
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

@@ -5,16 +5,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
 
-import { createWastageAction } from '@/actions/wastage';
+import { completeWastageAction, createWastageAction } from '@/actions/wastage';
 import { WastageForm } from '@/components/wastage/wastage-form';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapWastageActionError, type WastageFieldError } from '@/lib/utils/wastage-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'wastage-create-form';
 
@@ -48,11 +49,38 @@ export function WastageCreatePage() {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Wastage saved as draft');
+      const wastageId = result.data.id;
+
+      toastDraftSaved('Wastage saved as draft', 'Complete wastage', () => {
+        void (async () => {
+          const completeResult = await completeWastageAction(wastageId);
+
+          if (!completeResult.success) {
+            toastFormError(completeResult.error);
+            return;
+          }
+
+          toastWorkflowComplete('Wastage completed. Product stock has been deducted.', {
+            recordAnother: {
+              label: 'Record another',
+              onClick: () => router.push('/wastage/new'),
+            },
+          });
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['wastage'] }),
+            queryClient.invalidateQueries({ queryKey: ['wastage-entry', wastageId] }),
+            queryClient.invalidateQueries({ queryKey: ['products'] }),
+            invalidateDashboardQueries(queryClient),
+            invalidateDailyReportQueries(queryClient),
+            invalidateMonthlyReportQueries(queryClient),
+          ]);
+        })();
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['wastage'] }),
@@ -61,7 +89,7 @@ export function WastageCreatePage() {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
-      router.push(`/wastage/${result.data.id}`);
+      router.push(`/wastage/${wastageId}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -72,7 +100,7 @@ export function WastageCreatePage() {
       <div className="flex items-center gap-2">
         <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/wastage" />}>
           <ArrowLeft />
-          Back to Wastage
+          Back to Waste & Spoilage
         </Button>
       </div>
 

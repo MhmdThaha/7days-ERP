@@ -1,29 +1,17 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
 import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
 
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { MoneyInput } from '@/components/shared/money-input';
+import { RawMaterialPickerCombobox } from '@/components/shared/raw-material-picker-combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
 import { cn } from '@/lib/utils';
-import type { RawMaterialListItem } from '@/types/raw-material';
-
-function formatRawMaterialLabel(material: RawMaterialListItem): string {
-  return `${material.code} - ${material.name}`;
-}
 
 type PurchaseLineItemRowProps = {
   index: number;
@@ -34,7 +22,6 @@ type PurchaseLineItemRowProps = {
   unit: string;
   unitCost: number;
   quantity: number;
-  rawMaterials: RawMaterialListItem[];
   selectedRawMaterialIds: string[];
   disabled?: boolean;
   onRemove: () => void;
@@ -52,7 +39,6 @@ export function PurchaseLineItemRow({
   unit,
   unitCost,
   quantity,
-  rawMaterials,
   selectedRawMaterialIds,
   disabled = false,
   onRemove,
@@ -65,22 +51,9 @@ export function PurchaseLineItemRow({
   const quantityErrorId = `line-item-${index}-quantity-error`;
   const unitCostErrorId = `line-item-${index}-unitCost-error`;
 
-  const rawMaterialSelectItems = useMemo(
-    () =>
-      rawMaterials.map((material) => ({
-        value: material.id,
-        label: formatRawMaterialLabel(material),
-      })),
-    [rawMaterials],
-  );
-
   const lineTotal = Math.round((Number(quantity) || 0) * (Number(unitCost) || 0));
 
-  function handleRawMaterialSelect(value: string | null) {
-    if (!value) {
-      return;
-    }
-
+  function handleRawMaterialSelect(value: string) {
     if (selectedRawMaterialIds.includes(value)) {
       onDuplicateRawMaterial(index);
       return;
@@ -113,41 +86,16 @@ export function PurchaseLineItemRow({
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
         <div className="space-y-2 sm:col-span-2 xl:col-span-1">
-          <Label htmlFor={`line-item-${index}-rawMaterialId`}>Raw Material *</Label>
-          <Select
+          <Label htmlFor={`line-item-${index}-rawMaterialId`}>Ingredient *</Label>
+          <RawMaterialPickerCombobox
+            id={`line-item-${index}-rawMaterialId`}
             value={rawMaterialId || null}
-            items={rawMaterialSelectItems}
+            disabledMaterialIds={selectedRawMaterialIds}
             onValueChange={handleRawMaterialSelect}
             disabled={disabled}
-          >
-            <SelectTrigger
-              id={`line-item-${index}-rawMaterialId`}
-              className="w-full"
-              aria-invalid={Boolean(lineItemErrors?.rawMaterialId)}
-              aria-describedby={lineItemErrors?.rawMaterialId ? rawMaterialErrorId : undefined}
-            >
-              <SelectValue placeholder="Select raw material" />
-            </SelectTrigger>
-            <SelectContent>
-              {rawMaterials.map((material) => {
-                const isAlreadyAdded = selectedRawMaterialIds.includes(material.id);
-                const label = isAlreadyAdded
-                  ? `${formatRawMaterialLabel(material)} (already added)`
-                  : formatRawMaterialLabel(material);
-
-                return (
-                  <SelectItem
-                    key={material.id}
-                    value={material.id}
-                    label={label}
-                    disabled={isAlreadyAdded}
-                  >
-                    {label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+            aria-invalid={Boolean(lineItemErrors?.rawMaterialId)}
+            aria-describedby={lineItemErrors?.rawMaterialId ? rawMaterialErrorId : undefined}
+          />
           {lineItemErrors?.rawMaterialId ? (
             <p id={rawMaterialErrorId} className="text-sm text-destructive" role="alert">
               {lineItemErrors.rawMaterialId.message === DUPLICATE_RAW_MATERIAL_MESSAGE

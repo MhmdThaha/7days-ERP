@@ -10,12 +10,14 @@ import { toast } from 'sonner';
 import { getProductAction } from '@/actions/products';
 import { getRecipeAction, updateRecipeAction } from '@/actions/recipes';
 import { RecipeForm } from '@/components/recipes/recipe-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { RecipeFormValues } from '@/lib/domain/schemas/recipe.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
   mapRecipeActionError,
   type RecipeFieldError,
@@ -37,6 +39,8 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
     data: recipe,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['recipe', recipeId],
     queryFn: async () => {
@@ -87,7 +91,7 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -116,12 +120,20 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
 
   if (error || !recipe) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Recipe not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested recipe could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load recipe"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Recipe not found</AlertTitle>
+            <AlertDescription>The requested recipe could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 

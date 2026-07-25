@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, SearchX } from 'lucide-react';
+import { Plus, SearchX, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -15,11 +16,13 @@ import { ProductTable } from '@/components/products/product-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PRODUCT_PAGE_SIZE } from '@/lib/domain/constants/product';
 import { useProducts } from '@/hooks/queries/use-products';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { ProductListItem, ProductStatusFilter } from '@/types/product';
 
 export function ProductsPage() {
@@ -42,7 +45,7 @@ export function ProductsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, isFetching, error } = useProducts({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useProducts({
     search: debouncedSearch,
     status,
     page,
@@ -90,7 +93,7 @@ export function ProductsPage() {
       const result = await deleteProductAction(deletingProduct.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -110,10 +113,16 @@ export function ProductsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Products">
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus />
-          Add Product
+        <Button nativeButton={false} variant="outline" render={<Link href="/products/import" />}>
+          <Upload />
+          Import
         </Button>
+        {!showEmptyCatalog ? (
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus />
+            Add Product
+          </Button>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -139,10 +148,12 @@ export function ProductsPage() {
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load products</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load products"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (

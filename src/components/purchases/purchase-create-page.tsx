@@ -5,9 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
 
-import { createPurchaseAction } from '@/actions/purchases';
+import { createPurchaseAction, receivePurchaseAction } from '@/actions/purchases';
 import { PurchaseForm } from '@/components/purchases/purchase-form';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -17,7 +16,10 @@ import {
   mapPurchaseActionError,
   type PurchaseFieldError,
 } from '@/lib/utils/purchase-form-errors';
+import { rememberSupplier } from '@/lib/utils/form-recent-values';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'purchase-create-form';
 
@@ -52,18 +54,45 @@ export function PurchaseCreatePage() {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Purchase saved as draft');
+      rememberSupplier(values.supplierName);
+
+      const purchaseId = result.data.id;
+
+      toastDraftSaved('Purchase saved as draft', 'Receive purchase', () => {
+        void (async () => {
+          const receiveResult = await receivePurchaseAction(purchaseId);
+
+          if (!receiveResult.success) {
+            toastFormError(receiveResult.error);
+            return;
+          }
+
+          toastWorkflowComplete('Purchase received. Raw material stock has been updated.', {
+            nextStep: {
+              label: 'Record Production',
+              onClick: () => router.push('/production/new'),
+            },
+          });
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['purchases'] }),
+            queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
+            queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+            invalidateDashboardQueries(queryClient),
+          ]);
+        })();
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['purchases'] }),
         invalidateDashboardQueries(queryClient),
       ]);
 
-      router.push(`/purchases/${result.data.id}`);
+      router.push(`/purchases/${purchaseId}`);
     } finally {
       setIsSubmitting(false);
     }

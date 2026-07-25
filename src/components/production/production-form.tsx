@@ -2,12 +2,11 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 
-import { listProductsAction } from '@/actions/products';
-import { listRawMaterialsAction } from '@/actions/raw-materials';
+import { getProductAction } from '@/actions/products';
 import { getRecipeAction, listRecipesAction } from '@/actions/recipes';
 import { ProductionLineItemRow } from '@/components/production/production-line-item-row';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
@@ -15,8 +14,10 @@ import { ProductionTotalBar } from '@/components/production/production-total-bar
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
+import { useProductsByIds } from '@/hooks/use-products-by-ids';
+import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
 import { buildMaterialPreview } from '@/lib/domain/calculations/production-materials';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/production';
 import {
@@ -30,10 +31,10 @@ import {
   getLocalProductionDateString,
   type ProductionFieldError,
 } from '@/lib/utils/production-form-errors';
+import { toProductListItem } from '@/lib/utils/catalog-list-item';
 import type { Production } from '@/types/production';
 import type { ProductListItem } from '@/types/product';
 import type { Recipe, RecipeListItem } from '@/types/recipe';
-import type { RawMaterialListItem } from '@/types/raw-material';
 
 type ProductionFormProps = {
   production?: Production;
@@ -50,19 +51,17 @@ const defaultValues: ProductionFormValues = {
   notes: '',
 };
 
-function buildEligibleProducts(
-  products: ProductListItem[],
+function isEligibleProduct(
+  product: ProductListItem,
   recipesById: Map<string, RecipeListItem>,
-): ProductListItem[] {
-  return products.filter((product) => {
-    if (!product.isActive || !product.activeRecipeId) {
-      return false;
-    }
+): boolean {
+  if (!product.isActive || !product.activeRecipeId) {
+    return false;
+  }
 
-    const recipe = recipesById.get(product.activeRecipeId);
+  const recipe = recipesById.get(product.activeRecipeId);
 
-    return Boolean(recipe?.isActive && recipe.productId === product.id);
-  });
+  return Boolean(recipe?.isActive && recipe.productId === product.id);
 }
 
 export function ProductionForm({
@@ -95,22 +94,13 @@ export function ProductionForm({
 
   const lines = watch('lines');
 
-  const { data: productsResult, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', 'production-picker'],
-    queryFn: async () => {
-      const result = await listProductsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result.data;
-    },
-  });
+  const appendEmptyLine = useCallback(() => {
+    append({
+      productId: '',
+      quantity: Number.NaN,
+      unit: '',
+    });
+  }, [append]);
 
   const { data: recipesResult, isLoading: isLoadingRecipes } = useQuery({
     queryKey: ['recipes', 'production-picker'],
@@ -129,22 +119,13 @@ export function ProductionForm({
     },
   });
 
-  const { data: rawMaterialsResult, isLoading: isLoadingRawMaterials } = useQuery({
-    queryKey: ['raw-materials', 'production-preview'],
-    queryFn: async () => {
-      const result = await listRawMaterialsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
+  const selectedProductIds = useMemo(
+    () => lines.map((line) => line.productId).filter(Boolean),
+    [lines],
+  );
 
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result.data;
-    },
-  });
+  const { productsById, isLoading: isLoadingSelectedProducts } =
+    useProductsByIds(selectedProductIds);
 
   const recipesById = useMemo(() => {
     const map = new Map<string, RecipeListItem>();
@@ -156,32 +137,28 @@ export function ProductionForm({
     return map;
   }, [recipesResult?.items]);
 
-  const rawMaterialsById = useMemo(() => {
-    const map = new Map<string, RawMaterialListItem>();
+  const filterEligibleProduct = useCallback(
+    (product: ProductListItem) => isEligibleProduct(product, recipesById),
+    [recipesById],
+  );
 
-    for (const item of rawMaterialsResult?.items ?? []) {
-      map.set(item.id, item);
+  const activeRecipeIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const line of lines) {
+      if (!line.productId) {
+        continue;
+      }
+
+      const product = productsById.get(line.productId);
+
+      if (product?.activeRecipeId) {
+        ids.add(product.activeRecipeId);
+      }
     }
 
-    return map;
-  }, [rawMaterialsResult?.items]);
-
-  const eligibleProducts = useMemo(
-    () => buildEligibleProducts(productsResult?.items ?? [], recipesById),
-    [productsResult?.items, recipesById],
-  );
-
-  const activeRecipeIds = useMemo(
-    () =>
-      [
-        ...new Set(
-          eligibleProducts
-            .map((product) => product.activeRecipeId)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ].sort(),
-    [eligibleProducts],
-  );
+    return [...ids].sort();
+  }, [lines, productsById]);
 
   const { data: fullRecipes, isLoading: isLoadingFullRecipes } = useQuery({
     queryKey: ['recipes', 'production-full', activeRecipeIds],
@@ -210,15 +187,20 @@ export function ProductionForm({
     return map;
   }, [fullRecipes]);
 
-  const productsById = useMemo(() => {
-    const map = new Map<string, ProductListItem>();
+  const previewMaterialIds = useMemo(() => {
+    const ids = new Set<string>();
 
-    for (const product of eligibleProducts) {
-      map.set(product.id, product);
+    for (const recipe of fullRecipes ?? []) {
+      for (const ingredient of recipe.ingredients) {
+        ids.add(ingredient.rawMaterialId);
+      }
     }
 
-    return map;
-  }, [eligibleProducts]);
+    return [...ids];
+  }, [fullRecipes]);
+
+  const { rawMaterialsById, isLoading: isLoadingPreviewMaterials } =
+    useRawMaterialsByIds(previewMaterialIds);
 
   const selectedProductIdsByIndex = useMemo(
     () =>
@@ -295,19 +277,25 @@ export function ProductionForm({
   }, [serverFieldError, setError, onServerFieldErrorHandled]);
 
   function handleAddLine() {
-    append({
-      productId: '',
-      quantity: Number.NaN,
-      unit: '',
-    });
+    appendEmptyLine();
   }
 
   function handleProductChange(index: number, productId: string) {
-    const product = productsById.get(productId);
+    void (async () => {
+      let product = productsById.get(productId);
 
-    if (product) {
-      setValue(`lines.${index}.unit`, product.unit, { shouldValidate: true });
-    }
+      if (!product) {
+        const result = await getProductAction(productId);
+
+        if (result.success) {
+          product = toProductListItem(result.data);
+        }
+      }
+
+      if (product) {
+        setValue(`lines.${index}.unit`, product.unit, { shouldValidate: true });
+      }
+    })();
 
     clearErrors(`lines.${index}.productId`);
   }
@@ -325,8 +313,13 @@ export function ProductionForm({
   }
 
   const isLoadingPickers =
-    isLoadingProducts || isLoadingRecipes || isLoadingRawMaterials || isLoadingFullRecipes;
+    isLoadingRecipes ||
+    isLoadingFullRecipes ||
+    isLoadingPreviewMaterials ||
+    (Boolean(production) && isLoadingSelectedProducts);
   const isFormDisabled = isSubmitting || isLoadingPickers;
+
+  useAutoFirstLine(Boolean(production), fields.length, !isLoadingRecipes, appendEmptyLine);
 
   return (
     <form
@@ -400,18 +393,17 @@ export function ProductionForm({
             variant="outline"
             className="shrink-0"
             onClick={handleAddLine}
-            disabled={isFormDisabled || eligibleProducts.length === 0}
+            disabled={isFormDisabled}
           >
             <Plus />
             Add Product Line
           </Button>
         </div>
 
-        {!isLoadingPickers && eligibleProducts.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-            No eligible products found. Ensure products are active and have an active recipe linked.
-          </div>
-        ) : null}
+        <p className="text-sm text-muted-foreground">
+          Search for active products with an active recipe. Type a product name or code to find
+          items beyond the first results.
+        </p>
 
         {errors.lines?.message ? (
           <p className="text-sm text-destructive" role="alert">
@@ -424,35 +416,34 @@ export function ProductionForm({
           </p>
         ) : null}
 
-        {isLoadingPickers ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading products">
-            {Array.from({ length: Math.max(fields.length, 1) }).map((_, index) => (
-              <Skeleton key={index} className="h-36 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : fields.length === 0 ? (
+        {fields.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
             No product lines yet. Add at least one product to record this production draft.
           </div>
         ) : (
           <div className="space-y-3">
-            {fields.map((field, index) => (
-              <ProductionLineItemRow
-                key={field.id}
-                index={index}
-                register={register}
-                setValue={setValue}
-                errors={errors}
-                productId={lines[index]?.productId ?? ''}
-                unit={lines[index]?.unit ?? ''}
-                products={eligibleProducts}
-                selectedProductIds={selectedProductIdsByIndex[index] ?? []}
-                disabled={isFormDisabled}
-                onRemove={() => remove(index)}
-                onProductChange={(productId) => handleProductChange(index, productId)}
-                onDuplicateProduct={handleDuplicateProduct}
-              />
-            ))}
+            {fields.map((field, index) => {
+              const product = productsById.get(lines[index]?.productId ?? '');
+
+              return (
+                <ProductionLineItemRow
+                  key={field.id}
+                  index={index}
+                  register={register}
+                  setValue={setValue}
+                  errors={errors}
+                  productId={lines[index]?.productId ?? ''}
+                  unit={lines[index]?.unit ?? ''}
+                  selectedProduct={product ?? null}
+                  selectedProductIds={selectedProductIdsByIndex[index] ?? []}
+                  filterProduct={filterEligibleProduct}
+                  disabled={isFormDisabled}
+                  onRemove={() => remove(index)}
+                  onProductChange={(productId) => handleProductChange(index, productId)}
+                  onDuplicateProduct={handleDuplicateProduct}
+                />
+              );
+            })}
           </div>
         )}
       </div>

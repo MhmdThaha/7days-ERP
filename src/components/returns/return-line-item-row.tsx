@@ -1,27 +1,15 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
 import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
 
+import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/return';
 import type { ReturnFormValues } from '@/lib/domain/schemas/return.schema';
 import { cn } from '@/lib/utils';
-import type { ProductListItem } from '@/types/product';
-
-function formatProductLabel(product: ProductListItem): string {
-  return `${product.code} - ${product.name}`;
-}
 
 type ReturnLineItemRowProps = {
   index: number;
@@ -30,7 +18,6 @@ type ReturnLineItemRowProps = {
   errors: FieldErrors<ReturnFormValues>;
   productId: string;
   unit: string;
-  products: ProductListItem[];
   selectedProductIds: string[];
   disabled?: boolean;
   onRemove: () => void;
@@ -45,7 +32,6 @@ export function ReturnLineItemRow({
   errors,
   productId,
   unit,
-  products,
   selectedProductIds,
   disabled = false,
   onRemove,
@@ -56,20 +42,7 @@ export function ReturnLineItemRow({
   const productErrorId = `return-line-${index}-productId-error`;
   const quantityErrorId = `return-line-${index}-quantity-error`;
 
-  const productSelectItems = useMemo(
-    () =>
-      products.map((product) => ({
-        value: product.id,
-        label: formatProductLabel(product),
-      })),
-    [products],
-  );
-
-  function handleProductSelect(value: string | null) {
-    if (!value) {
-      return;
-    }
-
+  function handleProductSelect(value: string) {
     if (selectedProductIds.includes(value)) {
       onDuplicateProduct(index);
       return;
@@ -103,40 +76,15 @@ export function ReturnLineItemRow({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(2,minmax(0,1fr))]">
         <div className="space-y-2 sm:col-span-2 xl:col-span-1">
           <Label htmlFor={`return-line-${index}-productId`}>Product *</Label>
-          <Select
+          <ProductPickerCombobox
+            id={`return-line-${index}-productId`}
             value={productId || null}
-            items={productSelectItems}
+            disabledProductIds={selectedProductIds}
             onValueChange={handleProductSelect}
             disabled={disabled}
-          >
-            <SelectTrigger
-              id={`return-line-${index}-productId`}
-              className="w-full"
-              aria-invalid={Boolean(lineErrors?.productId)}
-              aria-describedby={lineErrors?.productId ? productErrorId : undefined}
-            >
-              <SelectValue placeholder="Select product" />
-            </SelectTrigger>
-            <SelectContent>
-              {products.map((product) => {
-                const isAlreadyAdded = selectedProductIds.includes(product.id);
-                const label = isAlreadyAdded
-                  ? `${formatProductLabel(product)} (already added)`
-                  : formatProductLabel(product);
-
-                return (
-                  <SelectItem
-                    key={product.id}
-                    value={product.id}
-                    label={label}
-                    disabled={isAlreadyAdded}
-                  >
-                    {label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+            aria-invalid={Boolean(lineErrors?.productId)}
+            aria-describedby={lineErrors?.productId ? productErrorId : undefined}
+          />
           {lineErrors?.productId ? (
             <p id={productErrorId} className="text-sm text-destructive" role="alert">
               {lineErrors.productId.message === DUPLICATE_PRODUCT_MESSAGE

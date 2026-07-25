@@ -1,26 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, SearchX } from 'lucide-react';
+import { Plus, SearchX, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { deleteSaleAction } from '@/actions/sales';
+import { completeSaleAction, deleteSaleAction } from '@/actions/sales';
 import { SaleFilters } from '@/components/sales/sale-filters';
 import { SaleTable } from '@/components/sales/sale-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { SALE_PAGE_SIZE } from '@/lib/domain/constants/sale';
 import { useSales } from '@/hooks/queries/use-sales';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
-import { parseStatusFilter } from '@/lib/utils/list-url-filters';
-import type { SaleListItem, SaleStatusFilter } from '@/types/sale';
+import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
+import type { SaleListItem } from '@/types/sale';
 
 export function SalesPage() {
   const router = useRouter();
@@ -28,12 +31,18 @@ export function SalesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [status, setStatus] = useState<SaleStatusFilter>(() =>
-    parseStatusFilter(searchParams.get('status'), ['all', 'draft', 'completed'], 'all'),
-  );
   const [page, setPage] = useState(1);
+  const resetPage = useCallback(() => setPage(1), []);
+  const [status, setStatus] = useStatusFilterFromSearchParams(
+    searchParams,
+    ['all', 'draft', 'completed'],
+    'all',
+    resetPage,
+  );
   const [deletingSale, setDeletingSale] = useState<SaleListItem | null>(null);
+  const [completingSale, setCompletingSale] = useState<SaleListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -44,11 +53,7 @@ export function SalesPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [status]);
-
-  const { data, isLoading, isFetching, error } = useSales({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useSales({
     search: debouncedSearch,
     status,
     page,
@@ -60,6 +65,7 @@ export function SalesPage() {
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
+  const isBusy = isDeleting || isCompleting;
 
   function clearFilters() {
     setSearch('');
@@ -79,7 +85,7 @@ export function SalesPage() {
       const result = await deleteSaleAction(deletingSale.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -101,16 +107,60 @@ export function SalesPage() {
     }
   }
 
+  async function handleComplete() {
+    if (!completingSale || isCompleting) {
+      return;
+    }
+
+    setIsCompleting(true);
+
+    try {
+      const result = await completeSaleAction(completingSale.id);
+
+      if (!result.success) {
+        toastFormError(result.error);
+        return;
+      }
+
+      toastWorkflowComplete('Sale completed. Product stock has been updated.', {
+        recordAnother: {
+          label: 'Record another',
+          onClick: () => router.push('/sales/new'),
+        },
+      });
+      setCompletingSale(null);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['sales'] }),
+        queryClient.invalidateQueries({ queryKey: ['sale', completingSale.id] }),
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateDashboardQueries(queryClient),
+        invalidateDailyReportQueries(queryClient),
+        invalidateMonthlyReportQueries(queryClient),
+      ]);
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Sales"
-        description="Record sales drafts for shop deliveries and customer orders. Inventory is updated when completing a sale in a later phase."
+        description="Record sales drafts for shop deliveries and customer orders. Inventory is updated when you complete a sale."
       >
-        <Button nativeButton={false} render={<Link href="/sales/new" />}>
-          <Plus />
-          Record Sale
-        </Button>
+        {!showEmptyCatalog ? (
+          <>
+            <Button nativeButton={false} variant="outline" render={<Link href="/sales/import" />}>
+              <Upload />
+              Import Sales
+            </Button>
+            <Button nativeButton={false} render={<Link href="/sales/new" />}>
+              <Plus />
+              Record Sale
+            </Button>
+          </>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -127,16 +177,21 @@ export function SalesPage() {
         search={search}
         status={status}
         isSearching={isSearching}
-        disabled={isLoading || isDeleting}
+        disabled={isLoading || isBusy}
         onSearchChange={setSearch}
-        onStatusChange={setStatus}
+        onStatusChange={(value) => {
+          setStatus(value);
+          setPage(1);
+        }}
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load sales</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load sales"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (
@@ -161,8 +216,9 @@ export function SalesPage() {
               sales={data?.items ?? []}
               isLoading={isLoading}
               isFetching={isFetching}
-              disabled={isDeleting}
+              disabled={isBusy}
               onDelete={(sale) => setDeletingSale(sale)}
+              onComplete={(sale) => setCompletingSale(sale)}
             />
           )}
 
@@ -173,7 +229,7 @@ export function SalesPage() {
               total={data.total}
               pageSize={data.pageSize}
               entityName="sales"
-              disabled={isFetching || isDeleting}
+              disabled={isFetching || isBusy}
               onPageChange={setPage}
             />
           ) : null}
@@ -202,6 +258,29 @@ export function SalesPage() {
         loadingLabel="Deleting..."
         isLoading={isDeleting}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(completingSale)}
+        onOpenChange={(open) => {
+          if (isCompleting) {
+            return;
+          }
+
+          if (!open) {
+            setCompletingSale(null);
+          }
+        }}
+        title="Complete Sale"
+        description={
+          completingSale
+            ? `Complete "${completingSale.saleNumber}"? Product stock will be deducted for ${completingSale.lineCount} line${completingSale.lineCount === 1 ? '' : 's'}. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Complete Sale"
+        loadingLabel="Completing..."
+        isLoading={isCompleting}
+        onConfirm={handleComplete}
       />
     </div>
   );

@@ -5,15 +5,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
 
-import { createSaleAction } from '@/actions/sales';
+import { createSaleAction, completeSaleAction } from '@/actions/sales';
 import { SaleForm } from '@/components/sales/sale-form';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
+import { rememberCustomer } from '@/lib/utils/form-recent-values';
 import { mapSaleActionError, type SaleFieldError } from '@/lib/utils/sale-form-errors';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'sale-create-form';
@@ -47,11 +49,40 @@ export function SaleCreatePage() {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Sale saved as draft');
+      rememberCustomer(values.customerName ?? '');
+
+      const saleId = result.data.id;
+
+      toastDraftSaved('Sale saved as draft', 'Complete sale', () => {
+        void (async () => {
+          const completeResult = await completeSaleAction(saleId);
+
+          if (!completeResult.success) {
+            toastFormError(completeResult.error);
+            return;
+          }
+
+          toastWorkflowComplete('Sale completed. Product stock has been updated.', {
+            recordAnother: {
+              label: 'Record another',
+              onClick: () => router.push('/sales/new'),
+            },
+          });
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['sales'] }),
+            queryClient.invalidateQueries({ queryKey: ['sale', saleId] }),
+            queryClient.invalidateQueries({ queryKey: ['products'] }),
+            invalidateDashboardQueries(queryClient),
+            invalidateDailyReportQueries(queryClient),
+            invalidateMonthlyReportQueries(queryClient),
+          ]);
+        })();
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['sales'] }),
@@ -60,7 +91,7 @@ export function SaleCreatePage() {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
-      router.push(`/sales/${result.data.id}`);
+      router.push(`/sales/${saleId}`);
     } finally {
       setIsSubmitting(false);
     }

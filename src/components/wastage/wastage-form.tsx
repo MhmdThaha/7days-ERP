@@ -2,11 +2,9 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 
-import { listProductsAction } from '@/actions/products';
 import { WastageLineItemRow } from '@/components/wastage/wastage-line-item-row';
 import { WastageTotalBar } from '@/components/wastage/wastage-total-bar';
 import { Button } from '@/components/ui/button';
@@ -19,8 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
+import { useProductsByIds } from '@/hooks/use-products-by-ids';
 import {
   DUPLICATE_PRODUCT_MESSAGE,
   WASTAGE_REASONS,
@@ -39,7 +38,6 @@ import {
   hasWastageLinesStockErrors,
 } from '@/lib/utils/wastage-stock-validation';
 import type { Wastage } from '@/types/wastage';
-import type { ProductListItem } from '@/types/product';
 
 type WastageFormProps = {
   wastage?: Wastage;
@@ -95,34 +93,22 @@ export function WastageForm({
   const lines = watch('lines');
   const reason = watch('reason');
 
-  const { data: productsResult, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', 'wastage-picker'],
-    queryFn: async () => {
-      const result = await listProductsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
+  const appendEmptyLine = useCallback(() => {
+    append({
+      productId: '',
+      quantity: Number.NaN,
+    });
+  }, [append]);
 
-      if (!result.success) {
-        throw new Error(result.error);
-      }
+  const selectedProductIds = useMemo(
+    () => lines.map((line) => line.productId).filter(Boolean),
+    [lines],
+  );
 
-      return result.data;
-    },
-  });
+  const { productsById, isLoading: isLoadingSelectedProducts } =
+    useProductsByIds(selectedProductIds);
 
-  const products = productsResult?.items ?? [];
-
-  const productsById = useMemo(() => {
-    const map = new Map<string, ProductListItem>();
-
-    for (const product of products) {
-      map.set(product.id, product);
-    }
-
-    return map;
-  }, [products]);
+  useAutoFirstLine(Boolean(wastage), fields.length, true, appendEmptyLine);
 
   const selectedProductIdsByIndex = useMemo(
     () =>
@@ -160,8 +146,8 @@ export function WastageForm({
   );
 
   useEffect(() => {
-    onStockValidationChange?.(hasStockErrors || isLoadingProducts);
-  }, [hasStockErrors, isLoadingProducts, onStockValidationChange]);
+    onStockValidationChange?.(hasStockErrors || isLoadingSelectedProducts);
+  }, [hasStockErrors, isLoadingSelectedProducts, onStockValidationChange]);
 
   useEffect(() => {
     if (wastage) {
@@ -194,10 +180,7 @@ export function WastageForm({
   }, [serverFieldError, setError, onServerFieldErrorHandled]);
 
   function handleAddLine() {
-    append({
-      productId: '',
-      quantity: Number.NaN,
-    });
+    appendEmptyLine();
   }
 
   function handleProductChange(index: number, productId: string) {
@@ -217,7 +200,7 @@ export function WastageForm({
     focusFirstWastageFormError(fieldErrors);
   }
 
-  const isFormDisabled = isSubmitting || isLoadingProducts;
+  const isFormDisabled = isSubmitting || (Boolean(wastage) && isLoadingSelectedProducts);
 
   return (
     <form
@@ -317,8 +300,7 @@ export function WastageForm({
           <div className="space-y-1">
             <h2 className="text-base font-semibold">Product Lines</h2>
             <p className="text-sm text-muted-foreground">
-              Add each product once. Product name and code are saved as snapshots. Inventory is not
-              updated until wastage is completed in a later phase.
+              Add each product once. Product name and code are saved as snapshots. Inventory is deducted when you complete a wastage entry.
             </p>
           </div>
           <Button
@@ -344,13 +326,7 @@ export function WastageForm({
           </p>
         ) : null}
 
-        {isLoadingProducts ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading products">
-            {Array.from({ length: Math.max(fields.length, 1) }).map((_, index) => (
-              <Skeleton key={index} className="h-40 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : fields.length === 0 ? (
+        {fields.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
             No products yet. Add at least one product to record this wastage.
           </div>
@@ -370,7 +346,6 @@ export function WastageForm({
                   unit={product?.unit ?? '—'}
                   availableStock={product ? product.currentStock : null}
                   stockErrorMessage={lineStockErrors[index] ?? null}
-                  products={products}
                   selectedProductIds={selectedProductIdsByIndex[index] ?? []}
                   disabled={isFormDisabled}
                   onRemove={() => remove(index)}

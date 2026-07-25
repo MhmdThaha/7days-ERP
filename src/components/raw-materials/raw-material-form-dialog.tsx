@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,6 +26,8 @@ import {
   mapRawMaterialActionError,
   type RawMaterialFieldError,
 } from '@/lib/utils/raw-material-form-errors';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastWithAction } from '@/lib/utils/workflow-toasts';
 import type { RawMaterial } from '@/types/raw-material';
 
 type RawMaterialFormDialogProps = {
@@ -43,6 +46,7 @@ export function RawMaterialFormDialog({
   isLoadingRawMaterial = false,
 }: RawMaterialFormDialogProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<RawMaterialFieldError | null>(null);
   const isSubmittingRef = useRef(false);
@@ -99,13 +103,18 @@ export function RawMaterialFormDialog({
           return;
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success(
-        isEditMode ? 'Raw material updated successfully' : 'Raw material created successfully',
-      );
+      if (isEditMode) {
+        toast.success('Raw material updated successfully');
+      } else {
+        toastWithAction('Raw material created successfully', {
+          label: 'Record Purchase',
+          onClick: () => router.push('/purchases/new'),
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['raw-materials'] });
 
       if (isEditMode) {

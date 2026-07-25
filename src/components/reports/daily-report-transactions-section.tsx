@@ -37,8 +37,7 @@ export function DailyReportTransactionsSection({
               No completed transactions recorded today.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+                          <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Type</TableHead>
@@ -76,7 +75,6 @@ export function DailyReportTransactionsSection({
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

@@ -55,7 +55,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="break-words">{description}</DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter className="gap-2 px-4 pb-4 sm:gap-2 sm:px-6 sm:pb-6">
           <Button
             type="button"
             variant="outline"

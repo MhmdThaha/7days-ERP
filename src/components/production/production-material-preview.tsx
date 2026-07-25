@@ -53,8 +53,8 @@ export function ProductionMaterialPreview({
       <div>
         <h3 className="text-sm font-semibold">Material Preview</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Read-only estimate based on active recipes and current stock. Inventory is not changed
-          until production is completed in a later phase.
+          Read-only estimate based on active recipes and current stock. Inventory is updated when
+          you complete production.
         </p>
       </div>
 

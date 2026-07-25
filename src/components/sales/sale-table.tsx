@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { SaleStatusBadge } from '@/components/sales/sale-status-badge';
@@ -32,14 +32,14 @@ type SaleTableProps = {
   isFetching?: boolean;
   disabled?: boolean;
   onDelete: (sale: SaleListItem) => void;
+  onComplete: (sale: SaleListItem) => void;
 };
 
 const TABLE_COLUMNS = ['Number', 'Date', 'Customer', 'Lines', 'Subtotal', 'Status', 'Actions'];
 
 function SaleTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -59,7 +59,6 @@ function SaleTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -79,6 +78,7 @@ export function SaleTable({
   isFetching = false,
   disabled = false,
   onDelete,
+  onComplete,
 }: SaleTableProps) {
   if (isLoading) {
     return <SaleTableSkeleton />;
@@ -88,7 +88,7 @@ export function SaleTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}
@@ -124,11 +124,15 @@ export function SaleTable({
                 return (
                   <TableRow key={sale.id} className="group hover:bg-muted/40">
                     <TableCell className="font-medium">
-                      <TruncatedText
-                        text={sale.saleNumber}
-                        maxWidthClassName="max-w-[100px]"
-                        className="font-mono text-xs sm:text-sm"
-                      />
+                      <Link
+                        href={`/sales/${sale.id}`}
+                        className="font-mono text-xs hover:underline sm:text-sm"
+                      >
+                        <TruncatedText
+                          text={sale.saleNumber}
+                          maxWidthClassName="max-w-[100px]"
+                        />
+                      </Link>
                     </TableCell>
                     <TableCell>{formatDate(sale.saleDate)}</TableCell>
                     <TableCell>
@@ -158,22 +162,30 @@ export function SaleTable({
                             <Eye />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={`/sales/${sale.id}/edit`} />}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Pencil />
-                            Edit
-                          </DropdownMenuItem>
-                          {isDraft ? <DropdownMenuSeparator /> : null}
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => onDelete(sale)}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Trash2 />
-                            Delete
-                          </DropdownMenuItem>
+                          {isDraft ? (
+                            <>
+                              <DropdownMenuItem onClick={() => onComplete(sale)} disabled={disabled}>
+                                <CheckCircle2 />
+                                Complete Sale
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                render={<Link href={`/sales/${sale.id}/edit`} />}
+                                disabled={disabled}
+                              >
+                                <Pencil />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => onDelete(sale)}
+                                disabled={disabled}
+                              >
+                                <Trash2 />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

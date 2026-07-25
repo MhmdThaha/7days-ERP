@@ -7,13 +7,14 @@ import { DailySummaryOperationalMetricsSection } from '@/components/daily-summar
 import { DailySummaryQuickSummarySection } from '@/components/daily-summary/daily-summary-quick-summary-section';
 import { DailySummarySkeleton } from '@/components/daily-summary/daily-summary-skeleton';
 import { AccessDenied } from '@/components/shared/access-denied';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useDailySummaryDashboard } from '@/hooks/queries/use-daily-summary-dashboard';
 import { formatDisplayDate } from '@/lib/utils/date';
 
 export function DailySummaryPage() {
-  const { data, isLoading, isFetching, error } = useDailySummaryDashboard();
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useDailySummaryDashboard();
   const showSkeleton = isLoading || (isFetching && !data);
 
   if (showSkeleton) {
@@ -27,11 +28,11 @@ export function DailySummaryPage() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Daily Summary"
+          title="Kitchen Dashboard"
           description="Today's operational dashboard for your bakery."
         />
         {isUnauthorized ? (
-          <AccessDenied description="Daily Summary is available to owners, managers, and production staff." />
+          <AccessDenied description="Kitchen Dashboard is available to owners, managers, and production staff." />
         ) : isOrgError ? (
           <Alert variant="destructive">
             <AlertTitle>Configuration required</AlertTitle>
@@ -41,12 +42,20 @@ export function DailySummaryPage() {
             </AlertDescription>
           </Alert>
         ) : (
-          <Alert variant="destructive">
-            <AlertTitle>Failed to load daily summary</AlertTitle>
-            <AlertDescription>
-              {error?.message ?? 'Unable to load daily summary data.'}
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <LoadErrorAlert
+              title="Failed to load daily summary"
+              error={error}
+              onRetry={() => void refetch()}
+              isRetrying={isRefetching}
+            />
+            {!error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Daily summary unavailable</AlertTitle>
+                <AlertDescription>Unable to load daily summary data.</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
         )}
       </div>
     );
@@ -57,7 +66,7 @@ export function DailySummaryPage() {
   return (
     <div className="min-w-0 space-y-10">
       <PageHeader
-        title="Daily Summary"
+        title="Kitchen Dashboard"
         description={`Operational dashboard for ${dateLabel}.`}
       />
 

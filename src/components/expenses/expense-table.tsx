@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { ExpenseStatusBadge } from '@/components/expenses/expense-status-badge';
 import { MoneyDisplay } from '@/components/shared/money-display';
@@ -33,14 +33,14 @@ type ExpenseTableProps = {
   isFetching?: boolean;
   disabled?: boolean;
   onDelete: (expense: ExpenseListItem) => void;
+  onComplete: (expense: ExpenseListItem) => void;
 };
 
 const TABLE_COLUMNS = ['Number', 'Date', 'Category', 'Amount', 'Status', 'Actions'];
 
 function ExpenseTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -60,7 +60,6 @@ function ExpenseTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -80,6 +79,7 @@ export function ExpenseTable({
   isFetching = false,
   disabled = false,
   onDelete,
+  onComplete,
 }: ExpenseTableProps) {
   if (isLoading) {
     return <ExpenseTableSkeleton />;
@@ -89,7 +89,7 @@ export function ExpenseTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}
@@ -152,22 +152,30 @@ export function ExpenseTable({
                             <Eye />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={`/expenses/${expense.id}/edit`} />}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Pencil />
-                            Edit
-                          </DropdownMenuItem>
-                          {isDraft ? <DropdownMenuSeparator /> : null}
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => onDelete(expense)}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Trash2 />
-                            Delete
-                          </DropdownMenuItem>
+                          {isDraft ? (
+                            <>
+                              <DropdownMenuItem onClick={() => onComplete(expense)} disabled={disabled}>
+                                <CheckCircle2 />
+                                Complete Expense
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                render={<Link href={`/expenses/${expense.id}/edit`} />}
+                                disabled={disabled}
+                              >
+                                <Pencil />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => onDelete(expense)}
+                                disabled={disabled}
+                              >
+                                <Trash2 />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

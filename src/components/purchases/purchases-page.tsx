@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -13,14 +13,17 @@ import { PurchaseTable } from '@/components/purchases/purchase-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
 import { EmptyState } from '@/components/shared/empty-state';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PURCHASE_PAGE_SIZE } from '@/lib/domain/constants/purchase';
 import { usePurchases } from '@/hooks/queries/use-purchases';
 import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
-import { parseStatusFilter } from '@/lib/utils/list-url-filters';
-import type { PurchaseListItem, PurchaseStatusFilter } from '@/types/purchase';
+import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
+import type { PurchaseListItem } from '@/types/purchase';
 
 export function PurchasesPage() {
   const router = useRouter();
@@ -28,10 +31,14 @@ export function PurchasesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [status, setStatus] = useState<PurchaseStatusFilter>(() =>
-    parseStatusFilter(searchParams.get('status'), ['all', 'draft', 'received'], 'all'),
-  );
   const [page, setPage] = useState(1);
+  const resetPage = useCallback(() => setPage(1), []);
+  const [status, setStatus] = useStatusFilterFromSearchParams(
+    searchParams,
+    ['all', 'draft', 'received'],
+    'all',
+    resetPage,
+  );
   const [deletingPurchase, setDeletingPurchase] = useState<PurchaseListItem | null>(null);
   const [receivingPurchase, setReceivingPurchase] = useState<PurchaseListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -46,11 +53,7 @@ export function PurchasesPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [status]);
-
-  const { data, isLoading, isFetching, error } = usePurchases({
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = usePurchases({
     search: debouncedSearch,
     status,
     page,
@@ -96,7 +99,7 @@ export function PurchasesPage() {
       const result = await deletePurchaseAction(deletingPurchase.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -124,11 +127,16 @@ export function PurchasesPage() {
       const result = await receivePurchaseAction(receivingPurchase.id);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Purchase received successfully. Raw material stock has been updated.');
+      toastWorkflowComplete('Purchase received. Raw material stock has been updated.', {
+        nextStep: {
+          label: 'Record Production',
+          onClick: () => router.push('/production/new'),
+        },
+      });
       setReceivingPurchase(null);
 
       await invalidateAfterMutation(receivingPurchase.id);
@@ -143,10 +151,12 @@ export function PurchasesPage() {
         title="Purchases"
         description="Record raw material purchases and receive them into inventory when goods arrive."
       >
-        <Button nativeButton={false} render={<Link href="/purchases/new" />}>
-          <Plus />
-          Record Purchase
-        </Button>
+        {!showEmptyCatalog ? (
+          <Button nativeButton={false} render={<Link href="/purchases/new" />}>
+            <Plus />
+            Record Purchase
+          </Button>
+        ) : null}
       </PageHeader>
 
       {isOrgError ? (
@@ -165,14 +175,19 @@ export function PurchasesPage() {
         isSearching={isSearching}
         disabled={isLoading || isBusy}
         onSearchChange={setSearch}
-        onStatusChange={setStatus}
+        onStatusChange={(value) => {
+          setStatus(value);
+          setPage(1);
+        }}
       />
 
       {error && !isOrgError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Failed to load purchases</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <LoadErrorAlert
+          title="Failed to load purchases"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
       ) : null}
 
       {showEmptyCatalog ? (
@@ -253,7 +268,11 @@ export function PurchasesPage() {
           }
         }}
         title="Receive Purchase"
-        description="Are you sure you want to receive this purchase?"
+        description={
+          receivingPurchase
+            ? `Receive "${receivingPurchase.purchaseNumber}"? Raw material stock will increase for ${receivingPurchase.lineItemCount} line${receivingPurchase.lineItemCount === 1 ? '' : 's'}. This cannot be undone.`
+            : ''
+        }
         confirmLabel="Receive Purchase"
         loadingLabel="Receiving..."
         isLoading={isReceiving}

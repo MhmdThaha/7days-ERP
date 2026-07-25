@@ -14,6 +14,7 @@ import { AccessDenied } from '@/components/shared/access-denied';
 import { DailyReportTransactionsSection } from '@/components/reports/daily-report-transactions-section';
 import { ReportMetricCard } from '@/components/reports/report-metric-card';
 import { MoneyDisplay } from '@/components/shared/money-display';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -51,7 +52,7 @@ function DailyReportSkeleton() {
 }
 
 export function DailyReportPage() {
-  const { data, isLoading, error } = useDailyReport();
+  const { data, isLoading, error, refetch, isRefetching } = useDailyReport();
 
   if (isLoading) {
     return <DailyReportSkeleton />;
@@ -63,9 +64,9 @@ export function DailyReportPage() {
   if (error || !data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Daily Report" description="Daily business performance summary." />
+        <PageHeader title="Today's Report" description="Daily business performance summary." />
         {isUnauthorized ? (
-          <AccessDenied description="Daily Report is available to owners and managers only." />
+          <AccessDenied description="Today's Report is available to owners and managers only." />
         ) : isOrgError ? (
           <Alert variant="destructive">
             <AlertTitle>Configuration required</AlertTitle>
@@ -75,12 +76,20 @@ export function DailyReportPage() {
             </AlertDescription>
           </Alert>
         ) : (
-          <Alert variant="destructive">
-            <AlertTitle>Failed to load daily report</AlertTitle>
-            <AlertDescription>
-              {error?.message ?? 'Unable to load daily report data.'}
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <LoadErrorAlert
+              title="Failed to load daily report"
+              error={error}
+              onRetry={() => void refetch()}
+              isRetrying={isRefetching}
+            />
+            {!error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Daily report unavailable</AlertTitle>
+                <AlertDescription>Unable to load daily report data.</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
         )}
       </div>
     );
@@ -92,7 +101,7 @@ export function DailyReportPage() {
   return (
     <div className="min-w-0 space-y-10">
       <PageHeader
-        title="Daily Report"
+        title="Today's Report"
         description="Daily business performance summary for your bakery."
       />
 

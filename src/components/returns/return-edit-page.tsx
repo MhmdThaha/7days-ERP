@@ -9,12 +9,14 @@ import { toast } from 'sonner';
 
 import { getReturnAction, updateReturnAction } from '@/actions/returns';
 import { ReturnForm } from '@/components/returns/return-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ReturnFormValues } from '@/lib/domain/schemas/return.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapReturnActionError, type ReturnFieldError } from '@/lib/utils/return-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
@@ -34,6 +36,8 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
     data: returnEntry,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['return-entry', returnId],
     queryFn: async () => {
@@ -70,7 +74,7 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -101,12 +105,20 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
 
   if (error || !returnEntry) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Return not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested return could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load return"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Return not found</AlertTitle>
+            <AlertDescription>The requested return could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 

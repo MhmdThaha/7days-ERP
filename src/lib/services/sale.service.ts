@@ -93,7 +93,18 @@ export const saleService = {
   },
 
   async create(orgId: string, input: CreateSaleInput, userId: string): Promise<Sale> {
-    const saleNumber = await resolveSaleNumber(orgId);
+    const saleNumber = input.saleNumber
+      ? input.saleNumber.trim().toUpperCase()
+      : await resolveSaleNumber(orgId);
+
+    if (input.saleNumber) {
+      const existing = await saleRepository.findBySaleNumber(orgId, saleNumber);
+
+      if (existing) {
+        throw new DomainError('VALIDATION_ERROR', 'Sale number already exists');
+      }
+    }
+
     const lines = await resolveLineItems(orgId, input.lines);
     const subtotal = calculateSubtotal(lines);
 

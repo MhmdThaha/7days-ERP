@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { getProductAction } from '@/actions/products';
 import { deleteRecipeAction, getRecipeAction } from '@/actions/recipes';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
@@ -27,6 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 
 type RecipeDetailPageProps = {
   recipeId: string;
@@ -52,7 +54,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { data: recipe, isLoading, error } = useQuery({
+  const { data: recipe, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['recipe', recipeId],
     queryFn: async () => {
       const result = await getRecipeAction(recipeId);
@@ -90,7 +92,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
       const result = await deleteRecipeAction(recipeId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -119,12 +121,20 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
 
   if (error || !recipe) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Recipe not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested recipe could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load recipe"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Recipe not found</AlertTitle>
+            <AlertDescription>The requested recipe could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -207,8 +217,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
             <CardTitle>Ingredients</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg border">
-              <Table>
+            <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>#</TableHead>
@@ -230,7 +239,6 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
                   ))}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
 

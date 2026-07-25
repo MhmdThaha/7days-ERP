@@ -9,12 +9,13 @@ import { MonthlyReportRankingsSection } from '@/components/reports/monthly-repor
 import { MonthlyReportSkeleton } from '@/components/reports/monthly-report-skeleton';
 import { MonthlyReportTransactionsSection } from '@/components/reports/monthly-report-transactions-section';
 import { AccessDenied } from '@/components/shared/access-denied';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useMonthlyReport } from '@/hooks/queries/use-monthly-report';
 
 export function MonthlyReportPage() {
-  const { data, isLoading, isFetching, error } = useMonthlyReport();
+  const { data, isLoading, isFetching, error, refetch, isRefetching } = useMonthlyReport();
   const showSkeleton = isLoading || (isFetching && !data);
 
   if (showSkeleton) {
@@ -28,11 +29,11 @@ export function MonthlyReportPage() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Monthly Summary"
+          title="Month Summary"
           description="Executive dashboard for bakery owners."
         />
         {isUnauthorized ? (
-          <AccessDenied description="Monthly Summary is available to owners and managers only." />
+          <AccessDenied description="Month Summary is available to owners and managers only." />
         ) : isOrgError ? (
           <Alert variant="destructive">
             <AlertTitle>Configuration required</AlertTitle>
@@ -42,12 +43,20 @@ export function MonthlyReportPage() {
             </AlertDescription>
           </Alert>
         ) : (
-          <Alert variant="destructive">
-            <AlertTitle>Failed to load monthly summary</AlertTitle>
-            <AlertDescription>
-              {error?.message ?? 'Unable to load monthly report data.'}
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <LoadErrorAlert
+              title="Failed to load monthly summary"
+              error={error}
+              onRetry={() => void refetch()}
+              isRetrying={isRefetching}
+            />
+            {!error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Monthly summary unavailable</AlertTitle>
+                <AlertDescription>Unable to load monthly report data.</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
         )}
       </div>
     );
@@ -56,7 +65,7 @@ export function MonthlyReportPage() {
   return (
     <div className="min-w-0 space-y-10">
       <PageHeader
-        title="Monthly Summary"
+        title="Month Summary"
         description={`Executive dashboard for ${data.monthLabel}.`}
       />
 

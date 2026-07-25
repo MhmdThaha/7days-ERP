@@ -2,44 +2,37 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 
-import { listProductsAction } from '@/actions/products';
-import { listRawMaterialsAction } from '@/actions/raw-materials';
+import { getRawMaterialAction } from '@/actions/raw-materials';
 import { RecipeIngredientRow } from '@/components/recipes/recipe-ingredient-row';
 import { RecipeSummary } from '@/components/recipes/recipe-summary';
+import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
+import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
 import {
   recipeFormSchema,
   type RecipeFormValues,
 } from '@/lib/domain/schemas/recipe.schema';
 import {
+  focusFirstRecipeFormError,
   focusRecipeFormField,
   type RecipeFieldError,
 } from '@/lib/utils/recipe-form-errors';
+import { toRawMaterialListItem } from '@/lib/utils/catalog-list-item';
 import type { Recipe } from '@/types/recipe';
 import type { ProductListItem } from '@/types/product';
-
-function formatProductLabel(product: ProductListItem): string {
-  return `${product.code} - ${product.name}`;
-}
 
 type RecipeFormProps = {
   recipe?: Recipe;
   productName?: string;
+  initialProductId?: string;
   isEditMode?: boolean;
   onSubmit: (values: RecipeFormValues) => Promise<void>;
   isSubmitting?: boolean;
@@ -60,6 +53,7 @@ const defaultValues: RecipeFormValues = {
 export function RecipeForm({
   recipe,
   productName,
+  initialProductId,
   isEditMode = false,
   onSubmit,
   isSubmitting = false,
@@ -90,46 +84,24 @@ export function RecipeForm({
   const ingredients = watch('ingredients');
   const isActive = watch('isActive');
 
-  const { data: productsResult, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', 'recipe-picker'],
-    queryFn: async () => {
-      const result = await listProductsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result.data;
-    },
-  });
-
-  const { data: rawMaterialsResult, isLoading: isLoadingRawMaterials } = useQuery({
-    queryKey: ['raw-materials', 'recipe-picker'],
-    queryFn: async () => {
-      const result = await listRawMaterialsAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result.data;
-    },
-  });
-
-  const products = productsResult?.items ?? [];
-  const rawMaterials = rawMaterialsResult?.items ?? [];
+  const appendEmptyIngredient = useCallback(() => {
+    append({
+      rawMaterialId: '',
+      quantity: 0,
+      unit: '',
+    });
+  }, [append]);
 
   const selectedRawMaterialIds = useMemo(
     () => ingredients.map((ingredient) => ingredient.rawMaterialId).filter(Boolean),
     [ingredients],
+  );
+
+  const { rawMaterialsById } = useRawMaterialsByIds(selectedRawMaterialIds);
+
+  const filterProductWithoutRecipe = useCallback(
+    (product: ProductListItem) => !product.activeRecipeId,
+    [],
   );
 
   const totalWeight = useMemo(
@@ -163,8 +135,16 @@ export function RecipeForm({
       return;
     }
 
+    if (initialProductId) {
+      reset({
+        ...defaultValues,
+        productId: initialProductId,
+      });
+      return;
+    }
+
     reset(defaultValues);
-  }, [recipe, reset]);
+  }, [recipe, initialProductId, reset]);
 
   useEffect(() => {
     if (!serverFieldError) {
@@ -179,77 +159,55 @@ export function RecipeForm({
   }, [serverFieldError, setError, onServerFieldErrorHandled]);
 
   function handleAddIngredient() {
-    append({
-      rawMaterialId: '',
-      quantity: 0,
-      unit: '',
-    });
+    appendEmptyIngredient();
   }
 
-  function handleRawMaterialChange(index: number, rawMaterialId: string) {
-    const material = rawMaterials.find((item) => item.id === rawMaterialId);
+  function handleInvalidSubmit(fieldErrors: typeof errors) {
+    focusFirstRecipeFormError(fieldErrors);
+  }
+
+  async function handleRawMaterialChange(index: number, rawMaterialId: string) {
+    let material = rawMaterialsById.get(rawMaterialId);
+
+    if (!material) {
+      const result = await getRawMaterialAction(rawMaterialId);
+
+      if (result.success) {
+        material = toRawMaterialListItem(result.data);
+      }
+    }
 
     if (material) {
       setValue(`ingredients.${index}.unit`, material.unit, { shouldValidate: true });
     }
   }
 
-  const availableProducts = isEditMode
-    ? products
-    : products.filter((product) => !product.activeRecipeId);
-
-  const productSelectItems = useMemo(
-    () =>
-      availableProducts.map((product) => ({
-        value: product.id,
-        label: formatProductLabel(product),
-      })),
-    [availableProducts],
-  );
-
-  const isLoadingPickers = isLoadingProducts || isLoadingRawMaterials;
+  useAutoFirstLine(Boolean(recipe), fields.length, true, appendEmptyIngredient);
 
   return (
-    <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit(onSubmit, handleInvalidSubmit)} className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="productId">Product</Label>
           {isEditMode ? (
             <Input id="productId" value={productName ?? 'Selected product'} readOnly disabled />
           ) : (
-            <Select
+            <ProductPickerCombobox
+              id="productId"
               value={productId || null}
-              items={productSelectItems}
-              onValueChange={(value) => {
-                if (value) {
-                  setValue('productId', value, { shouldValidate: true });
-                }
-              }}
-              disabled={isSubmitting || isLoadingPickers}
-            >
-              <SelectTrigger id="productId" aria-invalid={Boolean(errors.productId)}>
-                <SelectValue placeholder="Select a product" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableProducts.map((product) => (
-                  <SelectItem
-                    key={product.id}
-                    value={product.id}
-                    label={formatProductLabel(product)}
-                  >
-                    {formatProductLabel(product)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              filterProduct={filterProductWithoutRecipe}
+              onValueChange={(value) => setValue('productId', value, { shouldValidate: true })}
+              emptyMessage="No products without a recipe match your search."
+              disabled={isSubmitting}
+              aria-invalid={Boolean(errors.productId)}
+            />
           )}
           {errors.productId ? (
             <p className="text-sm text-destructive">{errors.productId.message}</p>
           ) : null}
-          {!isEditMode && availableProducts.length === 0 && !isLoadingPickers ? (
+          {!isEditMode ? (
             <p className="text-sm text-muted-foreground">
-              All active products already have a recipe. Deactivate or delete an existing recipe
-              first.
+              Search for an active product that does not already have a recipe.
             </p>
           ) : null}
         </div>
@@ -322,7 +280,7 @@ export function RecipeForm({
             type="button"
             variant="outline"
             onClick={handleAddIngredient}
-            disabled={isSubmitting || isLoadingPickers}
+            disabled={isSubmitting}
           >
             <Plus />
             Add Ingredient
@@ -351,9 +309,8 @@ export function RecipeForm({
                 errors={errors}
                 rawMaterialId={ingredients[index]?.rawMaterialId ?? ''}
                 unit={ingredients[index]?.unit ?? ''}
-                rawMaterials={rawMaterials}
                 selectedRawMaterialIds={selectedRawMaterialIds}
-                disabled={isSubmitting || isLoadingPickers}
+                disabled={isSubmitting}
                 canMoveUp={index > 0}
                 canMoveDown={index < fields.length - 1}
                 onMoveUp={() => move(index, index - 1)}

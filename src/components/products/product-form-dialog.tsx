@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,6 +24,8 @@ import {
   type ProductFieldError,
 } from '@/lib/utils/product-form-errors';
 import type { Product } from '@/types/product';
+import { toastFormError } from '@/lib/utils/toast-form-error';
+import { toastWithAction } from '@/lib/utils/workflow-toasts';
 
 type ProductFormDialogProps = {
   open: boolean;
@@ -40,6 +43,7 @@ export function ProductFormDialog({
   isLoadingProduct = false,
 }: ProductFormDialogProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<ProductFieldError | null>(null);
   const isSubmittingRef = useRef(false);
@@ -94,11 +98,18 @@ export function ProductFormDialog({
           return;
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success(isEditMode ? 'Product updated successfully' : 'Product created successfully');
+      if (isEditMode) {
+        toast.success('Product updated successfully');
+      } else {
+        toastWithAction('Product created successfully', {
+          label: 'Create Recipe',
+          onClick: () => router.push(`/recipes/new?productId=${result.data.id}`),
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['products'] });
 
       if (isEditMode) {

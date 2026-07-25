@@ -15,7 +15,7 @@ import type {
   UpdateProductInput,
 } from '@/types/product';
 
-type ProductDocument = {
+export type ProductDocument = {
   organizationId: string;
   code: string;
   name: string;

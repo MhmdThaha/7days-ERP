@@ -12,6 +12,7 @@ import { deleteProductAction, getProductAction } from '@/actions/products';
 import { ProductFormDialog } from '@/components/products/product-form-dialog';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { MoneyDisplay } from '@/components/shared/money-display';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 
 type ProductDetailPageProps = {
   productId: string;
@@ -42,7 +44,7 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { data: product, isLoading, error, refetch } = useQuery({
+  const { data: product, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['product', productId],
     queryFn: async () => {
       const result = await getProductAction(productId);
@@ -66,7 +68,7 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
       const result = await deleteProductAction(productId);
 
       if (!result.success) {
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -90,12 +92,20 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
 
   if (error || !product) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Product not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested product could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load product"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Product not found</AlertTitle>
+            <AlertDescription>The requested product could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -103,7 +113,7 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
     <TooltipProvider delay={300}>
       <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" render={<Link href="/products" />}>
+        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/products" />}>
           <ArrowLeft />
           Back to Products
         </Button>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { WastageStatusBadge } from '@/components/wastage/wastage-status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
@@ -32,14 +32,14 @@ type WastageTableProps = {
   isFetching?: boolean;
   disabled?: boolean;
   onDelete: (wastage: WastageListItem) => void;
+  onComplete: (wastage: WastageListItem) => void;
 };
 
 const TABLE_COLUMNS = ['Number', 'Date', 'Reason', 'Lines', 'Total Units', 'Status', 'Actions'];
 
 function WastageTableSkeleton() {
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             {TABLE_COLUMNS.map((column) => (
@@ -59,7 +59,6 @@ function WastageTableSkeleton() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -83,6 +82,7 @@ export function WastageTable({
   isFetching = false,
   disabled = false,
   onDelete,
+  onComplete,
 }: WastageTableProps) {
   if (isLoading) {
     return <WastageTableSkeleton />;
@@ -92,7 +92,7 @@ export function WastageTable({
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          'relative max-h-[min(70vh,640px)] overflow-auto rounded-lg border',
+          'relative max-h-[min(70vh,640px)] overflow-auto',
           isFetching && 'opacity-70 transition-opacity',
         )}
         aria-busy={isFetching}
@@ -157,22 +157,30 @@ export function WastageTable({
                             <Eye />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={`/wastage/${wastage.id}/edit`} />}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Pencil />
-                            Edit
-                          </DropdownMenuItem>
-                          {isDraft ? <DropdownMenuSeparator /> : null}
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => onDelete(wastage)}
-                            disabled={disabled || !isDraft}
-                          >
-                            <Trash2 />
-                            Delete
-                          </DropdownMenuItem>
+                          {isDraft ? (
+                            <>
+                              <DropdownMenuItem onClick={() => onComplete(wastage)} disabled={disabled}>
+                                <CheckCircle2 />
+                                Complete Wastage
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                render={<Link href={`/wastage/${wastage.id}/edit`} />}
+                                disabled={disabled}
+                              >
+                                <Pencil />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => onDelete(wastage)}
+                                disabled={disabled}
+                              >
+                                <Trash2 />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

@@ -9,12 +9,14 @@ import { toast } from 'sonner';
 
 import { getWastageAction, updateWastageAction } from '@/actions/wastage';
 import { WastageForm } from '@/components/wastage/wastage-form';
+import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapWastageActionError, type WastageFieldError } from '@/lib/utils/wastage-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
@@ -35,6 +37,8 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
     data: wastage,
     isLoading,
     error,
+    refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ['wastage-entry', wastageId],
     queryFn: async () => {
@@ -71,7 +75,7 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
@@ -102,12 +106,20 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
 
   if (error || !wastage) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Wastage entry not found</AlertTitle>
-        <AlertDescription>
-          {error?.message ?? 'The requested wastage entry could not be loaded.'}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <LoadErrorAlert
+          title="Unable to load wastage entry"
+          error={error}
+          onRetry={() => void refetch()}
+          isRetrying={isRefetching}
+        />
+        {!error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Wastage entry not found</AlertTitle>
+            <AlertDescription>The requested wastage entry could not be loaded.</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
 
@@ -130,7 +142,7 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
           render={<Link href={`/wastage/${wastageId}`} />}
         >
           <ArrowLeft />
-          Back to Wastage Entry
+          Back to Waste & Spoilage
         </Button>
       </div>
 

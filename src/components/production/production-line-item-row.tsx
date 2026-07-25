@@ -1,27 +1,16 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
 import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
 
+import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/production';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
 import { cn } from '@/lib/utils';
 import type { ProductListItem } from '@/types/product';
-
-function formatProductLabel(product: ProductListItem): string {
-  return `${product.code} - ${product.name}`;
-}
 
 type ProductionLineItemRowProps = {
   index: number;
@@ -30,8 +19,9 @@ type ProductionLineItemRowProps = {
   errors: FieldErrors<ProductionFormValues>;
   productId: string;
   unit: string;
-  products: ProductListItem[];
+  selectedProduct: ProductListItem | null;
   selectedProductIds: string[];
+  filterProduct?: (product: ProductListItem) => boolean;
   disabled?: boolean;
   onRemove: () => void;
   onProductChange: (productId: string) => void;
@@ -45,8 +35,9 @@ export function ProductionLineItemRow({
   errors,
   productId,
   unit,
-  products,
+  selectedProduct,
   selectedProductIds,
+  filterProduct,
   disabled = false,
   onRemove,
   onProductChange,
@@ -56,20 +47,7 @@ export function ProductionLineItemRow({
   const productErrorId = `production-line-${index}-productId-error`;
   const quantityErrorId = `production-line-${index}-quantity-error`;
 
-  const productSelectItems = useMemo(
-    () =>
-      products.map((product) => ({
-        value: product.id,
-        label: formatProductLabel(product),
-      })),
-    [products],
-  );
-
-  function handleProductSelect(value: string | null) {
-    if (!value) {
-      return;
-    }
-
+  function handleProductSelect(value: string) {
     if (selectedProductIds.includes(value)) {
       onDuplicateProduct(index);
       return;
@@ -103,45 +81,30 @@ export function ProductionLineItemRow({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(2,minmax(0,1fr))]">
         <div className="space-y-2 sm:col-span-2 xl:col-span-1">
           <Label htmlFor={`production-line-${index}-productId`}>Product *</Label>
-          <Select
+          <ProductPickerCombobox
+            id={`production-line-${index}-productId`}
             value={productId || null}
-            items={productSelectItems}
+            disabledProductIds={selectedProductIds}
+            filterProduct={filterProduct}
             onValueChange={handleProductSelect}
+            emptyMessage="No eligible products match your search."
             disabled={disabled}
-          >
-            <SelectTrigger
-              id={`production-line-${index}-productId`}
-              className="w-full"
-              aria-invalid={Boolean(lineErrors?.productId)}
-              aria-describedby={lineErrors?.productId ? productErrorId : undefined}
-            >
-              <SelectValue placeholder="Select product" />
-            </SelectTrigger>
-            <SelectContent>
-              {products.map((product) => {
-                const isAlreadyAdded = selectedProductIds.includes(product.id);
-                const label = isAlreadyAdded
-                  ? `${formatProductLabel(product)} (already added)`
-                  : formatProductLabel(product);
-
-                return (
-                  <SelectItem
-                    key={product.id}
-                    value={product.id}
-                    label={label}
-                    disabled={isAlreadyAdded}
-                  >
-                    {label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+            aria-invalid={Boolean(lineErrors?.productId)}
+            aria-describedby={lineErrors?.productId ? productErrorId : undefined}
+          />
           {lineErrors?.productId ? (
             <p id={productErrorId} className="text-sm text-destructive" role="alert">
               {lineErrors.productId.message === DUPLICATE_PRODUCT_MESSAGE
                 ? DUPLICATE_PRODUCT_MESSAGE
                 : lineErrors.productId.message}
+            </p>
+          ) : selectedProduct ? (
+            <p className="text-sm text-muted-foreground">
+              Finished stock:{' '}
+              {selectedProduct.currentStock.toLocaleString('en-IN', {
+                maximumFractionDigits: 3,
+              })}{' '}
+              {selectedProduct.unit}
             </p>
           ) : null}
         </div>

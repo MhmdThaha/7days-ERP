@@ -5,19 +5,20 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
 
-import { createProductionAction } from '@/actions/production';
+import { completeProductionAction, createProductionAction } from '@/actions/production';
 import { ProductionForm } from '@/components/production/production-form';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
+import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
   mapProductionActionError,
   type ProductionFieldError,
 } from '@/lib/utils/production-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'production-create-form';
 
@@ -49,11 +50,42 @@ export function ProductionCreatePage() {
           setServerFieldError(fieldError);
         }
 
-        toast.error(result.error);
+        toastFormError(result.error);
         return;
       }
 
-      toast.success('Production draft saved successfully');
+      const productionId = result.data.id;
+
+      toastDraftSaved('Production saved as draft', 'Complete production', () => {
+        void (async () => {
+          const completeResult = await completeProductionAction(productionId);
+
+          if (!completeResult.success) {
+            toastFormError(completeResult.error);
+            return;
+          }
+
+          toastWorkflowComplete(
+            'Production completed. Raw materials deducted and product stock updated.',
+            {
+              nextStep: {
+                label: 'Record Sale',
+                onClick: () => router.push('/sales/new'),
+              },
+            },
+          );
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['productions'] }),
+            queryClient.invalidateQueries({ queryKey: ['production', productionId] }),
+            queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+            queryClient.invalidateQueries({ queryKey: ['products'] }),
+            invalidateDashboardQueries(queryClient),
+            invalidateDailyReportQueries(queryClient),
+            invalidateMonthlyReportQueries(queryClient),
+          ]);
+        })();
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['productions'] }),
@@ -62,7 +94,7 @@ export function ProductionCreatePage() {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
-      router.push(`/production/${result.data.id}`);
+      router.push(`/production/${productionId}`);
     } finally {
       setIsSubmitting(false);
     }

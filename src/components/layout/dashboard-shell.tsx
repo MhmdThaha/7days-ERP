@@ -12,9 +12,10 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 type DashboardShellProps = {
   children: ReactNode;
   navGroups: NavGroupConfig[];
+  quickAddModules: readonly string[];
 };
 
-export function DashboardShell({ children, navGroups }: DashboardShellProps) {
+export function DashboardShell({ children, navGroups, quickAddModules }: DashboardShellProps) {
   const pathname = usePathname();
   const showBreadcrumbs = pathname !== '/';
 
@@ -22,13 +23,13 @@ export function DashboardShell({ children, navGroups }: DashboardShellProps) {
     <SidebarProvider>
       <AppSidebar navGroups={navGroups} />
       <SidebarInset>
-        <TopBar />
+        <TopBar quickAddModules={quickAddModules} />
         {showBreadcrumbs ? (
           <div className="border-b px-4 py-3 md:px-6">
             <AppBreadcrumbs />
           </div>
         ) : null}
-        <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</div>
+        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );
