@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
-import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
+import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 
 import { getProductAction } from '@/actions/products';
@@ -78,7 +78,6 @@ export function ProductionForm({
     setValue,
     setError,
     clearErrors,
-    watch,
     reset,
     control,
     formState: { errors },
@@ -92,7 +91,7 @@ export function ProductionForm({
     name: 'lines',
   });
 
-  const lines = watch('lines');
+  const lines = useWatch({ control, name: 'lines', defaultValue: defaultValues.lines }) ?? [];
 
   const appendEmptyLine = useCallback(() => {
     append({
@@ -247,21 +246,20 @@ export function ProductionForm({
   const hasValidPreviewLines = previewLines.length > 0;
 
   useEffect(() => {
-    if (production) {
-      reset({
-        productionDate: production.productionDate,
-        lines: production.lines.map((line) => ({
-          id: line.id,
-          productId: line.productId,
-          quantity: line.quantity,
-          unit: line.unit,
-        })),
-        notes: production.notes ?? '',
-      });
+    if (!production) {
       return;
     }
 
-    reset(defaultValues);
+    reset({
+      productionDate: production.productionDate,
+      lines: production.lines.map((line) => ({
+        id: line.id,
+        productId: line.productId,
+        quantity: line.quantity,
+        unit: line.unit,
+      })),
+      notes: production.notes ?? '',
+    });
   }, [production, reset]);
 
   useEffect(() => {
@@ -314,9 +312,9 @@ export function ProductionForm({
 
   const isLoadingPickers =
     isLoadingRecipes ||
+    isLoadingSelectedProducts ||
     isLoadingFullRecipes ||
-    isLoadingPreviewMaterials ||
-    (Boolean(production) && isLoadingSelectedProducts);
+    isLoadingPreviewMaterials;
   const isFormDisabled = isSubmitting || isLoadingPickers;
 
   useAutoFirstLine(Boolean(production), fields.length, !isLoadingRecipes, appendEmptyLine);
@@ -429,6 +427,7 @@ export function ProductionForm({
                 <ProductionLineItemRow
                   key={field.id}
                   index={index}
+                  control={control}
                   register={register}
                   setValue={setValue}
                   errors={errors}

@@ -1,7 +1,13 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
-import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
+import {
+  Controller,
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+  type UseFormSetValue,
+} from 'react-hook-form';
 
 import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Button } from '@/components/ui/button';
@@ -14,6 +20,7 @@ import type { ProductListItem } from '@/types/product';
 
 type ProductionLineItemRowProps = {
   index: number;
+  control: Control<ProductionFormValues>;
   register: UseFormRegister<ProductionFormValues>;
   setValue: UseFormSetValue<ProductionFormValues>;
   errors: FieldErrors<ProductionFormValues>;
@@ -30,6 +37,7 @@ type ProductionLineItemRowProps = {
 
 export function ProductionLineItemRow({
   index,
+  control,
   register,
   setValue,
   errors,
@@ -111,19 +119,32 @@ export function ProductionLineItemRow({
 
         <div className="space-y-2">
           <Label htmlFor={`production-line-${index}-quantity`}>Quantity *</Label>
-          <Input
-            id={`production-line-${index}-quantity`}
-            type="number"
-            step="any"
-            min="0.001"
-            placeholder="Enter quantity"
-            disabled={disabled}
-            aria-invalid={Boolean(lineErrors?.quantity)}
-            aria-describedby={
-              lineErrors?.quantity ? quantityErrorId : `production-line-${index}-quantity-hint`
-            }
-            className="tabular-nums"
-            {...register(`lines.${index}.quantity`, { valueAsNumber: true })}
+          <Controller
+            control={control}
+            name={`lines.${index}.quantity`}
+            render={({ field }) => (
+              <Input
+                id={`production-line-${index}-quantity`}
+                type="number"
+                step="any"
+                min="0.001"
+                placeholder="Enter quantity"
+                disabled={disabled}
+                aria-invalid={Boolean(lineErrors?.quantity)}
+                aria-describedby={
+                  lineErrors?.quantity ? quantityErrorId : `production-line-${index}-quantity-hint`
+                }
+                className="tabular-nums"
+                value={Number.isNaN(field.value) ? '' : field.value}
+                onChange={(event) => {
+                  const nextValue =
+                    event.target.value === '' ? Number.NaN : event.target.valueAsNumber;
+                  field.onChange(nextValue);
+                }}
+                onBlur={field.onBlur}
+                ref={field.ref}
+              />
+            )}
           />
           {lineErrors?.quantity ? (
             <p id={quantityErrorId} className="text-sm text-destructive" role="alert">
