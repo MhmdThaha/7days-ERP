@@ -21,6 +21,7 @@
 /build
 
 # misc
+.investigate-wt/
 .DS_Store
 *.pem
 
