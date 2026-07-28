@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getProductionAction, updateProductionAction } from '@/actions/production';
+import { useAuth } from '@/hooks/use-auth';
 import { ProductionForm } from '@/components/production/production-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -30,6 +31,7 @@ type ProductionEditPageProps = {
 };
 
 export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +54,7 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleSubmit(values: ProductionFormValues) {
@@ -164,23 +167,24 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
+            footerActions={
+              <>
+                <Button
+                  nativeButton={false}
+                  variant="outline"
+                  render={<Link href={`/production/${productionId}`} />}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </>
+            }
           />
         </CardContent>
       </Card>
-
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href={`/production/${productionId}`} />}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getExpenseAction, updateExpenseAction } from '@/actions/expenses';
+import { useAuth } from '@/hooks/use-auth';
 import { ExpenseForm } from '@/components/expenses/expense-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -27,6 +28,7 @@ type ExpenseEditPageProps = {
 };
 
 export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +51,7 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleSubmit(values: ExpenseFormValues) {

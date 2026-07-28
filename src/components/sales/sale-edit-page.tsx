@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { getSaleAction, updateSaleAction } from '@/actions/sales';
 import { SaleForm } from '@/components/sales/sale-form';
+import { useAuth } from '@/hooks/use-auth';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -27,6 +28,7 @@ type SaleEditPageProps = {
 };
 
 export function SaleEditPage({ saleId }: SaleEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +51,7 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleSubmit(values: SaleFormValues) {
@@ -162,23 +165,24 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
+            footerActions={
+              <>
+                <Button
+                  nativeButton={false}
+                  variant="outline"
+                  render={<Link href={`/sales/${saleId}`} />}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </>
+            }
           />
         </CardContent>
       </Card>
-
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href={`/sales/${saleId}`} />}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
     </div>
   );
 }

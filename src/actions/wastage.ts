@@ -6,7 +6,8 @@ import {
   wastageListParamsSchema,
 } from '@/lib/domain/schemas/wastage.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { wastageService } from '@/lib/services/wastage.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,7 +22,8 @@ export async function listWastageAction(
   params: WastageListParams,
 ): Promise<ActionResult<WastageListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'wastage');
     const validated = wastageListParamsSchema.parse(params);
     return wastageService.list(orgId, validated);
   });
@@ -29,16 +31,16 @@ export async function listWastageAction(
 
 export async function getWastageAction(wastageId: string): Promise<ActionResult<Wastage>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'wastage');
     return wastageService.getById(orgId, wastageId);
   });
 }
 
-export async function createWastageAction(
-  input: CreateWastageInput,
-): Promise<ActionResult<Wastage>> {
+export async function createWastageAction(input: CreateWastageInput): Promise<ActionResult<Wastage>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'wastage');
     const validated = createWastageSchema.parse({
       ...input,
       notes: input.notes ?? null,
@@ -62,7 +64,8 @@ export async function updateWastageAction(
   input: UpdateWastageInput,
 ): Promise<ActionResult<Wastage>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'wastage');
     const validated = updateWastageSchema.parse({
       ...input,
       notes: input.notes ?? undefined,
@@ -78,14 +81,16 @@ export async function updateWastageAction(
 
 export async function deleteWastageAction(wastageId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'wastage');
     await wastageService.softDelete(orgId, wastageId, userId);
   });
 }
 
 export async function completeWastageAction(wastageId: string): Promise<ActionResult<Wastage>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'complete', 'wastage');
     return wastageService.complete(orgId, wastageId, userId);
   });
 }

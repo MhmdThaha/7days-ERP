@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronsUpDown } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { computeFloatingListPosition } from '@/lib/utils/combobox-position';
 import { cn } from '@/lib/utils';
 
 export type ItemComboboxOption = {
@@ -12,6 +14,8 @@ export type ItemComboboxOption = {
   label: string;
   disabled?: boolean;
   keywords?: string;
+  /** Non-selectable section label shown above option groups. */
+  isSectionHeader?: boolean;
 };
 
 export type ItemComboboxProps = {
@@ -34,8 +38,18 @@ export type ItemComboboxProps = {
   optionsErrorMessage?: string;
   /** Retries loading server-side options after a failure. */
   onRetryOptions?: () => void;
+  /** Called when the combobox input receives focus. */
+  onFocus?: () => void;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
+};
+
+type ListPosition = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+  placement: 'bottom' | 'top';
 };
 
 function normalizeSearch(value: string): string {
@@ -57,15 +71,24 @@ export function ItemCombobox({
   isLoadingOptions = false,
   optionsErrorMessage,
   onRetryOptions,
+  onFocus,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
 }: ItemComboboxProps) {
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [listPosition, setListPosition] = useState<ListPosition>({
+    top: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 240,
+    placement: 'bottom',
+  });
 
   const selectedOption = useMemo(
     () => options.find((option) => option.value === value) ?? null,
@@ -90,9 +113,57 @@ export function ItemCombobox({
   }, [filterOptions, options, query]);
 
   const selectableOptions = useMemo(
-    () => filteredOptions.filter((option) => !option.disabled),
+    () => filteredOptions.filter((option) => !option.disabled && !option.isSectionHeader),
     [filteredOptions],
   );
+
+  const effectiveActiveIndex =
+    selectableOptions.length === 0
+      ? 0
+      : Math.min(activeIndex, selectableOptions.length - 1);
+
+  const updateListPosition = useCallback(() => {
+    const anchor = containerRef.current;
+
+    if (!anchor) {
+      return;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+
+    setListPosition(
+      computeFloatingListPosition({
+        anchorRect: rect,
+        viewportHeight: window.innerHeight,
+      }),
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    updateListPosition();
+  }, [isOpen, updateListPosition, filteredOptions.length]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleReposition() {
+      updateListPosition();
+    }
+
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [isOpen, updateListPosition]);
 
   const closeList = useCallback(() => {
     setIsOpen(false);
@@ -120,20 +191,18 @@ export function ItemCombobox({
     }
 
     function handlePointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        closeList();
+      const target = event.target as Node;
+
+      if (containerRef.current?.contains(target) || listRef.current?.contains(target)) {
+        return;
       }
+
+      closeList();
     }
 
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [closeList, isOpen]);
-
-  useEffect(() => {
-    if (activeIndex >= selectableOptions.length) {
-      setActiveIndex(Math.max(0, selectableOptions.length - 1));
-    }
-  }, [activeIndex, selectableOptions.length]);
 
   function handleInputChange(nextQuery: string) {
     setQuery(nextQuery);
@@ -143,6 +212,8 @@ export function ItemCombobox({
   }
 
   function handleInputFocus() {
+    onFocus?.();
+
     if (!disabled) {
       setIsOpen(true);
     }
@@ -151,7 +222,10 @@ export function ItemCombobox({
   function handleInputBlur(event: React.FocusEvent<HTMLInputElement>) {
     const relatedTarget = event.relatedTarget as Node | null;
 
-    if (relatedTarget && containerRef.current?.contains(relatedTarget)) {
+    if (
+      relatedTarget &&
+      (containerRef.current?.contains(relatedTarget) || listRef.current?.contains(relatedTarget))
+    ) {
       return;
     }
 
@@ -187,7 +261,7 @@ export function ItemCombobox({
       }
 
       event.preventDefault();
-      const option = selectableOptions[activeIndex];
+      const option = selectableOptions[effectiveActiveIndex];
 
       if (option) {
         selectOption(option);
@@ -204,6 +278,93 @@ export function ItemCombobox({
   }
 
   const displayValue = isOpen ? query : (selectedOption?.label ?? '');
+
+  const listbox = isOpen ? (
+    <ul
+      ref={listRef}
+      id={listboxId}
+      role="listbox"
+      style={{
+        position: 'fixed',
+        top: listPosition.top,
+        left: listPosition.left,
+        width: listPosition.width,
+        maxHeight: listPosition.maxHeight,
+      }}
+      className="z-[100] overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+    >
+      {optionsErrorMessage ? (
+        <li className="px-2 py-2">
+          <p className="text-sm text-destructive">{optionsErrorMessage}</p>
+          {onRetryOptions ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 h-7"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onRetryOptions}
+            >
+              Try again
+            </Button>
+          ) : null}
+        </li>
+      ) : isLoadingOptions && filteredOptions.length === 0 ? (
+        <li className="px-2 py-2 text-sm text-muted-foreground">{loadingMessage}</li>
+      ) : filteredOptions.length === 0 ? (
+        <li className="px-2 py-2 text-sm text-muted-foreground">{emptyMessage}</li>
+      ) : (
+        filteredOptions.map((option) => {
+          if (option.isSectionHeader) {
+            return (
+              <li
+                key={option.value}
+                role="presentation"
+                className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+              >
+                {option.label}
+              </li>
+            );
+          }
+
+          const selectableIndex = selectableOptions.findIndex(
+            (item) => item.value === option.value,
+          );
+          const isActive = selectableIndex === effectiveActiveIndex;
+          const isSelected = option.value === value;
+
+          return (
+            <li
+              key={option.value}
+              role="option"
+              aria-selected={isSelected}
+              aria-disabled={option.disabled}
+              className={cn(
+                'flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none',
+                option.disabled
+                  ? 'cursor-not-allowed text-muted-foreground opacity-50'
+                  : 'hover:bg-accent hover:text-accent-foreground',
+                isActive && !option.disabled && 'bg-accent text-accent-foreground',
+              )}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectOption(option)}
+              onMouseEnter={() => {
+                if (!option.disabled && selectableIndex >= 0) {
+                  setActiveIndex(selectableIndex);
+                }
+              }}
+            >
+              <Check
+                className={cn('size-4 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')}
+                aria-hidden="true"
+              />
+              <span className="truncate">{option.label}</span>
+            </li>
+          );
+        })
+      )}
+    </ul>
+  ) : null;
 
   return (
     <div ref={containerRef} className={cn('relative w-full', className)}>
@@ -233,72 +394,7 @@ export function ItemCombobox({
         />
       </div>
 
-      {isOpen ? (
-        <ul
-          id={listboxId}
-          role="listbox"
-          className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
-        >
-          {optionsErrorMessage ? (
-            <li className="px-2 py-2">
-              <p className="text-sm text-destructive">{optionsErrorMessage}</p>
-              {onRetryOptions ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-7"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={onRetryOptions}
-                >
-                  Try again
-                </Button>
-              ) : null}
-            </li>
-          ) : isLoadingOptions && filteredOptions.length === 0 ? (
-            <li className="px-2 py-2 text-sm text-muted-foreground">{loadingMessage}</li>
-          ) : filteredOptions.length === 0 ? (
-            <li className="px-2 py-2 text-sm text-muted-foreground">{emptyMessage}</li>
-          ) : (
-            filteredOptions.map((option) => {
-              const selectableIndex = selectableOptions.findIndex(
-                (item) => item.value === option.value,
-              );
-              const isActive = selectableIndex === activeIndex;
-              const isSelected = option.value === value;
-
-              return (
-                <li
-                  key={option.value}
-                  role="option"
-                  aria-selected={isSelected}
-                  aria-disabled={option.disabled}
-                  className={cn(
-                    'flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none',
-                    option.disabled
-                      ? 'cursor-not-allowed text-muted-foreground opacity-50'
-                      : 'hover:bg-accent hover:text-accent-foreground',
-                    isActive && !option.disabled && 'bg-accent text-accent-foreground',
-                  )}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => selectOption(option)}
-                  onMouseEnter={() => {
-                    if (!option.disabled && selectableIndex >= 0) {
-                      setActiveIndex(selectableIndex);
-                    }
-                  }}
-                >
-                  <Check
-                    className={cn('size-4 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{option.label}</span>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      ) : null}
+      {typeof document !== 'undefined' && listbox ? createPortal(listbox, document.body) : null}
     </div>
   );
 }

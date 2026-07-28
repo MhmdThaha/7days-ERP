@@ -1,17 +1,26 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
 import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
 
+import {
+  LineItemDeleteCell,
+  LineItemTotalCell,
+  LineItemUnitCell,
+} from '@/components/shared/line-items-grid/line-item-cells';
+import {
+  LineItemGridCell,
+  LineItemsGridRow,
+} from '@/components/shared/line-items-grid/line-items-grid';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { MoneyInput } from '@/components/shared/money-input';
 import { RawMaterialPickerCombobox } from '@/components/shared/raw-material-picker-combobox';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
-import { cn } from '@/lib/utils';
+import { rememberRawMaterial } from '@/lib/utils/form-recent-values';
+import { handleEnterAsTab } from '@/lib/utils/line-item-keyboard';
+import { focusPurchaseLineItemField } from '@/lib/utils/purchase-form-errors';
+import { PURCHASE_GRID_ROW_CLASS } from '@/lib/ui/line-items-grid-config';
 
 type PurchaseLineItemRowProps = {
   index: number;
@@ -28,6 +37,7 @@ type PurchaseLineItemRowProps = {
   onRawMaterialChange: (rawMaterialId: string) => void;
   onDuplicateRawMaterial: (index: number) => void;
   onUnitCostChange: (unitCost: number) => void;
+  onAdvanceToNextLine?: () => void;
 };
 
 export function PurchaseLineItemRow({
@@ -45,13 +55,19 @@ export function PurchaseLineItemRow({
   onRawMaterialChange,
   onDuplicateRawMaterial,
   onUnitCostChange,
+  onAdvanceToNextLine,
 }: PurchaseLineItemRowProps) {
   const lineItemErrors = errors.lineItems?.[index];
-  const rawMaterialErrorId = `line-item-${index}-rawMaterialId-error`;
+  const materialErrorId = `line-item-${index}-rawMaterialId-error`;
   const quantityErrorId = `line-item-${index}-quantity-error`;
   const unitCostErrorId = `line-item-${index}-unitCost-error`;
 
   const lineTotal = Math.round((Number(quantity) || 0) * (Number(unitCost) || 0));
+
+  const materialErrorMessage =
+    lineItemErrors?.rawMaterialId?.message === DUPLICATE_RAW_MATERIAL_MESSAGE
+      ? DUPLICATE_RAW_MATERIAL_MESSAGE
+      : lineItemErrors?.rawMaterialId?.message;
 
   function handleRawMaterialSelect(value: string) {
     if (selectedRawMaterialIds.includes(value)) {
@@ -61,126 +77,93 @@ export function PurchaseLineItemRow({
 
     onRawMaterialChange(value);
     setValue(`lineItems.${index}.rawMaterialId`, value, { shouldValidate: true });
+    rememberRawMaterial(value);
+    focusPurchaseLineItemField(index, 'quantity');
   }
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border bg-card p-4 shadow-xs',
-        lineItemErrors?.rawMaterialId && 'border-destructive/50 ring-1 ring-destructive/20',
-      )}
+    <LineItemsGridRow
+      rowClassName={PURCHASE_GRID_ROW_CLASS}
+      hasError={Boolean(lineItemErrors?.rawMaterialId || lineItemErrors?.quantity || lineItemErrors?.unitCost)}
     >
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">Line Item {index + 1}</p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRemove}
+      <LineItemGridCell
+        label="Material"
+        htmlFor={`line-item-${index}-rawMaterialId`}
+        error={materialErrorMessage}
+      >
+        <RawMaterialPickerCombobox
+          id={`line-item-${index}-rawMaterialId`}
+          value={rawMaterialId || null}
+          disabledMaterialIds={selectedRawMaterialIds}
+          onValueChange={handleRawMaterialSelect}
           disabled={disabled}
-          aria-label={`Remove line item ${index + 1}`}
-        >
-          <Trash2 />
-        </Button>
-      </div>
+          aria-invalid={Boolean(lineItemErrors?.rawMaterialId)}
+          aria-describedby={lineItemErrors?.rawMaterialId ? materialErrorId : undefined}
+        />
+      </LineItemGridCell>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
-        <div className="space-y-2 sm:col-span-2 xl:col-span-1">
-          <Label htmlFor={`line-item-${index}-rawMaterialId`}>Ingredient *</Label>
-          <RawMaterialPickerCombobox
-            id={`line-item-${index}-rawMaterialId`}
-            value={rawMaterialId || null}
-            disabledMaterialIds={selectedRawMaterialIds}
-            onValueChange={handleRawMaterialSelect}
-            disabled={disabled}
-            aria-invalid={Boolean(lineItemErrors?.rawMaterialId)}
-            aria-describedby={lineItemErrors?.rawMaterialId ? rawMaterialErrorId : undefined}
-          />
-          {lineItemErrors?.rawMaterialId ? (
-            <p id={rawMaterialErrorId} className="text-sm text-destructive" role="alert">
-              {lineItemErrors.rawMaterialId.message === DUPLICATE_RAW_MATERIAL_MESSAGE
-                ? DUPLICATE_RAW_MATERIAL_MESSAGE
-                : lineItemErrors.rawMaterialId.message}
-            </p>
-          ) : null}
-        </div>
+      <LineItemGridCell
+        label="Qty"
+        htmlFor={`line-item-${index}-quantity`}
+        error={lineItemErrors?.quantity?.message}
+      >
+        <Input
+          id={`line-item-${index}-quantity`}
+          type="number"
+          step="any"
+          min="0.001"
+          placeholder="0"
+          disabled={disabled}
+          aria-invalid={Boolean(lineItemErrors?.quantity)}
+          aria-describedby={lineItemErrors?.quantity ? quantityErrorId : undefined}
+          className="h-8 tabular-nums"
+          {...register(`lineItems.${index}.quantity`, { valueAsNumber: true })}
+          onKeyDown={(event) => handleEnterAsTab(event, `line-item-${index}-unitCost`)}
+        />
+      </LineItemGridCell>
 
-        <div className="space-y-2">
-          <Label htmlFor={`line-item-${index}-quantity`}>Quantity *</Label>
-          <Input
-            id={`line-item-${index}-quantity`}
-            type="number"
-            step="any"
-            min="0.001"
-            placeholder="Enter quantity"
-            disabled={disabled}
-            aria-invalid={Boolean(lineItemErrors?.quantity)}
-            aria-describedby={
-              lineItemErrors?.quantity
-                ? quantityErrorId
-                : `line-item-${index}-quantity-hint`
+      <LineItemGridCell label="Unit">
+        <LineItemUnitCell id={`line-item-${index}-unit`} unit={unit} />
+      </LineItemGridCell>
+
+      <LineItemGridCell
+        label="Cost"
+        htmlFor={`line-item-${index}-unitCost`}
+        error={lineItemErrors?.unitCost?.message}
+      >
+        <MoneyInput
+          id={`line-item-${index}-unitCost`}
+          value={unitCost}
+          onChange={(value) => {
+            onUnitCostChange(value);
+            setValue(`lineItems.${index}.unitCost`, value, { shouldValidate: true });
+          }}
+          disabled={disabled}
+          aria-invalid={Boolean(lineItemErrors?.unitCost)}
+          aria-describedby={lineItemErrors?.unitCost ? unitCostErrorId : undefined}
+          className="[&_input]:h-8"
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') {
+              return;
             }
-            className="tabular-nums"
-            {...register(`lineItems.${index}.quantity`, { valueAsNumber: true })}
-          />
-          {lineItemErrors?.quantity ? (
-            <p id={quantityErrorId} className="text-sm text-destructive" role="alert">
-              {lineItemErrors.quantity.message}
-            </p>
-          ) : (
-            <p id={`line-item-${index}-quantity-hint`} className="text-sm text-muted-foreground">
-              Must be greater than zero.
-            </p>
-          )}
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor={`line-item-${index}-unit`}>Unit</Label>
-          <Input
-            id={`line-item-${index}-unit`}
-            value={unit}
-            readOnly
-            disabled
-            aria-readonly="true"
-          />
-        </div>
+            event.preventDefault();
+            onAdvanceToNextLine?.();
+          }}
+        />
+      </LineItemGridCell>
 
-        <div className="space-y-2">
-          <Label htmlFor={`line-item-${index}-unitCost`}>Unit Cost *</Label>
-          <MoneyInput
-            id={`line-item-${index}-unitCost`}
-            value={unitCost}
-            onChange={(value) => {
-              onUnitCostChange(value);
-              setValue(`lineItems.${index}.unitCost`, value, { shouldValidate: true });
-            }}
-            disabled={disabled}
-            aria-invalid={Boolean(lineItemErrors?.unitCost)}
-            aria-describedby={
-              lineItemErrors?.unitCost ? unitCostErrorId : `line-item-${index}-unitCost-hint`
-            }
-          />
-          {lineItemErrors?.unitCost ? (
-            <p id={unitCostErrorId} className="text-sm text-destructive" role="alert">
-              {lineItemErrors.unitCost.message}
-            </p>
-          ) : (
-            <p id={`line-item-${index}-unitCost-hint`} className="text-sm text-muted-foreground">
-              Must be greater than zero.
-            </p>
-          )}
-        </div>
+      <LineItemGridCell label="Total">
+        <LineItemTotalCell id={`line-item-${index}-lineTotal`}>
+          <MoneyDisplay amount={lineTotal} />
+        </LineItemTotalCell>
+      </LineItemGridCell>
 
-        <div className="space-y-2">
-          <Label htmlFor={`line-item-${index}-lineTotal`}>Line Total</Label>
-          <div
-            id={`line-item-${index}-lineTotal`}
-            className="flex h-8 items-center rounded-lg border bg-muted/40 px-2.5 text-sm tabular-nums"
-          >
-            <MoneyDisplay amount={lineTotal} />
-          </div>
-        </div>
-      </div>
-    </div>
+      <LineItemDeleteCell
+        onRemove={onRemove}
+        disabled={disabled}
+        label={`Remove line item ${index + 1}`}
+      />
+    </LineItemsGridRow>
   );
 }

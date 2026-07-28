@@ -2,12 +2,14 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 
 import { getRawMaterialAction } from '@/actions/raw-materials';
 import { RecipeIngredientRow } from '@/components/recipes/recipe-ingredient-row';
 import { RecipeSummary } from '@/components/recipes/recipe-summary';
+import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
+import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
 import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,11 +22,18 @@ import {
   recipeFormSchema,
   type RecipeFormValues,
 } from '@/lib/domain/schemas/recipe.schema';
+import { sumQuantitiesAsKg } from '@/lib/domain/units/mass-conversion';
 import {
   focusFirstRecipeFormError,
   focusRecipeFormField,
+  focusRecipeIngredientField,
   type RecipeFieldError,
 } from '@/lib/utils/recipe-form-errors';
+import {
+  RECIPE_GRID_MIN_WIDTH,
+  RECIPE_GRID_ROW_CLASS,
+  RECIPE_LINE_COLUMNS,
+} from '@/lib/ui/line-items-grid-config';
 import { toRawMaterialListItem } from '@/lib/utils/catalog-list-item';
 import type { Recipe } from '@/types/recipe';
 import type { ProductListItem } from '@/types/product';
@@ -39,6 +48,7 @@ type RecipeFormProps = {
   formId: string;
   serverFieldError?: RecipeFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  footerActions?: ReactNode;
 };
 
 const defaultValues: RecipeFormValues = {
@@ -60,6 +70,7 @@ export function RecipeForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  footerActions,
 }: RecipeFormProps) {
   const {
     register,
@@ -81,8 +92,22 @@ export function RecipeForm({
   });
 
   const productId = watch('productId');
-  const ingredients = watch('ingredients');
+  const ingredients =
+    useWatch({ control, name: 'ingredients', defaultValue: defaultValues.ingredients }) ?? [];
   const isActive = watch('isActive');
+
+  const ingredientCount = ingredients.length;
+
+  const totalWeight = useMemo(
+    () =>
+      sumQuantitiesAsKg(
+        ingredients.map((ingredient) => ({
+          quantity: Number(ingredient.quantity),
+          unit: ingredient.unit,
+        })),
+      ),
+    [ingredients],
+  );
 
   const appendEmptyIngredient = useCallback(() => {
     append({
@@ -102,20 +127,6 @@ export function RecipeForm({
   const filterProductWithoutRecipe = useCallback(
     (product: ProductListItem) => !product.activeRecipeId,
     [],
-  );
-
-  const totalWeight = useMemo(
-    () =>
-      ingredients.reduce((sum, ingredient) => {
-        const quantity = Number(ingredient.quantity);
-
-        if (Number.isNaN(quantity)) {
-          return sum;
-        }
-
-        return sum + quantity;
-      }, 0),
-    [ingredients],
   );
 
   useEffect(() => {
@@ -186,7 +197,9 @@ export function RecipeForm({
 
   return (
     <form id={formId} onSubmit={handleSubmit(onSubmit, handleInvalidSubmit)} className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
+        <div className="min-w-0 space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="productId">Product</Label>
           {isEditMode ? (
@@ -268,64 +281,110 @@ export function RecipeForm({
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Ingredients</h2>
-            <p className="text-sm text-muted-foreground">
-              Add raw materials and quantities for this recipe.
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <h2 className="text-base font-semibold">Ingredients</h2>
+                <p className="text-sm text-muted-foreground">
+                  Add raw materials and quantities for this recipe.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddIngredient}
+                disabled={isSubmitting}
+              >
+                <Plus />
+                Add Ingredient
+              </Button>
+            </div>
+
+            {errors.ingredients?.message ? (
+              <p className="text-sm text-destructive">{errors.ingredients.message}</p>
+            ) : null}
+            {errors.ingredients?.root?.message ? (
+              <p className="text-sm text-destructive">{errors.ingredients.root.message}</p>
+            ) : null}
+
+            {fields.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                No ingredients yet. Add at least one raw material to build this recipe.
+              </div>
+            ) : (
+              <LineItemsGrid
+                columns={RECIPE_LINE_COLUMNS}
+                rowClassName={RECIPE_GRID_ROW_CLASS}
+                minWidthClassName={RECIPE_GRID_MIN_WIDTH}
+              >
+                {fields.map((field, index) => (
+                  <RecipeIngredientRow
+                    key={field.id}
+                    index={index}
+                    register={register}
+                    setValue={setValue}
+                    errors={errors}
+                    rawMaterialId={ingredients[index]?.rawMaterialId ?? ''}
+                    unit={ingredients[index]?.unit ?? ''}
+                    selectedRawMaterialIds={selectedRawMaterialIds}
+                    disabled={isSubmitting}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < fields.length - 1}
+                    onMoveUp={() => move(index, index - 1)}
+                    onMoveDown={() => move(index, index + 1)}
+                    onRemove={() => remove(index)}
+                    onRawMaterialChange={(rawMaterialId) =>
+                      handleRawMaterialChange(index, rawMaterialId)
+                    }
+                    onAdvanceToNextLine={() => {
+                      const nextIndex = index + 1;
+                      const didAppend = nextIndex >= fields.length;
+
+                      if (didAppend) {
+                        appendEmptyIngredient();
+                        window.requestAnimationFrame(() => {
+                          window.requestAnimationFrame(() => {
+                            focusRecipeIngredientField(nextIndex, 'rawMaterialId');
+                          });
+                        });
+                        return;
+                      }
+
+                      focusRecipeIngredientField(nextIndex, 'rawMaterialId');
+                    }}
+                  />
+                ))}
+              </LineItemsGrid>
+            )}
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleAddIngredient}
-            disabled={isSubmitting}
-          >
-            <Plus />
-            Add Ingredient
-          </Button>
         </div>
 
-        {errors.ingredients?.message ? (
-          <p className="text-sm text-destructive">{errors.ingredients.message}</p>
-        ) : null}
-        {errors.ingredients?.root?.message ? (
-          <p className="text-sm text-destructive">{errors.ingredients.root.message}</p>
-        ) : null}
-
-        {fields.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No ingredients yet. Add at least one raw material to build this recipe.
+        <aside className="hidden xl:block">
+          <div className="sticky top-24 z-10">
+            <RecipeSummary
+              ingredientCount={ingredientCount}
+              totalWeight={totalWeight}
+              variant="sticky"
+            />
           </div>
-        ) : (
-          <div className="space-y-3">
-            {fields.map((field, index) => (
-              <RecipeIngredientRow
-                key={field.id}
-                index={index}
-                register={register}
-                setValue={setValue}
-                errors={errors}
-                rawMaterialId={ingredients[index]?.rawMaterialId ?? ''}
-                unit={ingredients[index]?.unit ?? ''}
-                selectedRawMaterialIds={selectedRawMaterialIds}
-                disabled={isSubmitting}
-                canMoveUp={index > 0}
-                canMoveDown={index < fields.length - 1}
-                onMoveUp={() => move(index, index - 1)}
-                onMoveDown={() => move(index, index + 1)}
-                onRemove={() => remove(index)}
-                onRawMaterialChange={(rawMaterialId) =>
-                  handleRawMaterialChange(index, rawMaterialId)
-                }
-              />
-            ))}
-          </div>
-        )}
+        </aside>
       </div>
 
-      <RecipeSummary ingredientCount={fields.length} totalWeight={totalWeight} />
+      <EntryFormStickyFooter
+        wrapperClassName="xl:hidden"
+        summary={
+          <RecipeSummary
+            ingredientCount={ingredientCount}
+            totalWeight={totalWeight}
+            variant="compact"
+          />
+        }
+        actions={footerActions}
+      />
+
+      {footerActions ? (
+        <div className="hidden justify-end gap-2 xl:flex">{footerActions}</div>
+      ) : null}
     </form>
   );
 }

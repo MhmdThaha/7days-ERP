@@ -3,12 +3,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { listRecipesAction } from '@/actions/recipes';
+import { useAuth } from '@/hooks/use-auth';
 import { RECIPE_PAGE_SIZE } from '@/lib/domain/constants/recipe';
 import type { RecipeListParams } from '@/types/recipe';
 
 export function useRecipes(params: RecipeListParams) {
+  const { user, isAuthenticated } = useAuth();
+
   return useQuery({
-    queryKey: ['recipes', params],
+    queryKey: ['recipes', user?.uid, params],
     queryFn: async () => {
       const result = await listRecipesAction({
         search: params.search,
@@ -23,6 +26,7 @@ export function useRecipes(params: RecipeListParams) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 }

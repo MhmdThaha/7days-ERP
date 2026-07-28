@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getReturnAction, updateReturnAction } from '@/actions/returns';
+import { useAuth } from '@/hooks/use-auth';
 import { ReturnForm } from '@/components/returns/return-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -27,6 +28,7 @@ type ReturnEditPageProps = {
 };
 
 export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +51,7 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleSubmit(values: ReturnFormValues) {

@@ -10,6 +10,7 @@ import {
 } from '@/lib/domain/calculations/production-materials';
 import { calculateNewWac } from '@/lib/domain/calculations/wac';
 import { DomainError } from '@/lib/domain/errors';
+import { assertSufficientStock } from '@/lib/domain/inventory/stock-validation';
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
 import {
   buildAuditFields,
@@ -17,6 +18,7 @@ import {
   getOrgCollection,
 } from '@/lib/repositories/base.repository';
 import { inventoryRepository } from '@/lib/repositories/inventory.repository';
+import { reserveUniqueNumberInTransaction } from '@/lib/repositories/unique-number.repository';
 import type {
   Production,
   ProductionLineItem,
@@ -283,42 +285,55 @@ export const productionRepository = {
     },
     userId: string,
   ): Promise<Production> {
+    const firestore = getFirestore();
     const collection = getOrgCollection(orgId, 'production');
     const docRef = collection.doc();
-    const now = Timestamp.now();
+    const normalizedProductionNumber = input.productionNumber.trim().toUpperCase();
 
-    const document: ProductionDocument = {
-      organizationId: orgId,
-      productionNumber: input.productionNumber.trim().toUpperCase(),
-      productionDate: input.productionDate,
-      status: 'draft',
-      lines: input.lines.map((line) => ({
-        id: line.id,
-        productId: line.productId,
-        productCode: line.productCode,
-        productName: line.productName,
-        quantity: line.quantity,
-        unit: line.unit,
-        recipeId: line.recipeId,
-        recipeCode: line.recipeCode,
-        recipeName: line.recipeName,
-        recipeVersion: line.recipeVersion,
-      })),
-      totalUnits: input.totalUnits,
-      lineCount: input.lines.length,
-      notes: normalizeNullableString(input.notes),
-      createdAt: now,
-      createdBy: userId,
-      updatedAt: now,
-      updatedBy: userId,
-      completedAt: null,
-      completedBy: null,
-      deletedAt: null,
-      deletedBy: null,
-    };
+    return firestore.runTransaction(async (transaction) => {
+      await reserveUniqueNumberInTransaction(
+        transaction,
+        orgId,
+        'production',
+        normalizedProductionNumber,
+        docRef.id,
+      );
 
-    await docRef.set(document);
-    return toProduction(docRef.id, document);
+      const now = Timestamp.now();
+
+      const document: ProductionDocument = {
+        organizationId: orgId,
+        productionNumber: normalizedProductionNumber,
+        productionDate: input.productionDate,
+        status: 'draft',
+        lines: input.lines.map((line) => ({
+          id: line.id,
+          productId: line.productId,
+          productCode: line.productCode,
+          productName: line.productName,
+          quantity: line.quantity,
+          unit: line.unit,
+          recipeId: line.recipeId,
+          recipeCode: line.recipeCode,
+          recipeName: line.recipeName,
+          recipeVersion: line.recipeVersion,
+        })),
+        totalUnits: input.totalUnits,
+        lineCount: input.lines.length,
+        notes: normalizeNullableString(input.notes),
+        createdAt: now,
+        createdBy: userId,
+        updatedAt: now,
+        updatedBy: userId,
+        completedAt: null,
+        completedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+      };
+
+      transaction.set(docRef, document);
+      return toProduction(docRef.id, document);
+    });
   },
 
   async update(
@@ -589,6 +604,9 @@ export const productionRepository = {
           const consumed = scaleIngredientQuantity(ingredient.quantity, line.quantity);
           const unitCost = state.avgCost;
           const totalCost = Math.round(consumed * unitCost);
+
+          assertSufficientStock(state.qty, consumed, ingredient.rawMaterialName);
+
           const newQty = state.qty - consumed;
 
           runningRawMaterialState.set(ingredient.rawMaterialId, {

@@ -4,10 +4,13 @@ import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 
 import { getRawMaterialAction } from '@/actions/raw-materials';
+import { useAuth } from '@/hooks/use-auth';
 import { toRawMaterialListItem } from '@/lib/utils/catalog-list-item';
 import type { RawMaterialListItem } from '@/types/raw-material';
 
 export function useRawMaterialsByIds(rawMaterialIds: string[]) {
+  const { user, isAuthenticated } = useAuth();
+
   const uniqueIds = useMemo(
     () => [...new Set(rawMaterialIds.filter(Boolean))].sort(),
     [rawMaterialIds],
@@ -15,7 +18,7 @@ export function useRawMaterialsByIds(rawMaterialIds: string[]) {
 
   const queries = useQueries({
     queries: uniqueIds.map((id) => ({
-      queryKey: ['raw-material', id],
+      queryKey: ['raw-material', user?.uid, id],
       queryFn: async () => {
         const result = await getRawMaterialAction(id);
 
@@ -25,6 +28,7 @@ export function useRawMaterialsByIds(rawMaterialIds: string[]) {
 
         return toRawMaterialListItem(result.data);
       },
+      enabled: isAuthenticated,
       staleTime: 5 * 60 * 1000,
     })),
   });

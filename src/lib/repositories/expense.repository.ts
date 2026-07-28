@@ -10,6 +10,7 @@ import {
   getFirestore,
   getOrgCollection,
 } from '@/lib/repositories/base.repository';
+import { reserveUniqueNumberInTransaction } from '@/lib/repositories/unique-number.repository';
 import type {
   Expense,
   ExpenseCategory,
@@ -229,30 +230,43 @@ export const expenseRepository = {
     },
     userId: string,
   ): Promise<Expense> {
+    const firestore = getFirestore();
     const collection = getOrgCollection(orgId, 'expenses');
     const docRef = collection.doc();
-    const now = Timestamp.now();
+    const normalizedExpenseNumber = input.expenseNumber.trim().toUpperCase();
 
-    const document: ExpenseDocument = {
-      organizationId: orgId,
-      expenseNumber: input.expenseNumber.trim().toUpperCase(),
-      expenseDate: input.expenseDate,
-      category: input.category,
-      amount: input.amount,
-      status: 'draft',
-      notes: normalizeNullableString(input.notes),
-      createdAt: now,
-      createdBy: userId,
-      updatedAt: now,
-      updatedBy: userId,
-      completedAt: null,
-      completedBy: null,
-      deletedAt: null,
-      deletedBy: null,
-    };
+    return firestore.runTransaction(async (transaction) => {
+      await reserveUniqueNumberInTransaction(
+        transaction,
+        orgId,
+        'expense',
+        normalizedExpenseNumber,
+        docRef.id,
+      );
 
-    await docRef.set(document);
-    return toExpense(docRef.id, document);
+      const now = Timestamp.now();
+
+      const document: ExpenseDocument = {
+        organizationId: orgId,
+        expenseNumber: normalizedExpenseNumber,
+        expenseDate: input.expenseDate,
+        category: input.category,
+        amount: input.amount,
+        status: 'draft',
+        notes: normalizeNullableString(input.notes),
+        createdAt: now,
+        createdBy: userId,
+        updatedAt: now,
+        updatedBy: userId,
+        completedAt: null,
+        completedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+      };
+
+      transaction.set(docRef, document);
+      return toExpense(docRef.id, document);
+    });
   },
 
   async update(

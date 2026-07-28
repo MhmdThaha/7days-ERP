@@ -3,12 +3,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { listReturnsAction } from '@/actions/returns';
+import { useAuth } from '@/hooks/use-auth';
 import { RETURN_PAGE_SIZE } from '@/lib/domain/constants/return';
 import type { ReturnListParams } from '@/types/return';
 
 export function useReturns(params: ReturnListParams) {
+  const { user, isAuthenticated } = useAuth();
+
   return useQuery({
-    queryKey: ['returns', params],
+    queryKey: ['returns', user?.uid, params],
     queryFn: async () => {
       const result = await listReturnsAction({
         search: params.search,
@@ -22,6 +25,7 @@ export function useReturns(params: ReturnListParams) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 }

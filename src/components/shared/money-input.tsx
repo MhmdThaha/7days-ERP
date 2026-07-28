@@ -20,6 +20,7 @@ type MoneyInputProps = {
   className?: string;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
+  onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 };
 
 function countDigitsBefore(value: string, index: number): number {
@@ -57,6 +58,7 @@ export function MoneyInput({
   className,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
+  onKeyDown,
 }: MoneyInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -141,6 +143,7 @@ export function MoneyInput({
           onChange(value > 0 ? value : 0);
           onBlur?.();
         }}
+        onKeyDown={onKeyDown}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
 
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
 import { buildAuditFields, getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
+import { reserveUniqueNumberInTransaction } from '@/lib/repositories/unique-number.repository';
 import { inventoryRepository } from '@/lib/repositories/inventory.repository';
 import { calculateNewWac } from '@/lib/domain/calculations/wac';
 import { DomainError } from '@/lib/domain/errors';
@@ -129,6 +130,16 @@ function matchesStatus(purchase: PurchaseListItem, status: PurchaseStatusFilter 
   return purchase.status === status;
 }
 
+function assertDraftPurchaseInTransaction(purchaseData: PurchaseDocument): void {
+  if (purchaseData.deletedAt) {
+    throw new DomainError('NOT_FOUND', 'Purchase not found');
+  }
+
+  if (purchaseData.status !== 'draft') {
+    throw new DomainError('VALIDATION_ERROR', 'Only draft purchases can be modified');
+  }
+}
+
 export const purchaseRepository = {
   async list(orgId: string, params: PurchaseListParams): Promise<PurchaseListResult> {
     const page = params.page ?? 1;
@@ -246,43 +257,56 @@ export const purchaseRepository = {
     },
     userId: string,
   ): Promise<Purchase> {
+    const firestore = getFirestore();
     const collection = getOrgCollection(orgId, 'purchases');
     const docRef = collection.doc();
-    const now = Timestamp.now();
+    const normalizedPurchaseNumber = input.purchaseNumber.trim().toUpperCase();
 
-    const document: PurchaseDocument = {
-      organizationId: orgId,
-      purchaseNumber: input.purchaseNumber.trim().toUpperCase(),
-      purchaseDate: input.purchaseDate,
-      supplierName: input.supplierName.trim(),
-      invoiceNumber: normalizeNullableString(input.invoiceNumber),
-      status: 'draft',
-      paymentStatus: input.paymentStatus,
-      lineItems: input.lineItems.map((lineItem) => ({
-        id: lineItem.id,
-        rawMaterialId: lineItem.rawMaterialId,
-        rawMaterialCode: lineItem.rawMaterialCode,
-        rawMaterialName: lineItem.rawMaterialName,
-        quantity: lineItem.quantity,
-        unit: lineItem.unit,
-        unitCost: lineItem.unitCost,
-        lineTotal: lineItem.lineTotal,
-      })),
-      totalAmount: input.totalAmount,
-      lineItemCount: input.lineItems.length,
-      notes: normalizeNullableString(input.notes),
-      createdAt: now,
-      createdBy: userId,
-      updatedAt: now,
-      updatedBy: userId,
-      receivedAt: null,
-      receivedBy: null,
-      deletedAt: null,
-      deletedBy: null,
-    };
+    return firestore.runTransaction(async (transaction) => {
+      await reserveUniqueNumberInTransaction(
+        transaction,
+        orgId,
+        'purchase',
+        normalizedPurchaseNumber,
+        docRef.id,
+      );
 
-    await docRef.set(document);
-    return toPurchase(docRef.id, document);
+      const now = Timestamp.now();
+
+      const document: PurchaseDocument = {
+        organizationId: orgId,
+        purchaseNumber: normalizedPurchaseNumber,
+        purchaseDate: input.purchaseDate,
+        supplierName: input.supplierName.trim(),
+        invoiceNumber: normalizeNullableString(input.invoiceNumber),
+        status: 'draft',
+        paymentStatus: input.paymentStatus,
+        lineItems: input.lineItems.map((lineItem) => ({
+          id: lineItem.id,
+          rawMaterialId: lineItem.rawMaterialId,
+          rawMaterialCode: lineItem.rawMaterialCode,
+          rawMaterialName: lineItem.rawMaterialName,
+          quantity: lineItem.quantity,
+          unit: lineItem.unit,
+          unitCost: lineItem.unitCost,
+          lineTotal: lineItem.lineTotal,
+        })),
+        totalAmount: input.totalAmount,
+        lineItemCount: input.lineItems.length,
+        notes: normalizeNullableString(input.notes),
+        createdAt: now,
+        createdBy: userId,
+        updatedAt: now,
+        updatedBy: userId,
+        receivedAt: null,
+        receivedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+      };
+
+      transaction.set(docRef, document);
+      return toPurchase(docRef.id, document);
+    });
   },
 
   async update(
@@ -299,13 +323,7 @@ export const purchaseRepository = {
     },
     userId: string,
   ): Promise<Purchase> {
-    const docRef = getOrgCollection(orgId, 'purchases').doc(purchaseId);
-    const existing = await docRef.get();
-
-    if (!existing.exists) {
-      throw new Error('Purchase not found');
-    }
-
+    const firestore = getFirestore();
     const audit = buildAuditFields(userId, false);
 
     const updates: Partial<PurchaseDocument> = {
@@ -350,21 +368,50 @@ export const purchaseRepository = {
       updates.totalAmount = input.totalAmount;
     }
 
-    await docRef.update(updates);
+    return firestore.runTransaction(async (transaction) => {
+      const purchaseRef = getOrgCollection(orgId, 'purchases').doc(purchaseId);
+      const purchaseSnap = await transaction.get(purchaseRef);
 
-    const updated = await docRef.get();
-    return toPurchase(updated.id, updated.data() as PurchaseDocument);
+      if (!purchaseSnap.exists) {
+        throw new DomainError('NOT_FOUND', 'Purchase not found');
+      }
+
+      const purchaseData = purchaseSnap.data() as PurchaseDocument;
+      assertDraftPurchaseInTransaction(purchaseData);
+
+      transaction.update(purchaseRef, updates);
+
+      const updatedPurchase: PurchaseDocument = {
+        ...purchaseData,
+        ...updates,
+      };
+
+      return toPurchase(purchaseSnap.id, updatedPurchase);
+    });
   },
 
   async softDelete(orgId: string, purchaseId: string, userId: string): Promise<void> {
-    const docRef = getOrgCollection(orgId, 'purchases').doc(purchaseId);
-    const now = Timestamp.now();
+    const firestore = getFirestore();
 
-    await docRef.update({
-      deletedAt: now,
-      deletedBy: userId,
-      updatedAt: now,
-      updatedBy: userId,
+    await firestore.runTransaction(async (transaction) => {
+      const purchaseRef = getOrgCollection(orgId, 'purchases').doc(purchaseId);
+      const purchaseSnap = await transaction.get(purchaseRef);
+
+      if (!purchaseSnap.exists) {
+        throw new DomainError('NOT_FOUND', 'Purchase not found');
+      }
+
+      const purchaseData = purchaseSnap.data() as PurchaseDocument;
+      assertDraftPurchaseInTransaction(purchaseData);
+
+      const now = Timestamp.now();
+
+      transaction.update(purchaseRef, {
+        deletedAt: now,
+        deletedBy: userId,
+        updatedAt: now,
+        updatedBy: userId,
+      });
     });
   },
 

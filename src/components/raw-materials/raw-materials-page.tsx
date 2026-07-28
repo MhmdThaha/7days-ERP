@@ -10,6 +10,7 @@ import {
   getRawMaterialAction,
 } from '@/actions/raw-materials';
 import { RawMaterialFilters } from '@/components/raw-materials/raw-material-filters';
+import { useAuth } from '@/hooks/use-auth';
 import { RawMaterialFormDialog } from '@/components/raw-materials/raw-material-form-dialog';
 import { RawMaterialInventoryNotice } from '@/components/raw-materials/raw-material-inventory-notice';
 import { RawMaterialTable } from '@/components/raw-materials/raw-material-table';
@@ -26,6 +27,7 @@ import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { RawMaterialListItem, RawMaterialStatusFilter } from '@/types/raw-material';
 
 export function RawMaterialsPage() {
+  const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -68,7 +70,7 @@ export function RawMaterialsPage() {
 
       return result.data;
     },
-    enabled: Boolean(editingRawMaterialId),
+    enabled: isAuthenticated && Boolean(editingRawMaterialId),
   });
 
   const isSearching = search !== debouncedSearch;

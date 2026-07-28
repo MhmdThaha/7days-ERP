@@ -13,7 +13,7 @@ import type { ValidatedRow } from '@/lib/import/engine/types';
 import type { ImportRunReport } from '@/lib/import/services/import.service';
 
 vi.mock('@/lib/firebase/auth-server', () => ({
-  getServerOrgContext: vi.fn(),
+  getAuthenticatedContext: vi.fn(),
 }));
 
 vi.mock('@/lib/repositories/base.repository', () => ({
@@ -21,7 +21,7 @@ vi.mock('@/lib/repositories/base.repository', () => ({
 }));
 
 import { commitImportAction } from '@/actions/import';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { getFirestore } from '@/lib/repositories/base.repository';
 
 // ---------------------------------------------------------------------------
@@ -101,12 +101,12 @@ function productReport(rows: ValidatedRow[]): ImportRunReport {
 }
 
 beforeEach(() => {
-  vi.mocked(getServerOrgContext).mockReset();
+  vi.mocked(getAuthenticatedContext).mockReset();
   vi.mocked(getFirestore).mockReset();
 });
 
 function grantOrgContext() {
-  vi.mocked(getServerOrgContext).mockResolvedValue({ orgId: 'org-1', userId: 'user-1' });
+  vi.mocked(getAuthenticatedContext).mockResolvedValue({ orgId: 'org-1', userId: 'user-1', role: 'owner' });
 }
 
 // ---------------------------------------------------------------------------
@@ -199,10 +199,10 @@ describe('commitImportAction', () => {
   });
 
   it('fails with the org error when no organization is configured', async () => {
-    vi.mocked(getServerOrgContext).mockRejectedValue(
+    vi.mocked(getAuthenticatedContext).mockRejectedValue(
       new DomainError(
-        'ORG_NOT_CONFIGURED',
-        'Organization context is not configured. Set DEV_ORG_ID in your environment.',
+        'USER_NOT_FOUND',
+        'User profile not found. Complete bakery setup to continue.',
       ),
     );
 
@@ -210,7 +210,7 @@ describe('commitImportAction', () => {
 
     expect(result).toMatchObject({
       success: false,
-      code: 'ORG_NOT_CONFIGURED',
+      code: 'USER_NOT_FOUND',
     });
     // Firestore must never be touched without an authenticated org.
     expect(vi.mocked(getFirestore)).not.toHaveBeenCalled();

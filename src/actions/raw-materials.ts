@@ -6,7 +6,8 @@ import {
   updateRawMaterialSchema,
 } from '@/lib/domain/schemas/raw-material.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { rawMaterialService } from '@/lib/services/raw-material.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,17 +22,17 @@ export async function listRawMaterialsAction(
   params: RawMaterialListParams,
 ): Promise<ActionResult<RawMaterialListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'rawMaterial');
     const validated = rawMaterialListParamsSchema.parse(params);
     return rawMaterialService.list(orgId, validated);
   });
 }
 
-export async function getRawMaterialAction(
-  rawMaterialId: string,
-): Promise<ActionResult<RawMaterial>> {
+export async function getRawMaterialAction(rawMaterialId: string): Promise<ActionResult<RawMaterial>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'rawMaterial');
     return rawMaterialService.getById(orgId, rawMaterialId);
   });
 }
@@ -40,7 +41,8 @@ export async function createRawMaterialAction(
   input: CreateRawMaterialInput,
 ): Promise<ActionResult<RawMaterial>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'rawMaterial');
     const validated = createRawMaterialSchema.parse({
       ...input,
       code: input.code ?? '',
@@ -70,7 +72,8 @@ export async function updateRawMaterialAction(
   input: UpdateRawMaterialInput,
 ): Promise<ActionResult<RawMaterial>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'rawMaterial');
     const validated = updateRawMaterialSchema.parse({
       ...input,
       code: input.code ?? undefined,
@@ -84,11 +87,10 @@ export async function updateRawMaterialAction(
   });
 }
 
-export async function deleteRawMaterialAction(
-  rawMaterialId: string,
-): Promise<ActionResult<void>> {
+export async function deleteRawMaterialAction(rawMaterialId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'rawMaterial');
     await rawMaterialService.softDelete(orgId, rawMaterialId, userId);
   });
 }

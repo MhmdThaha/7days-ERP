@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getProductAction } from '@/actions/products';
+import { useAuth } from '@/hooks/use-auth';
 import { getRecipeAction, updateRecipeAction } from '@/actions/recipes';
 import { RecipeForm } from '@/components/recipes/recipe-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
@@ -30,6 +31,7 @@ type RecipeEditPageProps = {
 };
 
 export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +54,7 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   const { data: product } = useQuery({
@@ -65,7 +68,7 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
 
       return result.data;
     },
-    enabled: Boolean(recipe?.productId),
+    enabled: isAuthenticated && Boolean(recipe?.productId),
   });
 
   async function handleSubmit(values: RecipeFormValues) {
@@ -151,7 +154,7 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
         description={`Update ingredients and settings for ${recipe.recipeName}.`}
       />
 
-      <Card>
+      <Card className="overflow-visible">
         <CardHeader>
           <CardTitle>Recipe Builder</CardTitle>
         </CardHeader>
@@ -165,23 +168,24 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
+            footerActions={
+              <>
+                <Button
+                  nativeButton={false}
+                  variant="outline"
+                  render={<Link href={`/recipes/${recipeId}`} />}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </>
+            }
           />
         </CardContent>
       </Card>
-
-      <div className="flex justify-end gap-2">
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href={`/recipes/${recipeId}`} />}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
     </div>
   );
 }

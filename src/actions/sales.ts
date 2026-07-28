@@ -6,7 +6,8 @@ import {
   updateSaleSchema,
 } from '@/lib/domain/schemas/sale.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { saleService } from '@/lib/services/sale.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,7 +22,8 @@ export async function listSalesAction(
   params: SaleListParams,
 ): Promise<ActionResult<SaleListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'sales');
     const validated = saleListParamsSchema.parse(params);
     return saleService.list(orgId, validated);
   });
@@ -29,14 +31,16 @@ export async function listSalesAction(
 
 export async function getSaleAction(saleId: string): Promise<ActionResult<Sale>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'sales');
     return saleService.getById(orgId, saleId);
   });
 }
 
 export async function createSaleAction(input: CreateSaleInput): Promise<ActionResult<Sale>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'sales');
     const validated = createSaleSchema.parse({
       ...input,
       notes: input.notes ?? null,
@@ -60,7 +64,8 @@ export async function updateSaleAction(
   input: UpdateSaleInput,
 ): Promise<ActionResult<Sale>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'sales');
     const validated = updateSaleSchema.parse({
       ...input,
       notes: input.notes ?? undefined,
@@ -76,14 +81,16 @@ export async function updateSaleAction(
 
 export async function deleteSaleAction(saleId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'sales');
     await saleService.softDelete(orgId, saleId, userId);
   });
 }
 
 export async function completeSaleAction(saleId: string): Promise<ActionResult<Sale>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'complete', 'sales');
     return saleService.complete(orgId, saleId, userId);
   });
 }

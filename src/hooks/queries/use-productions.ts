@@ -3,12 +3,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { listProductionsAction } from '@/actions/production';
+import { useAuth } from '@/hooks/use-auth';
 import { PRODUCTION_PAGE_SIZE } from '@/lib/domain/constants/production';
 import type { ProductionListParams } from '@/types/production';
 
 export function useProductions(params: ProductionListParams) {
+  const { user, isAuthenticated } = useAuth();
+
   return useQuery({
-    queryKey: ['productions', params],
+    queryKey: ['productions', user?.uid, params],
     queryFn: async () => {
       const result = await listProductionsAction({
         search: params.search,
@@ -23,6 +26,7 @@ export function useProductions(params: ProductionListParams) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 }

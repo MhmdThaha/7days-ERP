@@ -3,12 +3,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { listSalesAction } from '@/actions/sales';
+import { useAuth } from '@/hooks/use-auth';
 import { SALE_PAGE_SIZE } from '@/lib/domain/constants/sale';
 import type { SaleListParams } from '@/types/sale';
 
 export function useSales(params: SaleListParams) {
+  const { user, isAuthenticated } = useAuth();
+
   return useQuery({
-    queryKey: ['sales', params],
+    queryKey: ['sales', user?.uid, params],
     queryFn: async () => {
       const result = await listSalesAction({
         search: params.search,
@@ -23,6 +26,7 @@ export function useSales(params: SaleListParams) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 }

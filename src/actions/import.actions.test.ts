@@ -10,7 +10,7 @@ import type { ValidatedRow } from '@/lib/import/engine/types';
 import type { ConflictDetectionResult } from '@/lib/import/services/conflict.service';
 
 vi.mock('@/lib/firebase/auth-server', () => ({
-  getServerOrgContext: vi.fn(),
+  getAuthenticatedContext: vi.fn(),
 }));
 
 vi.mock('@/lib/repositories/base.repository', () => ({
@@ -59,7 +59,7 @@ import {
   commitImportWithResolutionAction,
   detectImportConflictsAction,
 } from '@/actions/import';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { commitProductImportWithResolution } from '@/lib/import/services/conflict-resolution.service';
 import { detectProductImportConflictsForOrg } from '@/lib/import/services/conflict.service';
 import type { ImportRunReport } from '@/lib/import/services/import.service';
@@ -129,7 +129,7 @@ const noProductConflicts: ConflictDetectionResult = {
 };
 
 beforeEach(() => {
-  vi.mocked(getServerOrgContext).mockReset();
+  vi.mocked(getAuthenticatedContext).mockReset();
   vi.mocked(getFirestore).mockReset();
   vi.mocked(detectProductImportConflictsForOrg).mockReset();
   vi.mocked(commitProductImportWithResolution).mockReset();
@@ -140,7 +140,7 @@ beforeEach(() => {
 });
 
 function grantOrgContext() {
-  vi.mocked(getServerOrgContext).mockResolvedValue({ orgId: 'org-1', userId: 'user-1' });
+  vi.mocked(getAuthenticatedContext).mockResolvedValue({ orgId: 'org-1', userId: 'user-1', role: 'owner' });
 }
 
 describe('detectImportConflictsAction', () => {
@@ -282,8 +282,8 @@ describe('commitImportWithResolutionAction', () => {
   });
 
   it('fails without touching services when org context is missing', async () => {
-    vi.mocked(getServerOrgContext).mockRejectedValue(
-      new DomainError('ORG_NOT_CONFIGURED', 'Organization context is not configured.'),
+    vi.mocked(getAuthenticatedContext).mockRejectedValue(
+      new DomainError('USER_NOT_FOUND', 'User profile not found. Complete bakery setup to continue.'),
     );
 
     const result = await commitImportWithResolutionAction(
@@ -292,7 +292,7 @@ describe('commitImportWithResolutionAction', () => {
       'new-only',
     );
 
-    expect(result).toMatchObject({ success: false, code: 'ORG_NOT_CONFIGURED' });
+    expect(result).toMatchObject({ success: false, code: 'USER_NOT_FOUND' });
     expect(commitSaleImport).not.toHaveBeenCalled();
   });
 });

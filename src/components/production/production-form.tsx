@@ -2,15 +2,18 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 
 import { getProductAction } from '@/actions/products';
+import { useAuth } from '@/hooks/use-auth';
 import { getRecipeAction, listRecipesAction } from '@/actions/recipes';
 import { ProductionLineItemRow } from '@/components/production/production-line-item-row';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionTotalBar } from '@/components/production/production-total-bar';
+import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
+import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +34,11 @@ import {
   getLocalProductionDateString,
   type ProductionFieldError,
 } from '@/lib/utils/production-form-errors';
+import {
+  PRODUCTION_GRID_MIN_WIDTH,
+  PRODUCTION_GRID_ROW_CLASS,
+  PRODUCTION_LINE_COLUMNS,
+} from '@/lib/ui/line-items-grid-config';
 import { toProductListItem } from '@/lib/utils/catalog-list-item';
 import type { Production } from '@/types/production';
 import type { ProductListItem } from '@/types/product';
@@ -38,11 +46,13 @@ import type { Recipe, RecipeListItem } from '@/types/recipe';
 
 type ProductionFormProps = {
   production?: Production;
+  initialLines?: ProductionFormValues['lines'];
   onSubmit: (values: ProductionFormValues) => Promise<void>;
   isSubmitting?: boolean;
   formId: string;
   serverFieldError?: ProductionFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  footerActions?: ReactNode;
 };
 
 const defaultValues: ProductionFormValues = {
@@ -66,12 +76,15 @@ function isEligibleProduct(
 
 export function ProductionForm({
   production,
+  initialLines,
   onSubmit,
   isSubmitting = false,
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  footerActions,
 }: ProductionFormProps) {
+  const { isAuthenticated } = useAuth();
   const {
     register,
     handleSubmit,
@@ -101,7 +114,10 @@ export function ProductionForm({
     });
   }, [append]);
 
-  const { data: recipesResult, isLoading: isLoadingRecipes } = useQuery({
+  const {
+    data: recipesResult,
+    isLoading: isLoadingRecipes,
+  } = useQuery({
     queryKey: ['recipes', 'production-picker'],
     queryFn: async () => {
       const result = await listRecipesAction({
@@ -116,6 +132,7 @@ export function ProductionForm({
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   const selectedProductIds = useMemo(
@@ -161,7 +178,7 @@ export function ProductionForm({
 
   const { data: fullRecipes, isLoading: isLoadingFullRecipes } = useQuery({
     queryKey: ['recipes', 'production-full', activeRecipeIds],
-    enabled: activeRecipeIds.length > 0,
+    enabled: isAuthenticated && activeRecipeIds.length > 0,
     queryFn: async () => {
       const results = await Promise.all(activeRecipeIds.map((id) => getRecipeAction(id)));
       const recipes: Recipe[] = [];
@@ -246,21 +263,34 @@ export function ProductionForm({
   const hasValidPreviewLines = previewLines.length > 0;
 
   useEffect(() => {
-    if (!production) {
+    if (production) {
+      reset({
+        productionDate: production.productionDate,
+        lines: production.lines.map((line) => ({
+          id: line.id,
+          productId: line.productId,
+          quantity: line.quantity,
+          unit: line.unit,
+        })),
+        notes: production.notes ?? '',
+      });
       return;
     }
 
-    reset({
-      productionDate: production.productionDate,
-      lines: production.lines.map((line) => ({
-        id: line.id,
-        productId: line.productId,
-        quantity: line.quantity,
-        unit: line.unit,
-      })),
-      notes: production.notes ?? '',
-    });
-  }, [production, reset]);
+    if (initialLines && initialLines.length > 0) {
+      reset({
+        ...defaultValues,
+        lines: initialLines.map((line) => ({
+          productId: line.productId,
+          quantity: line.quantity,
+          unit: line.unit,
+        })),
+      });
+      return;
+    }
+
+    reset(defaultValues);
+  }, [production, initialLines, reset]);
 
   useEffect(() => {
     if (!serverFieldError) {
@@ -317,7 +347,12 @@ export function ProductionForm({
     isLoadingPreviewMaterials;
   const isFormDisabled = isSubmitting || isLoadingPickers;
 
-  useAutoFirstLine(Boolean(production), fields.length, !isLoadingRecipes, appendEmptyLine);
+  useAutoFirstLine(
+    Boolean(production) || Boolean(initialLines?.length),
+    fields.length,
+    !isLoadingRecipes,
+    appendEmptyLine,
+  );
 
   return (
     <form
@@ -377,13 +412,12 @@ export function ProductionForm({
         </div>
       </fieldset>
 
-      <div className="space-y-4 border-t pt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-0.5">
             <h2 className="text-base font-semibold">Product Lines</h2>
             <p className="text-sm text-muted-foreground">
-              Only active products with an active recipe can be added. Each product may appear once
-              per production entry.
+              Active products with an active recipe only. Each product may appear once per entry.
             </p>
           </div>
           <Button
@@ -397,11 +431,6 @@ export function ProductionForm({
             Add Product Line
           </Button>
         </div>
-
-        <p className="text-sm text-muted-foreground">
-          Search for active products with an active recipe. Type a product name or code to find
-          items beyond the first results.
-        </p>
 
         {errors.lines?.message ? (
           <p className="text-sm text-destructive" role="alert">
@@ -419,7 +448,11 @@ export function ProductionForm({
             No product lines yet. Add at least one product to record this production draft.
           </div>
         ) : (
-          <div className="space-y-3">
+          <LineItemsGrid
+            columns={PRODUCTION_LINE_COLUMNS}
+            rowClassName={PRODUCTION_GRID_ROW_CLASS}
+            minWidthClassName={PRODUCTION_GRID_MIN_WIDTH}
+          >
             {fields.map((field, index) => {
               const product = productsById.get(lines[index]?.productId ?? '');
 
@@ -440,10 +473,26 @@ export function ProductionForm({
                   onRemove={() => remove(index)}
                   onProductChange={(productId) => handleProductChange(index, productId)}
                   onDuplicateProduct={handleDuplicateProduct}
+                  onAdvanceToNextLine={() => {
+                    const nextIndex = index + 1;
+                    const didAppend = nextIndex >= fields.length;
+
+                    if (didAppend) {
+                      appendEmptyLine();
+                      window.requestAnimationFrame(() => {
+                        window.requestAnimationFrame(() => {
+                          focusProductionLineField(nextIndex, 'productId');
+                        });
+                      });
+                      return;
+                    }
+
+                    focusProductionLineField(nextIndex, 'productId');
+                  }}
                 />
               );
             })}
-          </div>
+          </LineItemsGrid>
         )}
       </div>
 
@@ -453,7 +502,16 @@ export function ProductionForm({
         hasValidLines={hasValidPreviewLines}
       />
 
-      <ProductionTotalBar lineCount={fields.length} totalUnits={totalUnits} />
+      <EntryFormStickyFooter
+        summary={
+          <ProductionTotalBar
+            lineCount={fields.length}
+            totalUnits={totalUnits}
+            variant="compact"
+          />
+        }
+        actions={footerActions}
+      />
 
       {isSubmitting ? (
         <p className="sr-only" aria-live="polite">

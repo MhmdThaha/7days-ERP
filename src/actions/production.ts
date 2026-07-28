@@ -6,7 +6,8 @@ import {
   updateProductionSchema,
 } from '@/lib/domain/schemas/production.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { productionService } from '@/lib/services/production.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,17 +22,17 @@ export async function listProductionsAction(
   params: ProductionListParams,
 ): Promise<ActionResult<ProductionListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'production');
     const validated = productionListParamsSchema.parse(params);
     return productionService.list(orgId, validated);
   });
 }
 
-export async function getProductionAction(
-  productionId: string,
-): Promise<ActionResult<Production>> {
+export async function getProductionAction(productionId: string): Promise<ActionResult<Production>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'production');
     return productionService.getById(orgId, productionId);
   });
 }
@@ -40,7 +41,8 @@ export async function createProductionAction(
   input: CreateProductionInput,
 ): Promise<ActionResult<Production>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'production');
     const validated = createProductionSchema.parse({
       ...input,
       notes: input.notes ?? null,
@@ -63,7 +65,8 @@ export async function updateProductionAction(
   input: UpdateProductionInput,
 ): Promise<ActionResult<Production>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'production');
     const validated = updateProductionSchema.parse({
       ...input,
       notes: input.notes ?? undefined,
@@ -79,16 +82,16 @@ export async function updateProductionAction(
 
 export async function deleteProductionAction(productionId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'production');
     await productionService.softDelete(orgId, productionId, userId);
   });
 }
 
-export async function completeProductionAction(
-  productionId: string,
-): Promise<ActionResult<Production>> {
+export async function completeProductionAction(productionId: string): Promise<ActionResult<Production>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'complete', 'production');
     return productionService.complete(orgId, productionId, userId);
   });
 }

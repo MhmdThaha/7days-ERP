@@ -6,7 +6,8 @@ import {
   updatePurchaseSchema,
 } from '@/lib/domain/schemas/purchase.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { purchaseService } from '@/lib/services/purchase.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,7 +22,8 @@ export async function listPurchasesAction(
   params: PurchaseListParams,
 ): Promise<ActionResult<PurchaseListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'purchase');
     const validated = purchaseListParamsSchema.parse(params);
     return purchaseService.list(orgId, validated);
   });
@@ -29,16 +31,16 @@ export async function listPurchasesAction(
 
 export async function getPurchaseAction(purchaseId: string): Promise<ActionResult<Purchase>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'purchase');
     return purchaseService.getById(orgId, purchaseId);
   });
 }
 
-export async function createPurchaseAction(
-  input: CreatePurchaseInput,
-): Promise<ActionResult<Purchase>> {
+export async function createPurchaseAction(input: CreatePurchaseInput): Promise<ActionResult<Purchase>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'purchase');
     const validated = createPurchaseSchema.parse({
       ...input,
       invoiceNumber: input.invoiceNumber ?? null,
@@ -65,7 +67,8 @@ export async function updatePurchaseAction(
   input: UpdatePurchaseInput,
 ): Promise<ActionResult<Purchase>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'purchase');
     const validated = updatePurchaseSchema.parse({
       ...input,
       invoiceNumber: input.invoiceNumber ?? undefined,
@@ -82,14 +85,16 @@ export async function updatePurchaseAction(
 
 export async function deletePurchaseAction(purchaseId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'purchase');
     await purchaseService.softDelete(orgId, purchaseId, userId);
   });
 }
 
 export async function receivePurchaseAction(purchaseId: string): Promise<ActionResult<Purchase>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'complete', 'purchase');
     return purchaseService.receive(orgId, purchaseId, userId);
   });
 }

@@ -6,7 +6,8 @@ import {
   updateProductSchema,
 } from '@/lib/domain/schemas/product.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { productService } from '@/lib/services/product.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,7 +22,8 @@ export async function listProductsAction(
   params: ProductListParams,
 ): Promise<ActionResult<ProductListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'product');
     const validated = productListParamsSchema.parse(params);
     return productService.list(orgId, validated);
   });
@@ -29,16 +31,16 @@ export async function listProductsAction(
 
 export async function getProductAction(productId: string): Promise<ActionResult<Product>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'product');
     return productService.getById(orgId, productId);
   });
 }
 
-export async function createProductAction(
-  input: CreateProductInput,
-): Promise<ActionResult<Product>> {
+export async function createProductAction(input: CreateProductInput): Promise<ActionResult<Product>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'product');
     const validated = createProductSchema.parse({
       ...input,
       code: input.code ?? '',
@@ -66,7 +68,8 @@ export async function updateProductAction(
   input: UpdateProductInput,
 ): Promise<ActionResult<Product>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'product');
     const validated = updateProductSchema.parse({
       ...input,
       code: input.code ?? '',
@@ -82,7 +85,8 @@ export async function updateProductAction(
 
 export async function deleteProductAction(productId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'product');
     await productService.softDelete(orgId, productId, userId);
   });
 }

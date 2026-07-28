@@ -6,6 +6,8 @@ export type DomainErrorCode =
   | 'PRODUCT_INACTIVE'
   | 'VALIDATION_ERROR'
   | 'UNAUTHORIZED'
+  | 'INVALID_ROLE'
+  | 'USER_NOT_FOUND'
   | 'ORG_NOT_CONFIGURED';
 
 export class DomainError extends Error {

@@ -3,12 +3,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { listExpensesAction } from '@/actions/expenses';
+import { useAuth } from '@/hooks/use-auth';
 import { EXPENSE_PAGE_SIZE } from '@/lib/domain/constants/expense';
 import type { ExpenseListParams } from '@/types/expense';
 
 export function useExpenses(params: ExpenseListParams) {
+  const { user, isAuthenticated } = useAuth();
+
   return useQuery({
-    queryKey: ['expenses', params],
+    queryKey: ['expenses', user?.uid, params],
     queryFn: async () => {
       const result = await listExpensesAction({
         search: params.search,
@@ -24,6 +27,7 @@ export function useExpenses(params: ExpenseListParams) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 }

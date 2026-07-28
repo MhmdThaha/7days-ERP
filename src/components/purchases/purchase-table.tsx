@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { debugLog } from '@/lib/debug/sprint-debug';
 import { cn } from '@/lib/utils';
 import type { PurchaseListItem } from '@/types/purchase';
 
@@ -91,6 +92,13 @@ export function PurchaseTable({
   onDelete,
   onReceive,
 }: PurchaseTableProps) {
+  debugLog('PurchaseTable', 'RENDER', {
+    rowsReceived: purchases.length,
+    isLoading: Boolean(isLoading),
+    isFetching,
+    renders: isLoading ? 'skeleton (5 placeholder rows)' : purchases.length === 0 ? 'empty row: "No purchases to display."' : `${purchases.length} data rows`,
+  });
+
   if (isLoading) {
     return <PurchaseTableSkeleton />;
   }

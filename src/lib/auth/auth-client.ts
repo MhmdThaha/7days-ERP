@@ -1,7 +1,9 @@
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
   type UserCredential,
@@ -40,6 +42,7 @@ export async function signUpWithEmailPassword(input: SignUpInput): Promise<UserC
 
     if (input.displayName) {
       await updateProfile(credential.user, { displayName: input.displayName });
+      await credential.user.reload();
     }
 
     return credential;
@@ -49,6 +52,13 @@ export async function signUpWithEmailPassword(input: SignUpInput): Promise<UserC
 export async function signInWithEmailPassword(input: SignInInput): Promise<UserCredential> {
   return runAuthOperation(async () => {
     return signInWithEmailAndPassword(getClientAuth(), input.email, input.password);
+  });
+}
+
+export async function signInWithGoogle(): Promise<UserCredential> {
+  return runAuthOperation(async () => {
+    const provider = new GoogleAuthProvider();
+    return signInWithPopup(getClientAuth(), provider);
   });
 }
 

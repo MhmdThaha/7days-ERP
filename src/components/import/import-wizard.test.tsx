@@ -20,6 +20,14 @@ vi.mock('@/actions/import', () => ({
   commitImportWithResolutionAction: vi.fn(),
 }));
 
+vi.mock('@/hooks/use-auth', () => ({
+  useAuth: vi.fn(() => ({
+    user: { uid: 'test-uid' },
+    isAuthenticated: true,
+    isLoading: false,
+  })),
+}));
+
 import {
   analyzeImportAction,
   commitImportWithResolutionAction,

@@ -3,6 +3,7 @@ export const SESSION_COOKIE_NAME = 'session';
 
 export const DEFAULT_LOGIN_PATH = '/login';
 export const DEFAULT_AUTHENTICATED_PATH = '/';
+export const CREATE_BAKERY_PATH = '/create-bakery';
 
 export const AUTH_ROUTES = [
   '/login',

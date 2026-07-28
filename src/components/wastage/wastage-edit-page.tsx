@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getWastageAction, updateWastageAction } from '@/actions/wastage';
+import { useAuth } from '@/hooks/use-auth';
 import { WastageForm } from '@/components/wastage/wastage-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -27,6 +28,7 @@ type WastageEditPageProps = {
 };
 
 export function WastageEditPage({ wastageId }: WastageEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,6 +52,7 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleSubmit(values: WastageFormValues) {

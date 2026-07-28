@@ -11,6 +11,7 @@ import {
   getFirestore,
   getOrgCollection,
 } from '@/lib/repositories/base.repository';
+import { reserveUniqueNumberInTransaction } from '@/lib/repositories/unique-number.repository';
 import { inventoryRepository } from '@/lib/repositories/inventory.repository';
 import type {
   Sale,
@@ -266,43 +267,56 @@ export const saleRepository = {
     },
     userId: string,
   ): Promise<Sale> {
+    const firestore = getFirestore();
     const collection = getOrgCollection(orgId, 'sales');
     const docRef = collection.doc();
-    const now = Timestamp.now();
+    const normalizedSaleNumber = input.saleNumber.trim().toUpperCase();
 
-    const document: SaleDocument = {
-      organizationId: orgId,
-      saleNumber: input.saleNumber.trim().toUpperCase(),
-      saleDate: input.saleDate,
-      customerId: null,
-      customerNameSnapshot: normalizeNullableString(input.customerNameSnapshot),
-      status: 'draft',
-      lines: input.lines.map((line) => ({
-        id: line.id,
-        productId: line.productId,
-        productNameSnapshot: line.productNameSnapshot,
-        productCodeSnapshot: line.productCodeSnapshot,
-        sellingPriceSnapshot: line.sellingPriceSnapshot,
-        quantity: line.quantity,
-        unit: line.unit,
-        lineTotal: line.lineTotal,
-      })),
-      subtotal: input.subtotal,
-      totalCogs: 0,
-      lineCount: input.lines.length,
-      notes: normalizeNullableString(input.notes),
-      createdAt: now,
-      createdBy: userId,
-      updatedAt: now,
-      updatedBy: userId,
-      completedAt: null,
-      completedBy: null,
-      deletedAt: null,
-      deletedBy: null,
-    };
+    return firestore.runTransaction(async (transaction) => {
+      await reserveUniqueNumberInTransaction(
+        transaction,
+        orgId,
+        'sale',
+        normalizedSaleNumber,
+        docRef.id,
+      );
 
-    await docRef.set(document);
-    return toSale(docRef.id, document);
+      const now = Timestamp.now();
+
+      const document: SaleDocument = {
+        organizationId: orgId,
+        saleNumber: normalizedSaleNumber,
+        saleDate: input.saleDate,
+        customerId: null,
+        customerNameSnapshot: normalizeNullableString(input.customerNameSnapshot),
+        status: 'draft',
+        lines: input.lines.map((line) => ({
+          id: line.id,
+          productId: line.productId,
+          productNameSnapshot: line.productNameSnapshot,
+          productCodeSnapshot: line.productCodeSnapshot,
+          sellingPriceSnapshot: line.sellingPriceSnapshot,
+          quantity: line.quantity,
+          unit: line.unit,
+          lineTotal: line.lineTotal,
+        })),
+        subtotal: input.subtotal,
+        totalCogs: 0,
+        lineCount: input.lines.length,
+        notes: normalizeNullableString(input.notes),
+        createdAt: now,
+        createdBy: userId,
+        updatedAt: now,
+        updatedBy: userId,
+        completedAt: null,
+        completedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+      };
+
+      transaction.set(docRef, document);
+      return toSale(docRef.id, document);
+    });
   },
 
   async update(

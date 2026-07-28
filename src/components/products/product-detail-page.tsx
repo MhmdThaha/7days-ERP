@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { deleteProductAction, getProductAction } from '@/actions/products';
 import { ProductFormDialog } from '@/components/products/product-form-dialog';
+import { useAuth } from '@/hooks/use-auth';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
@@ -38,6 +39,7 @@ function formatDateTime(date: Date): string {
 }
 
 export function ProductDetailPage({ productId }: ProductDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -55,6 +57,7 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleDelete() {

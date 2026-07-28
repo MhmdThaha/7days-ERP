@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeExpenseAction, deleteExpenseAction, getExpenseAction } from '@/actions/expenses';
+import { useAuth } from '@/hooks/use-auth';
 import { ExpenseStatusBadge } from '@/components/expenses/expense-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
@@ -50,6 +51,7 @@ function formatDate(date: string): string {
 }
 
 export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -68,6 +70,7 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function invalidateExpenseQueries() {

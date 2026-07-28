@@ -4,10 +4,13 @@ import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 
 import { getProductAction } from '@/actions/products';
+import { useAuth } from '@/hooks/use-auth';
 import { toProductListItem } from '@/lib/utils/catalog-list-item';
 import type { ProductListItem } from '@/types/product';
 
 export function useProductsByIds(productIds: string[]) {
+  const { user, isAuthenticated } = useAuth();
+
   const uniqueIds = useMemo(
     () => [...new Set(productIds.filter(Boolean))].sort(),
     [productIds],
@@ -15,7 +18,7 @@ export function useProductsByIds(productIds: string[]) {
 
   const queries = useQueries({
     queries: uniqueIds.map((id) => ({
-      queryKey: ['product', id],
+      queryKey: ['product', user?.uid, id],
       queryFn: async () => {
         const result = await getProductAction(id);
 
@@ -25,6 +28,7 @@ export function useProductsByIds(productIds: string[]) {
 
         return toProductListItem(result.data);
       },
+      enabled: isAuthenticated,
       staleTime: 5 * 60 * 1000,
     })),
   });

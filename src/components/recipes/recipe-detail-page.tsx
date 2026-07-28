@@ -9,6 +9,7 @@ import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getProductAction } from '@/actions/products';
+import { useAuth } from '@/hooks/use-auth';
 import { deleteRecipeAction, getRecipeAction } from '@/actions/recipes';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
@@ -49,6 +50,7 @@ function formatWeight(value: number): string {
 }
 
 export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -65,6 +67,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   const { data: product } = useQuery({
@@ -78,7 +81,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
 
       return result.data;
     },
-    enabled: Boolean(recipe?.productId),
+    enabled: isAuthenticated && Boolean(recipe?.productId),
   });
 
   async function handleDelete() {

@@ -20,12 +20,31 @@ export function mapRecipeActionError(code?: string): RecipeFieldError | null {
   }
 }
 
-export function focusRecipeFormField(field: RecipeFieldError['field']): void {
-  const fieldId =
-    field === 'productId' || field.startsWith('ingredients.')
-      ? field.replace('ingredients.', 'ingredient-')
-      : field;
+export function focusRecipeIngredientField(
+  index: number,
+  field: 'rawMaterialId' | 'quantity',
+): void {
+  window.requestAnimationFrame(() => {
+    const element = document.getElementById(`ingredient-${index}-${field}`);
 
+    if (element instanceof HTMLElement) {
+      element.focus({ preventScroll: false });
+    }
+  });
+}
+
+export function focusRecipeFormField(field: RecipeFieldError['field']): void {
+  const ingredientMatch = /^ingredients\.(\d+)\.(rawMaterialId|quantity)$/.exec(field);
+
+  if (ingredientMatch?.[1] && ingredientMatch[2]) {
+    focusRecipeIngredientField(
+      Number.parseInt(ingredientMatch[1], 10),
+      ingredientMatch[2] as 'rawMaterialId' | 'quantity',
+    );
+    return;
+  }
+
+  const fieldId = field === 'productId' ? 'productId' : field;
   const element = document.getElementById(fieldId);
 
   if (element instanceof HTMLElement) {

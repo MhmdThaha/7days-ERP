@@ -3,12 +3,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { listRawMaterialsAction } from '@/actions/raw-materials';
+import { useAuth } from '@/hooks/use-auth';
 import { RAW_MATERIAL_PAGE_SIZE } from '@/lib/domain/constants/raw-material';
 import type { RawMaterialListParams } from '@/types/raw-material';
 
 export function useRawMaterials(params: RawMaterialListParams) {
+  const { user, isAuthenticated } = useAuth();
+
   return useQuery({
-    queryKey: ['raw-materials', params],
+    queryKey: ['raw-materials', user?.uid, params],
     queryFn: async () => {
       const result = await listRawMaterialsAction({
         search: params.search,
@@ -25,6 +28,7 @@ export function useRawMaterials(params: RawMaterialListParams) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 }

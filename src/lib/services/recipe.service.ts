@@ -2,6 +2,7 @@ import 'server-only';
 
 import { RECIPE_CODE_PREFIX } from '@/lib/domain/constants/recipe';
 import { DomainError } from '@/lib/domain/errors';
+import { sumQuantitiesAsKg } from '@/lib/domain/units/mass-conversion';
 import { productRepository } from '@/lib/repositories/product.repository';
 import { rawMaterialRepository } from '@/lib/repositories/raw-material.repository';
 import { recipeRepository } from '@/lib/repositories/recipe.repository';
@@ -20,7 +21,12 @@ function formatGeneratedCode(sequence: number): string {
 }
 
 function calculateTotalWeight(ingredients: RecipeIngredient[]): number {
-  return ingredients.reduce((sum, ingredient) => sum + ingredient.quantity, 0);
+  return sumQuantitiesAsKg(
+    ingredients.map((ingredient) => ({
+      quantity: ingredient.quantity,
+      unit: ingredient.unit,
+    })),
+  );
 }
 
 async function resolveUniqueCode(

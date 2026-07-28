@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeWastageAction, deleteWastageAction, getWastageAction } from '@/actions/wastage';
+import { useAuth } from '@/hooks/use-auth';
 import { WastageStatusBadge } from '@/components/wastage/wastage-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
@@ -67,6 +68,7 @@ function formatQuantity(value: number): string {
 }
 
 export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -85,6 +87,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   const isDraft = wastage?.status === 'draft';

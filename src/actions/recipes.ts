@@ -6,7 +6,8 @@ import {
   updateRecipeSchema,
 } from '@/lib/domain/schemas/recipe.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { recipeService } from '@/lib/services/recipe.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,7 +22,8 @@ export async function listRecipesAction(
   params: RecipeListParams,
 ): Promise<ActionResult<RecipeListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'recipe');
     const validated = recipeListParamsSchema.parse(params);
     return recipeService.list(orgId, validated);
   });
@@ -29,16 +31,16 @@ export async function listRecipesAction(
 
 export async function getRecipeAction(recipeId: string): Promise<ActionResult<Recipe>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'recipe');
     return recipeService.getById(orgId, recipeId);
   });
 }
 
-export async function createRecipeAction(
-  input: CreateRecipeInput,
-): Promise<ActionResult<Recipe>> {
+export async function createRecipeAction(input: CreateRecipeInput): Promise<ActionResult<Recipe>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'recipe');
     const validated = createRecipeSchema.parse({
       ...input,
       recipeCode: input.recipeCode ?? '',
@@ -66,7 +68,8 @@ export async function updateRecipeAction(
   input: UpdateRecipeInput,
 ): Promise<ActionResult<Recipe>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'recipe');
     const validated = updateRecipeSchema.parse({
       ...input,
       notes: input.notes ?? undefined,
@@ -82,7 +85,8 @@ export async function updateRecipeAction(
 
 export async function deleteRecipeAction(recipeId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'recipe');
     await recipeService.softDelete(orgId, recipeId, userId);
   });
 }

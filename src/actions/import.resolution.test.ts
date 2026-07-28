@@ -12,7 +12,7 @@ import type { ConflictDetectionResult } from '@/lib/import/services/conflict.ser
 import type { ImportRunReport } from '@/lib/import/services/import.service';
 
 vi.mock('@/lib/firebase/auth-server', () => ({
-  getServerOrgContext: vi.fn(),
+  getAuthenticatedContext: vi.fn(),
 }));
 
 vi.mock('@/lib/repositories/base.repository', () => ({
@@ -32,7 +32,7 @@ vi.mock('@/lib/import/services/conflict-resolution.service', async (importOrigin
 
 import { commitImportWithResolutionAction } from '@/actions/import';
 import { commitProductImportWithResolution } from '@/lib/import/services/conflict-resolution.service';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { getFirestore } from '@/lib/repositories/base.repository';
 
 function validRow(rowNumber: number, name = `Item ${rowNumber}`): ValidatedRow {
@@ -87,13 +87,13 @@ const noConflicts: ConflictDetectionResult = {
 };
 
 beforeEach(() => {
-  vi.mocked(getServerOrgContext).mockReset();
+  vi.mocked(getAuthenticatedContext).mockReset();
   vi.mocked(getFirestore).mockReset();
   vi.mocked(commitProductImportWithResolution).mockReset();
 });
 
 function grantOrgContext() {
-  vi.mocked(getServerOrgContext).mockResolvedValue({ orgId: 'org-1', userId: 'user-1' });
+  vi.mocked(getAuthenticatedContext).mockResolvedValue({ orgId: 'org-1', userId: 'user-1', role: 'owner' });
 }
 
 describe('commitImportWithResolutionAction', () => {
@@ -201,8 +201,8 @@ describe('commitImportWithResolutionAction', () => {
   });
 
   it('fails without touching Firestore when org context is missing', async () => {
-    vi.mocked(getServerOrgContext).mockRejectedValue(
-      new DomainError('ORG_NOT_CONFIGURED', 'Organization context is not configured.'),
+    vi.mocked(getAuthenticatedContext).mockRejectedValue(
+      new DomainError('USER_NOT_FOUND', 'User profile not found. Complete bakery setup to continue.'),
     );
 
     const result = await commitImportWithResolutionAction(
@@ -211,7 +211,7 @@ describe('commitImportWithResolutionAction', () => {
       'new-only',
     );
 
-    expect(result).toMatchObject({ success: false, code: 'ORG_NOT_CONFIGURED' });
+    expect(result).toMatchObject({ success: false, code: 'USER_NOT_FOUND' });
     expect(vi.mocked(getFirestore)).not.toHaveBeenCalled();
     expect(vi.mocked(commitProductImportWithResolution)).not.toHaveBeenCalled();
   });

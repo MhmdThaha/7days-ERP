@@ -1,7 +1,8 @@
 'use server';
 
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { MAX_IMPORT_FILE_BYTES, isSupportedImportFileName } from '@/lib/import/constants';
 import { getImportDefinition, type ImportEntityType } from '@/lib/import/definitions';
 import { ImportEngineError } from '@/lib/import/engine/types';
@@ -103,7 +104,8 @@ export async function getImportSheetsAction(
   formData: FormData,
 ): Promise<ActionResult<{ sheetNames: string[] }>> {
   return wrapImportAction(async () => {
-    await getServerOrgContext();
+    const { role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'import');
 
     const { bytes } = await readUpload(formData);
 
@@ -118,7 +120,8 @@ export async function analyzeImportAction(
   sheetName?: string,
 ): Promise<ActionResult<ImportAnalysis>> {
   return wrapImportAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'import');
 
     const definition = getImportDefinition(entityType);
 
@@ -259,6 +262,9 @@ export async function revalidateImportMappingAction(
   sheetName?: string,
 ): Promise<ActionResult<ImportAnalysis>> {
   return wrapImportAction(async () => {
+    const { role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'import');
+
     const definition = getImportDefinition(entityType);
 
     if (!definition) {
@@ -368,7 +374,8 @@ export async function detectImportConflictsAction(
   report: ImportRunReport,
 ): Promise<ActionResult<ImportConflictDetectionOutcome>> {
   return wrapImportAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'import');
     const handler = assertImportConflictSupported(report.entityType);
 
     return handler(report, { db: getFirestore(), orgId });
@@ -386,7 +393,8 @@ export async function commitImportWithResolutionAction(
   options: CommitImportOptions = {},
 ): Promise<ActionResult<CommitImportOutcome>> {
   return wrapImportAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'import');
     const handler = assertImportCommitSupported(report.entityType);
     const startedAt = Date.now();
     const result = await handler(report, conflicts, strategy, {
@@ -421,7 +429,8 @@ export async function commitImportAction(
   report: ImportRunReport,
 ): Promise<ActionResult<CommitImportOutcome>> {
   return wrapImportAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'import');
     const handler = assertImportLegacyCommitSupported(report.entityType);
     const startedAt = Date.now();
     const result = await handler(report, {

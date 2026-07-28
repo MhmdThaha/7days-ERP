@@ -13,6 +13,7 @@ import {
   deleteProductionAction,
   getProductionAction,
 } from '@/actions/production';
+import { useAuth } from '@/hooks/use-auth';
 import { getRecipeAction } from '@/actions/recipes';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
@@ -69,6 +70,7 @@ function formatQuantity(value: number): string {
 }
 
 export function ProductionDetailPage({ productionId }: ProductionDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -87,6 +89,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   const recipeIds = useMemo(
@@ -96,7 +99,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
   const { data: recipes, isLoading: isLoadingRecipes } = useQuery({
     queryKey: ['recipes', 'production-detail', recipeIds],
-    enabled: recipeIds.length > 0,
+    enabled: isAuthenticated && recipeIds.length > 0,
     queryFn: async () => {
       const results = await Promise.all(recipeIds.map((id) => getRecipeAction(id)));
       const loaded: Recipe[] = [];

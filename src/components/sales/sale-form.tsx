@@ -2,18 +2,27 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { getProductAction } from '@/actions/products';
 import { SaleLineItemRow } from '@/components/sales/sale-line-item-row';
 import { SaleTotalBar } from '@/components/sales/sale-total-bar';
+import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
+import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
+import {
+  SALE_GRID_MIN_WIDTH,
+  SALE_GRID_ROW_CLASS,
+  SALE_LINE_COLUMNS,
+} from '@/lib/ui/line-items-grid-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
 import { useProductsByIds } from '@/hooks/use-products-by-ids';
+import { useAuth } from '@/hooks/use-auth';
+import { debugLog, debugNavType } from '@/lib/debug/sprint-debug';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/sale';
 import { saleFormSchema, type SaleFormValues } from '@/lib/domain/schemas/sale.schema';
 import { getRecentCustomers } from '@/lib/utils/form-recent-values';
@@ -26,6 +35,7 @@ import {
 } from '@/lib/utils/sale-form-errors';
 import { toProductListItem } from '@/lib/utils/catalog-list-item';
 import type { Sale } from '@/types/sale';
+import type { ProductListItem } from '@/types/product';
 
 type SaleFormProps = {
   sale?: Sale;
@@ -34,12 +44,16 @@ type SaleFormProps = {
   formId: string;
   serverFieldError?: SaleFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  footerActions?: ReactNode;
 };
 
 const defaultValues: SaleFormValues = {
   saleDate: getLocalSaleDateString(),
   customerName: '',
-  lines: [],
+  // The first empty row lives in defaultValues (not an effect) so that
+  // reset(defaultValues) always restores it, regardless of effect ordering
+  // or StrictMode double-invocation. See Sprint 2 root cause #1.
+  lines: [{ productId: '', quantity: Number.NaN, sellingPrice: 0 }],
   notes: '',
 };
 
@@ -50,14 +64,16 @@ export function SaleForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  footerActions,
 }: SaleFormProps) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const {
     register,
     handleSubmit,
     setValue,
     setError,
     clearErrors,
-    watch,
     reset,
     control,
     formState: { errors },
@@ -72,16 +88,39 @@ export function SaleForm({
   });
 
   const [recentCustomers, setRecentCustomers] = useState<string[]>([]);
+  const [selectedProductsById, setSelectedProductsById] = useState<
+    Map<string, ProductListItem>
+  >(() => new Map());
 
-  const lines = watch('lines');
+  const lines = useWatch({ control, name: 'lines', defaultValue: defaultValues.lines }) ?? [];
+
+  useEffect(() => {
+    debugLog('SaleForm', 'MOUNTED', { navType: debugNavType(), isEditMode: Boolean(sale) });
+
+    return () => debugLog('SaleForm', 'UNMOUNTED', {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const appendEmptyLine = useCallback(() => {
+    debugLog('SaleForm', 'appendEmptyLine()', {
+      fieldsLengthBefore: fields.length,
+      fieldIdsBefore: fields.map((field) => field.id),
+    });
+
     append({
       productId: '',
       quantity: Number.NaN,
       sellingPrice: 0,
     });
-  }, [append]);
+  }, [append, fields.length]);
+
+  useEffect(() => {
+    debugLog('SaleForm', 'fields.length', {
+      fieldsLength: fields.length,
+      linesLength: lines?.length ?? null,
+      fieldIds: fields.map((field) => field.id),
+    });
+  }, [fields, fields.length, lines?.length]);
 
   const selectedProductIds = useMemo(
     () => lines.map((line) => line.productId).filter(Boolean),
@@ -121,9 +160,18 @@ export function SaleForm({
     setRecentCustomers(getRecentCustomers());
   }, []);
 
-  useAutoFirstLine(Boolean(sale), fields.length, true, appendEmptyLine);
+  debugLog('SaleForm', 'RENDER', {
+    fieldsLength: fields.length,
+    isEditMode: Boolean(sale),
+  });
 
   useEffect(() => {
+    debugLog('SaleForm', 'reset() effect fired', {
+      isEditMode: Boolean(sale),
+      resetTarget: sale ? 'sale values' : 'defaultValues (lines: [1 empty row])',
+      fieldsLengthAtEffectCreation: fields.length,
+    });
+
     if (sale) {
       reset({
         saleDate: sale.saleDate,
@@ -138,8 +186,7 @@ export function SaleForm({
       });
       return;
     }
-
-    reset(defaultValues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sale, reset]);
 
   useEffect(() => {
@@ -159,13 +206,24 @@ export function SaleForm({
   }
 
   async function handleProductChange(index: number, productId: string) {
-    let product = productsById.get(productId);
+    const resolvedProduct = selectedProductsById.get(productId) ?? productsById.get(productId);
+    let product = resolvedProduct;
 
     if (!product) {
       const result = await getProductAction(productId);
 
       if (result.success) {
         product = toProductListItem(result.data);
+
+        if (user?.uid) {
+          queryClient.setQueryData(['product', user.uid, productId], product);
+        }
+
+        setSelectedProductsById((current) => {
+          const next = new Map(current);
+          next.set(productId, product!);
+          return next;
+        });
       }
     }
 
@@ -174,6 +232,14 @@ export function SaleForm({
     }
 
     clearErrors(`lines.${index}.productId`);
+  }
+
+  function handleProductResolved(product: ProductListItem) {
+    setSelectedProductsById((current) => {
+      const next = new Map(current);
+      next.set(product.id, product);
+      return next;
+    });
   }
 
   function handleDuplicateProduct(index: number) {
@@ -271,13 +337,12 @@ export function SaleForm({
         </div>
       </fieldset>
 
-      <div className="space-y-4 border-t pt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
             <h2 className="text-base font-semibold">Product Lines</h2>
             <p className="text-sm text-muted-foreground">
-              Add each product once. Selling price defaults from the product master but can be
-              changed for this sale only. Product stock is updated when you complete the sale.
+              Add each product once. Price defaults from the product master.
             </p>
           </div>
           <Button
@@ -308,38 +373,70 @@ export function SaleForm({
             No products yet. Add at least one product to record this sale.
           </div>
         ) : (
-          <div className="space-y-3">
+          <LineItemsGrid
+            columns={SALE_LINE_COLUMNS}
+            rowClassName={SALE_GRID_ROW_CLASS}
+            minWidthClassName={SALE_GRID_MIN_WIDTH}
+            className="overflow-y-visible"
+          >
             {fields.map((field, index) => {
-              const product = productsById.get(lines[index]?.productId ?? '');
+              const lineProductId = lines[index]?.productId ?? '';
+              const product =
+                selectedProductsById.get(lineProductId) ?? productsById.get(lineProductId);
+              const isLoadingLineProduct =
+                Boolean(lineProductId) && !product && isLoadingSelectedProducts;
 
               return (
                 <SaleLineItemRow
                   key={field.id}
+                  fieldId={field.id}
                   index={index}
+                  control={control}
                   register={register}
                   setValue={setValue}
                   errors={errors}
-                  productId={lines[index]?.productId ?? ''}
+                  productId={lineProductId}
                   unit={product?.unit ?? '—'}
                   sellingPrice={lines[index]?.sellingPrice ?? 0}
                   quantity={lines[index]?.quantity ?? 0}
                   selectedProduct={product ?? null}
+                  isLoadingProduct={isLoadingLineProduct}
                   selectedProductIds={selectedProductIdsByIndex[index] ?? []}
                   disabled={isFormDisabled}
                   onRemove={() => remove(index)}
                   onProductChange={(productId) => handleProductChange(index, productId)}
+                  onProductResolved={handleProductResolved}
                   onDuplicateProduct={handleDuplicateProduct}
                   onSellingPriceChange={(sellingPrice) =>
                     setValue(`lines.${index}.sellingPrice`, sellingPrice)
                   }
+                  onAdvanceToNextLine={() => {
+                    const nextIndex = index + 1;
+                    const didAppend = nextIndex >= fields.length;
+
+                    if (didAppend) {
+                      appendEmptyLine();
+                      window.requestAnimationFrame(() => {
+                        window.requestAnimationFrame(() => {
+                          focusSaleLineField(nextIndex, 'productId');
+                        });
+                      });
+                      return;
+                    }
+
+                    focusSaleLineField(nextIndex, 'productId');
+                  }}
                 />
               );
             })}
-          </div>
+          </LineItemsGrid>
         )}
       </div>
 
-      <SaleTotalBar lineCount={fields.length} subtotal={subtotal} />
+      <EntryFormStickyFooter
+        summary={<SaleTotalBar lineCount={fields.length} subtotal={subtotal} variant="compact" />}
+        actions={footerActions}
+      />
 
       {isSubmitting ? (
         <p className="sr-only" aria-live="polite">

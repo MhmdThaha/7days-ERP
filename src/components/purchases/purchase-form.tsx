@@ -2,12 +2,19 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
 
 import { getRawMaterialAction } from '@/actions/raw-materials';
 import { PurchaseLineItemRow } from '@/components/purchases/purchase-line-item-row';
 import { PurchaseTotalBar } from '@/components/purchases/purchase-total-bar';
+import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
+import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
+import {
+  PURCHASE_GRID_MIN_WIDTH,
+  PURCHASE_GRID_ROW_CLASS,
+  PURCHASE_LINE_COLUMNS,
+} from '@/lib/ui/line-items-grid-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,6 +51,7 @@ type PurchaseFormProps = {
   formId: string;
   serverFieldError?: PurchaseFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  footerActions?: ReactNode;
 };
 
 const defaultValues: PurchaseFormValues = {
@@ -62,6 +70,7 @@ export function PurchaseForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  footerActions,
 }: PurchaseFormProps) {
   const {
     register,
@@ -347,13 +356,12 @@ export function PurchaseForm({
         </div>
       </fieldset>
 
-      <div className="space-y-4 border-t pt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
             <h2 className="text-base font-semibold">Line Items</h2>
             <p className="text-sm text-muted-foreground">
-              One purchase is from one supplier. Add each raw material once — duplicate materials
-              in the same purchase are not allowed.
+              One purchase is from one supplier. Add each raw material once.
             </p>
           </div>
           <Button
@@ -384,7 +392,11 @@ export function PurchaseForm({
             No line items yet. Add at least one raw material to record this purchase.
           </div>
         ) : (
-          <div className="space-y-3">
+          <LineItemsGrid
+            columns={PURCHASE_LINE_COLUMNS}
+            rowClassName={PURCHASE_GRID_ROW_CLASS}
+            minWidthClassName={PURCHASE_GRID_MIN_WIDTH}
+          >
             {fields.map((field, index) => (
               <PurchaseLineItemRow
                 key={field.id}
@@ -406,13 +418,38 @@ export function PurchaseForm({
                 onUnitCostChange={(unitCost) =>
                   setValue(`lineItems.${index}.unitCost`, unitCost)
                 }
+                onAdvanceToNextLine={() => {
+                  const nextIndex = index + 1;
+                  const didAppend = nextIndex >= fields.length;
+
+                  if (didAppend) {
+                    appendEmptyLineItem();
+                    window.requestAnimationFrame(() => {
+                      window.requestAnimationFrame(() => {
+                        focusPurchaseLineItemField(nextIndex, 'rawMaterialId');
+                      });
+                    });
+                    return;
+                  }
+
+                  focusPurchaseLineItemField(nextIndex, 'rawMaterialId');
+                }}
               />
             ))}
-          </div>
+          </LineItemsGrid>
         )}
       </div>
 
-      <PurchaseTotalBar lineItemCount={fields.length} grandTotal={grandTotal} />
+      <EntryFormStickyFooter
+        summary={
+          <PurchaseTotalBar
+            lineItemCount={fields.length}
+            grandTotal={grandTotal}
+            variant="compact"
+          />
+        }
+        actions={footerActions}
+      />
 
       {isSubmitting ? (
         <p className="sr-only" aria-live="polite">

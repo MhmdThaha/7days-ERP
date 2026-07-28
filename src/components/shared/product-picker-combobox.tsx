@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { getProductAction, listProductsAction } from '@/actions/products';
 import { ItemCombobox, type ItemComboboxProps } from '@/components/shared/item-combobox';
+import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import {
@@ -20,10 +21,14 @@ type ProductPickerComboboxProps = Omit<
   ItemComboboxProps,
   'options' | 'filterOptions' | 'onQueryChange' | 'isLoadingOptions'
 > & {
+  /** Stable useFieldArray field.id — debug/lifecycle tracing only (not used in queryKey). */
+  rowFieldId?: string;
   disabledProductIds?: string[];
   excludeProductIds?: string[];
   filterProduct?: (product: ProductListItem) => boolean;
   status?: ProductStatusFilter;
+  /** Called with full product metadata immediately when a picker option is chosen. */
+  onProductResolved?: (product: ProductListItem) => void;
 };
 
 export function ProductPickerCombobox({
@@ -35,21 +40,26 @@ export function ProductPickerCombobox({
   placeholder = 'Search product name or code…',
   emptyMessage = 'No products match your search.',
   loadingMessage = 'Searching products…',
+  onProductResolved,
+  onValueChange,
   ...itemComboboxProps
 }: ProductPickerComboboxProps) {
+  const { user, isAuthenticated } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearch = useDebouncedValue(searchQuery, ITEM_PICKER_DEBOUNCE_MS);
+  const debouncedFromHook = useDebouncedValue(searchQuery, ITEM_PICKER_DEBOUNCE_MS);
+  const debouncedSearch = searchQuery === '' ? '' : debouncedFromHook;
 
   const {
     data: searchResult,
     isLoading,
     isFetching,
+    isPending,
     isError,
     error,
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['products', 'picker', status, debouncedSearch],
+    queryKey: ['products', 'picker', user?.uid, status, debouncedSearch],
     queryFn: async () => {
       const result = await listProductsAction({
         status,
@@ -64,12 +74,13 @@ export function ProductPickerCombobox({
 
       return result.data;
     },
+    enabled: isAuthenticated,
     placeholderData: keepPreviousData,
   });
 
   const { data: selectedProduct } = useQuery({
-    queryKey: ['product', value],
-    enabled: Boolean(value),
+    queryKey: ['product', user?.uid, value],
+    enabled: isAuthenticated && Boolean(value),
     queryFn: async () => {
       const result = await getProductAction(value!);
 
@@ -84,7 +95,8 @@ export function ProductPickerCombobox({
 
   const pickerProducts = useMemo(() => {
     const excludeIds = new Set(excludeProductIds);
-    let items = (searchResult?.items ?? []).filter((product) => !excludeIds.has(product.id));
+    const serverItems = searchResult?.items ?? [];
+    let items = serverItems.filter((product) => !excludeIds.has(product.id));
 
     if (filterProduct) {
       items = items.filter(filterProduct);
@@ -115,6 +127,18 @@ export function ProductPickerCombobox({
     void refetch();
   }
 
+  function handleValueChange(productId: string) {
+    const resolvedProduct =
+      pickerProducts.find((product) => product.id === productId) ??
+      (selectedProduct?.id === productId ? selectedProduct : null);
+
+    if (resolvedProduct) {
+      onProductResolved?.(resolvedProduct);
+    }
+
+    onValueChange(productId);
+  }
+
   return (
     <div className="space-y-1.5">
       <ItemCombobox
@@ -125,9 +149,10 @@ export function ProductPickerCombobox({
         loadingMessage={loadingMessage}
         filterOptions={false}
         onQueryChange={setSearchQuery}
-        isLoadingOptions={isLoading || isFetching || isSearching}
+        isLoadingOptions={isPending || isFetching || isSearching}
         optionsErrorMessage={searchErrorMessage}
         onRetryOptions={searchErrorMessage ? handleRetrySearch : undefined}
+        onValueChange={handleValueChange}
         {...itemComboboxProps}
       />
       {searchErrorMessage ? (

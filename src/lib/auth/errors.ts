@@ -10,6 +10,11 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/weak-password': 'Password must be at least 6 characters.',
   'auth/too-many-requests': 'Too many attempts. Please try again later.',
   'auth/network-request-failed': 'Network error. Check your connection and try again.',
+  'auth/popup-closed-by-user': 'Sign-in was cancelled.',
+  'auth/cancelled-popup-request': 'Sign-in was cancelled.',
+  'auth/popup-blocked': 'Pop-up was blocked. Allow pop-ups for this site and try again.',
+  'auth/account-exists-with-different-credential':
+    'An account already exists with this email using a different sign-in method.',
 };
 
 export function isAuthError(error: unknown): error is AuthError {

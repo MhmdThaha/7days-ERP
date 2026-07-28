@@ -6,7 +6,8 @@ import {
   updateExpenseSchema,
 } from '@/lib/domain/schemas/expense.schema';
 import { DomainError } from '@/lib/domain/errors';
-import { getServerOrgContext } from '@/lib/firebase/auth-server';
+import { assertCan } from '@/lib/domain/permissions';
+import { getAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { expenseService } from '@/lib/services/expense.service';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
@@ -21,7 +22,8 @@ export async function listExpensesAction(
   params: ExpenseListParams,
 ): Promise<ActionResult<ExpenseListResult>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'expense');
     const validated = expenseListParamsSchema.parse(params);
     return expenseService.list(orgId, validated);
   });
@@ -29,16 +31,16 @@ export async function listExpensesAction(
 
 export async function getExpenseAction(expenseId: string): Promise<ActionResult<Expense>> {
   return wrapAction(async () => {
-    const { orgId } = await getServerOrgContext();
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'expense');
     return expenseService.getById(orgId, expenseId);
   });
 }
 
-export async function createExpenseAction(
-  input: CreateExpenseInput,
-): Promise<ActionResult<Expense>> {
+export async function createExpenseAction(input: CreateExpenseInput): Promise<ActionResult<Expense>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'expense');
     const validated = createExpenseSchema.parse({
       ...input,
       notes: input.notes ?? null,
@@ -62,7 +64,8 @@ export async function updateExpenseAction(
   input: UpdateExpenseInput,
 ): Promise<ActionResult<Expense>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'update', 'expense');
     const validated = updateExpenseSchema.parse({
       ...input,
       notes: input.notes ?? undefined,
@@ -78,14 +81,16 @@ export async function updateExpenseAction(
 
 export async function deleteExpenseAction(expenseId: string): Promise<ActionResult<void>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'delete', 'expense');
     await expenseService.softDelete(orgId, expenseId, userId);
   });
 }
 
 export async function completeExpenseAction(expenseId: string): Promise<ActionResult<Expense>> {
   return wrapAction(async () => {
-    const { orgId, userId } = await getServerOrgContext();
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'complete', 'expense');
     return expenseService.complete(orgId, expenseId, userId);
   });
 }

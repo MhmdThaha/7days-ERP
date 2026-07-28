@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
+import { toast } from 'sonner';
 
 import { createRecipeAction } from '@/actions/recipes';
 import { RecipeForm } from '@/components/recipes/recipe-form';
+import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +22,10 @@ import {
 
 const FORM_ID = 'recipe-create-form';
 
+type SuccessState = {
+  recipeName: string;
+};
+
 export function RecipeCreatePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,6 +33,8 @@ export function RecipeCreatePage() {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<RecipeFieldError | null>(null);
+  const [successState, setSuccessState] = useState<SuccessState | null>(null);
+  const [formKey, setFormKey] = useState(0);
 
   async function handleSubmit(values: RecipeFormValues) {
     if (isSubmitting) {
@@ -58,22 +65,25 @@ export function RecipeCreatePage() {
         return;
       }
 
-      toastWorkflowComplete('Recipe created successfully', {
-        nextStep: {
-          label: 'Record Production',
-          onClick: () => router.push('/production/new'),
-        },
-      });
-
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['recipes'] }),
         queryClient.invalidateQueries({ queryKey: ['products'] }),
       ]);
 
-      router.push(`/recipes/${result.data.id}`);
+      setSuccessState({ recipeName: result.data.recipeName });
+      setFormKey((current) => current + 1);
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleNewRecipe() {
+    setSuccessState(null);
+    setFormKey((current) => current + 1);
+  }
+
+  function handleViewRecipes() {
+    router.push('/recipes');
   }
 
   return (
@@ -90,30 +100,51 @@ export function RecipeCreatePage() {
         description="Select a product and define its raw material ingredients."
       />
 
-      <Card>
+      {successState ? (
+        <EntrySuccessBanner
+          title="Recipe created"
+          description={`${successState.recipeName} was created successfully.`}
+          actionLabel="Create another recipe"
+          onAction={handleNewRecipe}
+        />
+      ) : null}
+
+      <Card className="overflow-visible">
         <CardHeader>
           <CardTitle>Recipe Builder</CardTitle>
         </CardHeader>
         <CardContent>
           <RecipeForm
+            key={formKey}
             formId={FORM_ID}
             initialProductId={initialProductId}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
+            footerActions={
+              <>
+                <Button
+                  nativeButton={false}
+                  variant="outline"
+                  render={<Link href="/recipes" />}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                {successState ? (
+                  <Button type="button" variant="outline" onClick={handleViewRecipes}>
+                    View recipes
+                  </Button>
+                ) : null}
+                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                  {isSubmitting ? 'Creating...' : 'Create Recipe'}
+                </Button>
+              </>
+            }
           />
         </CardContent>
       </Card>
-
-      <div className="flex justify-end gap-2">
-        <Button nativeButton={false} variant="outline" render={<Link href="/recipes" />} disabled={isSubmitting}>
-          Cancel
-        </Button>
-        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-          {isSubmitting ? 'Creating...' : 'Create Recipe'}
-        </Button>
-      </div>
     </div>
   );
 }

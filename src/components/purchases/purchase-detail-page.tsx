@@ -9,6 +9,7 @@ import { ArrowLeft, PackageCheck, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { deletePurchaseAction, getPurchaseAction, receivePurchaseAction } from '@/actions/purchases';
+import { useAuth } from '@/hooks/use-auth';
 import { PaymentStatusBadge } from '@/components/purchases/payment-status-badge';
 import { PurchaseStatusBadge } from '@/components/purchases/purchase-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -63,6 +64,7 @@ function formatQuantity(value: number): string {
 }
 
 export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -81,6 +83,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function invalidatePurchaseQueries() {

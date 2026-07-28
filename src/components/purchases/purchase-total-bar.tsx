@@ -6,9 +6,47 @@ import { Card, CardContent } from '@/components/ui/card';
 type PurchaseTotalBarProps = {
   lineItemCount: number;
   grandTotal: number;
+  variant?: 'default' | 'compact';
 };
 
-export function PurchaseTotalBar({ lineItemCount, grandTotal }: PurchaseTotalBarProps) {
+export function PurchaseTotalBar({
+  lineItemCount,
+  grandTotal,
+  variant = 'default',
+}: PurchaseTotalBarProps) {
+  const content = (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+      <div className="flex items-baseline gap-2">
+        <p className="text-sm font-medium text-muted-foreground">Line Items</p>
+        <p
+          className={
+            variant === 'compact'
+              ? 'text-base font-semibold tabular-nums'
+              : 'text-lg font-semibold tabular-nums'
+          }
+        >
+          {lineItemCount}
+        </p>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <p className="text-sm font-medium text-muted-foreground">Grand Total</p>
+        <p
+          className={
+            variant === 'compact'
+              ? 'text-xl font-semibold tabular-nums'
+              : 'text-2xl font-semibold tabular-nums'
+          }
+        >
+          <MoneyDisplay amount={grandTotal} />
+        </p>
+      </div>
+    </div>
+  );
+
+  if (variant === 'compact') {
+    return content;
+  }
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">

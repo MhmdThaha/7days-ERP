@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeReturnAction, deleteReturnAction, getReturnAction } from '@/actions/returns';
+import { useAuth } from '@/hooks/use-auth';
 import { ReturnStatusBadge } from '@/components/returns/return-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
@@ -61,6 +62,7 @@ function formatQuantity(value: number): string {
 }
 
 export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -79,6 +81,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function invalidateReturnQueries() {

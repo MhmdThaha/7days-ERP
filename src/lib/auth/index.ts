@@ -18,6 +18,7 @@ export {
 export {
   sendPasswordReset,
   signInWithEmailPassword,
+  signInWithGoogle,
   signOutUser,
   signUpWithEmailPassword,
 } from './auth-client';

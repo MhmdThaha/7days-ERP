@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { completeSaleAction, deleteSaleAction, getSaleAction } from '@/actions/sales';
 import { SaleStatusBadge } from '@/components/sales/sale-status-badge';
+import { useAuth } from '@/hooks/use-auth';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
 import { MoneyDisplay } from '@/components/shared/money-display';
@@ -61,6 +62,7 @@ function formatQuantity(value: number): string {
 }
 
 export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -79,6 +81,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function invalidateSaleQueries() {

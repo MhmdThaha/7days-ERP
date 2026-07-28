@@ -11,6 +11,7 @@ import {
   getProductAction,
 } from '@/actions/products';
 import { ProductFilters } from '@/components/products/product-filters';
+import { useAuth } from '@/hooks/use-auth';
 import { ProductFormDialog } from '@/components/products/product-form-dialog';
 import { ProductTable } from '@/components/products/product-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -26,6 +27,7 @@ import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { ProductListItem, ProductStatusFilter } from '@/types/product';
 
 export function ProductsPage() {
+  const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -66,7 +68,7 @@ export function ProductsPage() {
 
       return result.data;
     },
-    enabled: Boolean(editingProductId),
+    enabled: isAuthenticated && Boolean(editingProductId),
   });
 
   const isSearching = search !== debouncedSearch;

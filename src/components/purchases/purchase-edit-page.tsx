@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getPurchaseAction, updatePurchaseAction } from '@/actions/purchases';
+import { useAuth } from '@/hooks/use-auth';
 import { PurchaseForm } from '@/components/purchases/purchase-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -30,6 +31,7 @@ type PurchaseEditPageProps = {
 };
 
 export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +54,7 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
 
       return result.data;
     },
+    enabled: isAuthenticated,
   });
 
   async function handleSubmit(values: PurchaseFormValues) {
@@ -165,23 +168,24 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
+            footerActions={
+              <>
+                <Button
+                  nativeButton={false}
+                  variant="outline"
+                  render={<Link href={`/purchases/${purchaseId}`} />}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </>
+            }
           />
         </CardContent>
       </Card>
-
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href={`/purchases/${purchaseId}`} />}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
     </div>
   );
 }
