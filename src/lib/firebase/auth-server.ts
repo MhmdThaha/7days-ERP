@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
@@ -7,19 +8,14 @@ import { requireUserRole } from '@/lib/auth/user-role';
 import { DomainError } from '@/lib/domain/errors';
 import { getAdminAuth } from '@/lib/firebase/admin';
 import { userRepository } from '@/lib/repositories/user.repository';
+import type { UserProfile } from '@/types/user';
 import type { UserRole } from '@/types/user';
 
-export type AuthenticatedContext = {
-  orgId: string;
-  userId: string;
-  role: UserRole;
-};
+const getCachedUserProfile = cache(async (userId: string): Promise<UserProfile | null> => {
+  return userRepository.getById(userId);
+});
 
-/**
- * Resolves the caller from a verified Firebase session cookie only.
- * Never trust a client-supplied uid.
- */
-export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
+const getVerifiedSessionUserId = cache(async (): Promise<string> => {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -27,16 +23,29 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
     throw new DomainError('UNAUTHORIZED', 'Authentication required.');
   }
 
-  let userId: string;
-
   try {
     const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-    userId = decoded.uid;
+    return decoded.uid;
   } catch {
     throw new DomainError('UNAUTHORIZED', 'Authentication required.');
   }
+});
 
-  const profile = await userRepository.getById(userId);
+export type AuthenticatedContext = {
+  orgId: string;
+  userId: string;
+  role: UserRole;
+};
+
+export type AuthenticatedContextResult =
+  | { status: 'ok'; context: AuthenticatedContext }
+  | { status: 'unauthorized' }
+  | { status: 'user_not_found' }
+  | { status: 'org_not_configured'; userId: string };
+
+async function resolveAuthenticatedContext(): Promise<AuthenticatedContext> {
+  const userId = await getVerifiedSessionUserId();
+  const profile = await getCachedUserProfile(userId);
 
   if (!profile) {
     throw new DomainError(
@@ -60,19 +69,55 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
 }
 
 /**
+ * Resolves the caller from a verified Firebase session cookie only.
+ * Never trust a client-supplied uid. Cached per request to avoid duplicate
+ * Firestore reads when layout and page both authenticate.
+ */
+export const getAuthenticatedContext = cache(resolveAuthenticatedContext);
+
+/**
+ * Same as getAuthenticatedContext but returns a result instead of throwing
+ * for onboarding/auth states that should redirect rather than crash SSR.
+ */
+export const tryGetAuthenticatedContext = cache(
+  async (): Promise<AuthenticatedContextResult> => {
+    try {
+      const context = await getAuthenticatedContext();
+      return { status: 'ok', context };
+    } catch (error) {
+      if (!(error instanceof DomainError)) {
+        throw error;
+      }
+
+      if (error.code === 'UNAUTHORIZED') {
+        return { status: 'unauthorized' };
+      }
+
+      if (error.code === 'USER_NOT_FOUND') {
+        return { status: 'user_not_found' };
+      }
+
+      if (error.code === 'ORG_NOT_CONFIGURED') {
+        const userId = await getVerifiedSessionUserId().catch(() => null);
+
+        if (!userId) {
+          return { status: 'unauthorized' };
+        }
+
+        return { status: 'org_not_configured', userId };
+      }
+
+      throw error;
+    }
+  },
+);
+
+/**
  * Verified session uid only — for onboarding before an organization exists.
  */
 export async function getAuthenticatedUserId(): Promise<string> {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-
-  if (!sessionCookie) {
-    throw new DomainError('UNAUTHORIZED', 'Authentication required.');
-  }
-
   try {
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-    return decoded.uid;
+    return await getVerifiedSessionUserId();
   } catch {
     throw new DomainError('UNAUTHORIZED', 'Authentication required.');
   }

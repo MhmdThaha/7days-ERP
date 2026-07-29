@@ -1,16 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import {
-  AUTH_ROUTES,
   CREATE_BAKERY_PATH,
   DEFAULT_LOGIN_PATH,
   PROTECTED_ROUTE_PREFIXES,
   SESSION_COOKIE_NAME,
 } from '@/lib/auth/constants';
-
-function isAuthRoute(pathname: string): boolean {
-  return AUTH_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
-}
 
 function isProtectedRoute(pathname: string): boolean {
   if (pathname === CREATE_BAKERY_PATH) {
@@ -37,18 +32,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isAuthRoute(pathname) && hasSession) {
-    const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = '/';
-    homeUrl.search = '';
-    return NextResponse.redirect(homeUrl);
-  }
+  // Do not redirect auth routes based on cookie presence alone. A stale or invalid
+  // session cookie would otherwise bounce /login -> / -> /login indefinitely
+  // because dashboard SSR validates the cookie and sends unauthenticated users back.
 
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

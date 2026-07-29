@@ -12,8 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
-import { DEFAULT_AUTHENTICATED_PATH } from '@/lib/auth/constants';
 import { AuthClientError } from '@/lib/auth/errors';
+import { resolvePostAuthRedirectPath } from '@/lib/auth/resolve-post-auth-redirect';
 import { loginFormSchema, type LoginFormValues } from '@/lib/auth/schemas/auth-forms.schema';
 
 const defaultValues: LoginFormValues = {
@@ -77,7 +77,7 @@ export function LoginForm() {
         email: values.email,
         password: values.password,
       });
-      router.push(DEFAULT_AUTHENTICATED_PATH);
+      router.push(await resolvePostAuthRedirectPath());
     } catch (error: unknown) {
       setFormError(getAuthErrorMessage(error));
     }
@@ -89,7 +89,7 @@ export function LoginForm() {
 
     try {
       await signInWithGoogle();
-      router.push(DEFAULT_AUTHENTICATED_PATH);
+      router.push(await resolvePostAuthRedirectPath());
     } catch (error: unknown) {
       setFormError(getAuthErrorMessage(error));
     } finally {
