@@ -22,6 +22,7 @@ import {
   type SignUpInput,
 } from '@/lib/auth/auth-client';
 import { mapFirebaseUser } from '@/lib/auth/map-user';
+import { loginTraceError, setLoginTraceSource } from '@/lib/auth/login-trace';
 import { destroyServerSession, syncServerSessionFromUser } from '@/lib/auth/session-client';
 import type { AuthUser } from '@/lib/auth/types';
 import { getClientAuth } from '@/lib/firebase/client';
@@ -55,9 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onIdTokenChanged(getClientAuth(), async (firebaseUser) => {
       if (firebaseUser) {
+        setLoginTraceSource('onIdTokenChanged');
         try {
           await syncServerSessionFromUser(firebaseUser);
-        } catch {
+        } catch (error: unknown) {
+          loginTraceError('onIdTokenChanged syncServerSessionFromUser threw', error);
           setUser(null);
           setIsLoading(false);
           return;
@@ -75,8 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (input: SignInInput) => {
-    const credential = await signInWithEmailPassword(input);
-    await syncServerSessionFromUser(credential.user);
+    setLoginTraceSource('signIn');
+    try {
+      const credential = await signInWithEmailPassword(input);
+      await syncServerSessionFromUser(credential.user);
+    } catch (error: unknown) {
+      loginTraceError('signIn() threw', error);
+      throw error;
+    }
   }, []);
 
   const signInWithGoogleHandler = useCallback(async () => {

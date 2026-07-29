@@ -12,6 +12,7 @@ import {
 import { getClientAuth } from '@/lib/firebase/client';
 
 import { toAuthClientError } from './errors';
+import { loginTrace, loginTraceError } from './login-trace';
 
 export type SignUpInput = {
   email: string;
@@ -51,7 +52,21 @@ export async function signUpWithEmailPassword(input: SignUpInput): Promise<UserC
 
 export async function signInWithEmailPassword(input: SignInInput): Promise<UserCredential> {
   return runAuthOperation(async () => {
-    return signInWithEmailAndPassword(getClientAuth(), input.email, input.password);
+    loginTrace('2. Before signInWithEmailAndPassword()');
+    try {
+      const credential = await signInWithEmailAndPassword(
+        getClientAuth(),
+        input.email,
+        input.password,
+      );
+      loginTrace('3. After signInWithEmailAndPassword()', {
+        uid: credential.user.uid,
+      });
+      return credential;
+    } catch (error: unknown) {
+      loginTraceError('2-3. signInWithEmailAndPassword() threw', error);
+      throw error;
+    }
   });
 }
 

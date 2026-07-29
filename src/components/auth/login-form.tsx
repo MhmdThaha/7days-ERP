@@ -11,9 +11,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { LoginTracePanel } from '@/components/auth/login-trace-panel';
 import { useAuth } from '@/hooks/use-auth';
 import { DEFAULT_AUTHENTICATED_PATH } from '@/lib/auth/constants';
 import { AuthClientError } from '@/lib/auth/errors';
+import { loginTrace, loginTraceError, setLoginTraceSource } from '@/lib/auth/login-trace';
 import { loginFormSchema, type LoginFormValues } from '@/lib/auth/schemas/auth-forms.schema';
 
 const defaultValues: LoginFormValues = {
@@ -71,14 +73,19 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginFormValues) {
     setFormError(null);
+    setLoginTraceSource('loginForm');
+    loginTrace('1. Login button clicked', { email: values.email });
 
     try {
       await signIn({
         email: values.email,
         password: values.password,
       });
+      loginTrace('8. Before router.push()', { nextPath: DEFAULT_AUTHENTICATED_PATH });
       router.push(DEFAULT_AUTHENTICATED_PATH);
+      loginTrace('9. After router.push()', { nextPath: DEFAULT_AUTHENTICATED_PATH });
     } catch (error: unknown) {
+      loginTraceError('10. Login onSubmit caught exception', error);
       setFormError(getAuthErrorMessage(error));
     }
   }
@@ -99,6 +106,8 @@ export function LoginForm() {
 
   return (
     <div className="space-y-5">
+      {/* TEMPORARY — remove LoginTracePanel after mobile login investigation */}
+      <LoginTracePanel />
       {formError ? (
         <Alert variant="destructive">
           <AlertDescription>{formError}</AlertDescription>
