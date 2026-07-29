@@ -11,8 +11,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/use-auth';
-import { DEFAULT_AUTHENTICATED_PATH } from '@/lib/auth/constants';
 import { AuthClientError } from '@/lib/auth/errors';
+import { resolvePostAuthRedirectPath } from '@/lib/auth/resolve-post-auth-redirect';
 import {
   registerFormSchema,
   type RegisterFormValues,
@@ -48,7 +48,7 @@ export function RegisterForm() {
         password: values.password,
         displayName: values.displayName,
       });
-      router.push(DEFAULT_AUTHENTICATED_PATH);
+      router.push(await resolvePostAuthRedirectPath());
     } catch (error: unknown) {
       if (error instanceof AuthClientError) {
         setFormError(error.message);
