@@ -47,6 +47,15 @@ describe('session-client conditional sync', () => {
     await expect(checkServerSession()).resolves.toBe(false);
   });
 
+  it('checkServerSession returns false when GET returns 405 (endpoint not deployed)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 405 })),
+    );
+
+    await expect(checkServerSession()).resolves.toBe(false);
+  });
+
   it('skips POST when session cookie is valid and token unchanged', async () => {
     const fetchMock = vi.mocked(fetch);
 
