@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { Timestamp } from 'firebase-admin/firestore';
+import type { Query } from 'firebase-admin/firestore';
 
 import {
   DASHBOARD_LOW_STOCK_LIMIT,
@@ -32,20 +32,12 @@ type ProductDocument = {
   currentStock: number;
 };
 
-type RawMaterialDocument = {
-  isActive: boolean;
-};
-
-type PurchaseDocument = {
-  status: 'draft' | 'received';
-};
-
 type ProductionDocument = {
   productionNumber: string;
   productionDate: string;
   status: 'draft' | 'completed';
   totalUnits: number;
-  createdAt: Timestamp;
+  createdAt: FirebaseFirestore.Timestamp;
 };
 
 type SaleDocument = {
@@ -53,7 +45,7 @@ type SaleDocument = {
   saleDate: string;
   status: 'draft' | 'completed';
   subtotal: number;
-  createdAt: Timestamp;
+  createdAt: FirebaseFirestore.Timestamp;
 };
 
 type ExpenseDocument = {
@@ -62,7 +54,7 @@ type ExpenseDocument = {
   category: ExpenseCategory;
   amount: number;
   status: 'draft' | 'completed';
-  createdAt: Timestamp;
+  createdAt: FirebaseFirestore.Timestamp;
 };
 
 type WastageDocument = {
@@ -71,7 +63,7 @@ type WastageDocument = {
   reason: WastageReason;
   status: 'draft' | 'completed';
   totalUnits: number;
-  createdAt: Timestamp;
+  createdAt: FirebaseFirestore.Timestamp;
 };
 
 type ReturnDocument = {
@@ -79,18 +71,27 @@ type ReturnDocument = {
   returnDate: string;
   reason: ReturnReason;
   totalUnits: number;
-  createdAt: Timestamp;
+  createdAt: FirebaseFirestore.Timestamp;
 };
 
-function isCompletedToday(
-  date: string,
-  status: 'draft' | 'completed' | 'received',
-  today: string,
-): boolean {
-  return date === today && status === 'completed';
+function activeOrgQuery(orgId: string, subcollection: string): Query {
+  return getOrgCollection(orgId, subcollection).where('deletedAt', '==', null);
 }
 
-function buildSummary(
+async function countQuery(query: Query): Promise<number> {
+  const snapshot = await query.count().get();
+  return snapshot.data().count;
+}
+
+async function countDraftDocuments(orgId: string, subcollection: string): Promise<number> {
+  return countQuery(activeOrgQuery(orgId, subcollection).where('status', '==', 'draft'));
+}
+
+async function countActiveRecords(orgId: string, subcollection: string): Promise<number> {
+  return countQuery(activeOrgQuery(orgId, subcollection).where('isActive', '==', true));
+}
+
+function buildSummaryFromTodayDocs(
   today: string,
   sales: SaleDocument[],
   production: ProductionDocument[],
@@ -103,25 +104,25 @@ function buildSummary(
   let todayWastageUnits = 0;
 
   for (const sale of sales) {
-    if (isCompletedToday(sale.saleDate, sale.status, today)) {
+    if (sale.saleDate === today && sale.status === 'completed') {
       todaySalesTotal += sale.subtotal;
     }
   }
 
   for (const entry of production) {
-    if (isCompletedToday(entry.productionDate, entry.status, today)) {
+    if (entry.productionDate === today && entry.status === 'completed') {
       todayProductionUnits += entry.totalUnits;
     }
   }
 
   for (const expense of expenses) {
-    if (isCompletedToday(expense.expenseDate, expense.status, today)) {
+    if (expense.expenseDate === today && expense.status === 'completed') {
       todayExpensesTotal += expense.amount;
     }
   }
 
   for (const entry of wastage) {
-    if (isCompletedToday(entry.wastageDate, entry.status, today)) {
+    if (entry.wastageDate === today && entry.status === 'completed') {
       todayWastageUnits += entry.totalUnits;
     }
   }
@@ -133,41 +134,6 @@ function buildSummary(
     todayExpensesTotal,
     todayWastageUnits,
   };
-}
-
-function buildQuickCounts(
-  products: Array<{ data: ProductDocument }>,
-  rawMaterials: Array<{ data: RawMaterialDocument }>,
-  purchases: PurchaseDocument[],
-  production: ProductionDocument[],
-  sales: SaleDocument[],
-  expenses: ExpenseDocument[],
-): DashboardQuickCounts {
-  return {
-    totalProducts: products.filter(({ data }) => data.isActive).length,
-    totalRawMaterials: rawMaterials.filter(({ data }) => data.isActive).length,
-    draftPurchases: purchases.filter((purchase) => purchase.status === 'draft').length,
-    draftProduction: production.filter((entry) => entry.status === 'draft').length,
-    draftSales: sales.filter((sale) => sale.status === 'draft').length,
-    draftExpenses: expenses.filter((expense) => expense.status === 'draft').length,
-  };
-}
-
-function buildLowStockProducts(products: Array<{ id: string; data: ProductDocument }>): DashboardLowStockProduct[] {
-  return products
-    .filter(
-      ({ data }) =>
-        data.isActive && data.currentStock <= PRODUCT_LOW_STOCK_THRESHOLD,
-    )
-    .map(({ id, data }) => ({
-      id,
-      code: data.code,
-      name: data.name,
-      currentStock: data.currentStock,
-      unit: data.unit,
-    }))
-    .sort((a, b) => a.currentStock - b.currentStock || a.name.localeCompare(b.name))
-    .slice(0, DASHBOARD_LOW_STOCK_LIMIT);
 }
 
 function sortRecentItems(items: DashboardRecentActivityItem[]): DashboardRecentActivityItem[] {
@@ -239,74 +205,116 @@ function buildRecentActivity(
 
 export const dashboardRepository = {
   async getData(orgId: string, today: string): Promise<DashboardData> {
+    const recentLimit = DASHBOARD_RECENT_ACTIVITY_LIMIT;
+
     const [
-      productsSnapshot,
-      rawMaterialsSnapshot,
-      purchasesSnapshot,
-      productionSnapshot,
-      salesSnapshot,
-      expensesSnapshot,
-      wastageSnapshot,
-      returnsSnapshot,
+      todaySalesSnapshot,
+      todayProductionSnapshot,
+      todayExpensesSnapshot,
+      todayWastageSnapshot,
+      totalProducts,
+      totalRawMaterials,
+      draftPurchases,
+      draftProduction,
+      draftSales,
+      draftExpenses,
+      lowStockSnapshot,
+      recentProductionSnapshot,
+      recentSalesSnapshot,
+      recentWastageSnapshot,
+      recentReturnsSnapshot,
+      recentExpensesSnapshot,
     ] = await Promise.all([
-      getOrgCollection(orgId, 'products').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'rawMaterials').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'purchases').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'production').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'sales').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'expenses').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'wastage').where('deletedAt', '==', null).get(),
-      getOrgCollection(orgId, 'returns').where('deletedAt', '==', null).get(),
+      activeOrgQuery(orgId, 'sales')
+        .where('saleDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      activeOrgQuery(orgId, 'production')
+        .where('productionDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      activeOrgQuery(orgId, 'expenses')
+        .where('expenseDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      activeOrgQuery(orgId, 'wastage')
+        .where('wastageDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      countActiveRecords(orgId, 'products'),
+      countActiveRecords(orgId, 'rawMaterials'),
+      countDraftDocuments(orgId, 'purchases'),
+      countDraftDocuments(orgId, 'production'),
+      countDraftDocuments(orgId, 'sales'),
+      countDraftDocuments(orgId, 'expenses'),
+      activeOrgQuery(orgId, 'products')
+        .where('isActive', '==', true)
+        .where('currentStock', '<=', PRODUCT_LOW_STOCK_THRESHOLD)
+        .orderBy('currentStock')
+        .limit(DASHBOARD_LOW_STOCK_LIMIT)
+        .get(),
+      activeOrgQuery(orgId, 'production')
+        .orderBy('createdAt', 'desc')
+        .limit(recentLimit)
+        .get(),
+      activeOrgQuery(orgId, 'sales').orderBy('createdAt', 'desc').limit(recentLimit).get(),
+      activeOrgQuery(orgId, 'wastage').orderBy('createdAt', 'desc').limit(recentLimit).get(),
+      activeOrgQuery(orgId, 'returns').orderBy('createdAt', 'desc').limit(recentLimit).get(),
+      activeOrgQuery(orgId, 'expenses').orderBy('createdAt', 'desc').limit(recentLimit).get(),
     ]);
 
-    const products = productsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as ProductDocument,
-    }));
+    const todaySales = todaySalesSnapshot.docs.map((doc) => doc.data() as SaleDocument);
+    const todayProduction = todayProductionSnapshot.docs.map((doc) => doc.data() as ProductionDocument);
+    const todayExpenses = todayExpensesSnapshot.docs.map((doc) => doc.data() as ExpenseDocument);
+    const todayWastage = todayWastageSnapshot.docs.map((doc) => doc.data() as WastageDocument);
 
-    const rawMaterials = rawMaterialsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as RawMaterialDocument,
-    }));
+    const quickCounts: DashboardQuickCounts = {
+      totalProducts,
+      totalRawMaterials,
+      draftPurchases,
+      draftProduction,
+      draftSales,
+      draftExpenses,
+    };
 
-    const purchases = purchasesSnapshot.docs.map((doc) => doc.data() as PurchaseDocument);
-    const production = productionSnapshot.docs.map((doc) => ({
+    const lowStockProducts: DashboardLowStockProduct[] = lowStockSnapshot.docs
+      .map((doc) => {
+        const data = doc.data() as ProductDocument;
+        return {
+          id: doc.id,
+          code: data.code,
+          name: data.name,
+          currentStock: data.currentStock,
+          unit: data.unit,
+        };
+      })
+      .sort((a, b) => a.currentStock - b.currentStock || a.name.localeCompare(b.name));
+
+    const production = recentProductionSnapshot.docs.map((doc) => ({
       id: doc.id,
       data: doc.data() as ProductionDocument,
     }));
-    const sales = salesSnapshot.docs.map((doc) => ({
+    const sales = recentSalesSnapshot.docs.map((doc) => ({
       id: doc.id,
       data: doc.data() as SaleDocument,
     }));
-    const expenses = expensesSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as ExpenseDocument,
-    }));
-    const wastage = wastageSnapshot.docs.map((doc) => ({
+    const wastage = recentWastageSnapshot.docs.map((doc) => ({
       id: doc.id,
       data: doc.data() as WastageDocument,
     }));
-    const returns = returnsSnapshot.docs.map((doc) => ({
+    const returns = recentReturnsSnapshot.docs.map((doc) => ({
       id: doc.id,
       data: doc.data() as ReturnDocument,
     }));
-
-    const productionData = production.map((entry) => entry.data);
-    const salesData = sales.map((entry) => entry.data);
-    const expensesData = expenses.map((entry) => entry.data);
-    const wastageData = wastage.map((entry) => entry.data);
+    const expenses = recentExpensesSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      data: doc.data() as ExpenseDocument,
+    }));
 
     return {
-      summary: buildSummary(today, salesData, productionData, expensesData, wastageData),
-      quickCounts: buildQuickCounts(
-        products,
-        rawMaterials,
-        purchases,
-        productionData,
-        salesData,
-        expensesData,
-      ),
-      lowStockProducts: buildLowStockProducts(products),
+      summary: buildSummaryFromTodayDocs(today, todaySales, todayProduction, todayExpenses, todayWastage),
+      quickCounts,
+      lowStockProducts,
       recentActivity: buildRecentActivity(production, sales, wastage, returns, expenses),
     };
   },

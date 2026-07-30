@@ -18,6 +18,13 @@ export function BakeryGate({ children }: BakeryGateProps) {
   const router = useRouter();
   const { user, isLoading, isAuthenticated } = useAuth();
 
+  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      console.log('[PERF-GLOBAL][client] BakeryGate opened — page content now visible');
+    }
+  }, [isAuthenticated, isLoading]);
+
   useEffect(() => {
     if (isLoading) {
       return;

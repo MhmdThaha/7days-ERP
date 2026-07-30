@@ -20,7 +20,6 @@ export function useDashboard() {
       return result.data;
     },
     enabled: isAuthenticated,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    staleTime: 30_000,
   });
 }

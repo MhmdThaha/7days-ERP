@@ -30,6 +30,10 @@ type PurchaseLineItemDocument = {
   unit: string;
   unitCost: number;
   lineTotal: number;
+  /** Pack entry metadata; absent on documents created before pack-based entry. */
+  packCount?: number | null;
+  packSize?: number | null;
+  packPrice?: number | null;
 };
 
 type PurchaseDocument = {
@@ -64,6 +68,25 @@ function toLineItem(data: PurchaseLineItemDocument): PurchaseLineItem {
     unit: data.unit,
     unitCost: data.unitCost,
     lineTotal: data.lineTotal,
+    packCount: data.packCount ?? null,
+    packSize: data.packSize ?? null,
+    packPrice: data.packPrice ?? null,
+  };
+}
+
+function toLineItemDocument(lineItem: PurchaseLineItem): PurchaseLineItemDocument {
+  return {
+    id: lineItem.id,
+    rawMaterialId: lineItem.rawMaterialId,
+    rawMaterialCode: lineItem.rawMaterialCode,
+    rawMaterialName: lineItem.rawMaterialName,
+    quantity: lineItem.quantity,
+    unit: lineItem.unit,
+    unitCost: lineItem.unitCost,
+    lineTotal: lineItem.lineTotal,
+    packCount: lineItem.packCount,
+    packSize: lineItem.packSize,
+    packPrice: lineItem.packPrice,
   };
 }
 
@@ -281,16 +304,7 @@ export const purchaseRepository = {
         invoiceNumber: normalizeNullableString(input.invoiceNumber),
         status: 'draft',
         paymentStatus: input.paymentStatus,
-        lineItems: input.lineItems.map((lineItem) => ({
-          id: lineItem.id,
-          rawMaterialId: lineItem.rawMaterialId,
-          rawMaterialCode: lineItem.rawMaterialCode,
-          rawMaterialName: lineItem.rawMaterialName,
-          quantity: lineItem.quantity,
-          unit: lineItem.unit,
-          unitCost: lineItem.unitCost,
-          lineTotal: lineItem.lineTotal,
-        })),
+        lineItems: input.lineItems.map(toLineItemDocument),
         totalAmount: input.totalAmount,
         lineItemCount: input.lineItems.length,
         notes: normalizeNullableString(input.notes),
@@ -351,16 +365,7 @@ export const purchaseRepository = {
     }
 
     if (input.lineItems !== undefined) {
-      updates.lineItems = input.lineItems.map((lineItem) => ({
-        id: lineItem.id,
-        rawMaterialId: lineItem.rawMaterialId,
-        rawMaterialCode: lineItem.rawMaterialCode,
-        rawMaterialName: lineItem.rawMaterialName,
-        quantity: lineItem.quantity,
-        unit: lineItem.unit,
-        unitCost: lineItem.unitCost,
-        lineTotal: lineItem.lineTotal,
-      }));
+      updates.lineItems = input.lineItems.map(toLineItemDocument);
       updates.lineItemCount = input.lineItems.length;
     }
 

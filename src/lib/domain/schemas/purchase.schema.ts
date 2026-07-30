@@ -7,14 +7,17 @@ const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 export const purchaseLineItemSchema = z.object({
   id: z.string().optional(),
   rawMaterialId: z.string().min(1, 'Select a raw material.'),
-  quantity: z
-    .number({ error: 'Quantity is required.' })
-    .positive('Quantity must be greater than zero.'),
+  packCount: z
+    .number({ error: 'Packs is required.' })
+    .positive('Packs must be greater than zero.'),
+  packSize: z
+    .number({ error: 'Pack size is required.' })
+    .positive('Pack size must be greater than zero.'),
   unit: z.string().min(1, 'Unit is required.'),
-  unitCost: z
-    .number({ error: 'Unit cost is required.' })
-    .int('Unit cost must be a valid amount.')
-    .positive('Unit cost must be greater than zero.'),
+  packPrice: z
+    .number({ error: 'Pack price is required.' })
+    .int('Pack price must be a valid amount.')
+    .positive('Pack price must be greater than zero.'),
 });
 
 function refineUniqueRawMaterials(

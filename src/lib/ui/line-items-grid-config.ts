@@ -4,9 +4,10 @@ import type { LineItemsGridColumn } from '@/components/shared/line-items-grid/li
 
 export const PURCHASE_LINE_COLUMNS: LineItemsGridColumn[] = [
   { id: 'material', label: 'Material', required: true },
-  { id: 'quantity', label: 'Qty', required: true },
+  { id: 'packs', label: 'Packs', required: true },
+  { id: 'packSize', label: 'Pack Size', required: true },
   { id: 'unit', label: 'Unit' },
-  { id: 'cost', label: 'Cost', required: true },
+  { id: 'packPrice', label: 'Pack Price', required: true },
   { id: 'total', label: 'Total' },
   { id: 'actions', label: 'Remove', srOnly: true },
 ];
@@ -36,7 +37,7 @@ export const PRODUCTION_LINE_COLUMNS: LineItemsGridColumn[] = [
 
 /** Tailwind grid template classes — applied on lg+; mobile uses stacked cells. */
 export const PURCHASE_GRID_ROW_CLASS =
-  'lg:grid-cols-[minmax(0,2fr)_minmax(4.5rem,0.55fr)_minmax(3rem,0.35fr)_minmax(5.5rem,0.6fr)_minmax(5.5rem,0.6fr)_2.25rem]';
+  'lg:grid-cols-[minmax(0,2fr)_minmax(3.5rem,0.4fr)_minmax(4.5rem,0.55fr)_minmax(3rem,0.35fr)_minmax(5.5rem,0.6fr)_minmax(5.5rem,0.6fr)_2.25rem]';
 
 export const RECIPE_GRID_ROW_CLASS =
   'lg:grid-cols-[minmax(0,2fr)_minmax(4.5rem,0.55fr)_minmax(3rem,0.35fr)_5.5rem]';
@@ -47,7 +48,7 @@ export const SALE_GRID_ROW_CLASS =
 export const PRODUCTION_GRID_ROW_CLASS =
   'lg:grid-cols-[minmax(0,2fr)_minmax(4.5rem,0.55fr)_minmax(3rem,0.35fr)_2.25rem]';
 
-export const PURCHASE_GRID_MIN_WIDTH = 'min-w-[42rem]';
+export const PURCHASE_GRID_MIN_WIDTH = 'min-w-[46rem]';
 export const RECIPE_GRID_MIN_WIDTH = 'min-w-[32rem]';
 export const SALE_GRID_MIN_WIDTH = 'min-w-[42rem]';
 export const PRODUCTION_GRID_MIN_WIDTH = 'min-w-[28rem]';

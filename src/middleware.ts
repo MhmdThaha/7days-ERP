@@ -22,6 +22,9 @@ function isProtectedRoute(pathname: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
+  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+  const perfStart = performance.now();
+
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
@@ -29,14 +32,19 @@ export function middleware(request: NextRequest) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = DEFAULT_LOGIN_PATH;
     loginUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(loginUrl);
+    const response = NextResponse.redirect(loginUrl);
+    response.headers.set('x-perf-middleware-ms', (performance.now() - perfStart).toFixed(0));
+    return response;
   }
 
   // Do not redirect auth routes based on cookie presence alone. A stale or invalid
   // session cookie would otherwise bounce /login -> / -> /login indefinitely
   // because dashboard SSR validates the cookie and sends unauthenticated users back.
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  // [PERF-GLOBAL-TEMP]
+  response.headers.set('x-perf-middleware-ms', (performance.now() - perfStart).toFixed(0));
+  return response;
 }
 
 export const config = {

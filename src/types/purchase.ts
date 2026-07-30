@@ -13,8 +13,14 @@ export type PurchaseLineItem = {
   rawMaterialName: string;
   quantity: number;
   unit: string;
+  /** Cost per stock unit in paise. May be fractional when derived from pack pricing. */
   unitCost: number;
   lineTotal: number;
+  /** Pack entry metadata. Null on records created before pack-based entry. */
+  packCount: number | null;
+  packSize: number | null;
+  /** Price per pack in integer paise. */
+  packPrice: number | null;
 };
 
 export type Purchase = {
@@ -72,9 +78,13 @@ export type PurchaseListResult = {
 export type PurchaseLineItemInput = {
   id?: string;
   rawMaterialId: string;
-  quantity: number;
+  /** Number of packs purchased (1 for loose/unpacked quantities). */
+  packCount: number;
+  /** Quantity contained in one pack, in the material's stock unit. */
+  packSize: number;
   unit: string;
-  unitCost: number;
+  /** Price paid per pack in integer paise. */
+  packPrice: number;
 };
 
 export type CreatePurchaseInput = {

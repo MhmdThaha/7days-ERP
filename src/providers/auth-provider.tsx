@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -35,6 +36,8 @@ type AuthContextValue = {
   signUp: (input: SignUpInput) => Promise<void>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
+  /** Re-mint the httpOnly session after the server rejects an authenticated request. */
+  recoverServerSession: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,13 +54,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const lastSyncedIdTokenRef = useRef<string | null>(null);
+
+  const rememberSyncedToken = useCallback((idToken: string) => {
+    lastSyncedIdTokenRef.current = idToken;
+  }, []);
+
+  const recoverServerSession = useCallback(async () => {
+    const firebaseUser = getClientAuth().currentUser;
+
+    if (!firebaseUser) {
+      return;
+    }
+
+    const idToken = await syncServerSessionFromUser(firebaseUser, { force: true });
+    rememberSyncedToken(idToken);
+  }, [rememberSyncedToken]);
 
   useEffect(() => {
     const unsubscribe = onIdTokenChanged(getClientAuth(), async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          await syncServerSessionFromUser(firebaseUser);
+          const idToken = await syncServerSessionFromUser(firebaseUser, {
+            lastSyncedIdToken: lastSyncedIdTokenRef.current,
+          });
+          rememberSyncedToken(idToken);
         } catch {
+          lastSyncedIdTokenRef.current = null;
           setUser(null);
           setIsLoading(false);
           return;
@@ -65,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(toAuthUser(firebaseUser));
       } else {
+        lastSyncedIdTokenRef.current = null;
         setUser(null);
       }
 
@@ -72,26 +96,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return unsubscribe;
-  }, []);
+  }, [rememberSyncedToken]);
 
   const signIn = useCallback(async (input: SignInInput) => {
     const credential = await signInWithEmailPassword(input);
-    await syncServerSessionFromUser(credential.user);
-  }, []);
+    const idToken = await syncServerSessionFromUser(credential.user, { force: true });
+    rememberSyncedToken(idToken);
+  }, [rememberSyncedToken]);
 
   const signInWithGoogleHandler = useCallback(async () => {
     const credential = await signInWithGoogle();
-    await syncServerSessionFromUser(credential.user);
-  }, []);
+    const idToken = await syncServerSessionFromUser(credential.user, { force: true });
+    rememberSyncedToken(idToken);
+  }, [rememberSyncedToken]);
 
   const signUp = useCallback(async (input: SignUpInput) => {
     const credential = await signUpWithEmailPassword(input);
-    await syncServerSessionFromUser(credential.user);
+    const idToken = await syncServerSessionFromUser(credential.user, { force: true });
+    rememberSyncedToken(idToken);
     setUser(toAuthUser(credential.user));
-  }, []);
+  }, [rememberSyncedToken]);
 
   const signOut = useCallback(async () => {
     await destroyServerSession();
+    lastSyncedIdTokenRef.current = null;
     queryClient.clear();
     await signOutUser();
   }, [queryClient]);
@@ -110,8 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       sendPasswordReset: sendPasswordResetEmail,
+      recoverServerSession,
     }),
-    [user, isLoading, signIn, signInWithGoogleHandler, signUp, signOut, sendPasswordResetEmail],
+    [
+      user,
+      isLoading,
+      signIn,
+      signInWithGoogleHandler,
+      signUp,
+      signOut,
+      sendPasswordResetEmail,
+      recoverServerSession,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

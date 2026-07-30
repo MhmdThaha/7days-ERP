@@ -340,12 +340,9 @@ export function ProductionForm({
     focusFirstProductionFormError(fieldErrors);
   }
 
-  const isLoadingPickers =
-    isLoadingRecipes ||
-    isLoadingSelectedProducts ||
-    isLoadingFullRecipes ||
-    isLoadingPreviewMaterials;
-  const isFormDisabled = isSubmitting || isLoadingPickers;
+  const isFormDisabled = isSubmitting;
+  const isPreviewLoading = isLoadingFullRecipes || isLoadingPreviewMaterials;
+  const isProductLineBusy = isSubmitting || isLoadingRecipes;
 
   useAutoFirstLine(
     Boolean(production) || Boolean(initialLines?.length),
@@ -425,7 +422,7 @@ export function ProductionForm({
             variant="outline"
             className="shrink-0"
             onClick={handleAddLine}
-            disabled={isFormDisabled}
+            disabled={isProductLineBusy}
           >
             <Plus />
             Add Product Line
@@ -498,7 +495,7 @@ export function ProductionForm({
 
       <ProductionMaterialPreview
         rows={materialPreviewRows}
-        isLoading={isLoadingPickers}
+        isLoading={isPreviewLoading}
         hasValidLines={hasValidPreviewLines}
       />
 

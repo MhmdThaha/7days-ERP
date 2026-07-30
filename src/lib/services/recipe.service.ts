@@ -136,7 +136,17 @@ export const recipeService = {
   },
 
   async create(orgId: string, input: CreateRecipeInput, userId: string): Promise<Recipe> {
+    // [PERF-TEMP] instrumentation — remove after performance investigation
+    const perfStart = performance.now();
+    let perfLast = perfStart;
+    const perfMark = (label: string) => {
+      const now = performance.now();
+      console.log(`[PERF][service] ${label}: ${(now - perfLast).toFixed(0)} ms`);
+      perfLast = now;
+    };
+
     const product = await productRepository.getById(orgId, input.productId);
+    perfMark('product lookup (1 Firestore read)'); // [PERF-TEMP]
 
     if (!product) {
       throw new DomainError('NOT_FOUND', 'Product not found');
@@ -150,10 +160,15 @@ export const recipeService = {
 
     if (isActive) {
       await assertNoDuplicateActiveRecipe(orgId, input.productId);
+      perfMark('duplicate active recipe check (1 Firestore query)'); // [PERF-TEMP]
     }
 
     const recipeCode = await resolveUniqueCode(orgId, input.recipeCode);
+    perfMark('recipe code generation (>=2 Firestore queries)'); // [PERF-TEMP]
     const ingredients = await resolveIngredients(orgId, input.ingredients);
+    perfMark(
+      `resolve ingredients (${input.ingredients.length} SEQUENTIAL Firestore reads)`,
+    ); // [PERF-TEMP]
     const totalWeight = calculateTotalWeight(ingredients);
 
     const recipe = await recipeRepository.create(
@@ -167,11 +182,16 @@ export const recipeService = {
       },
       userId,
     );
+    perfMark('Firestore recipe write (docRef.set)'); // [PERF-TEMP]
 
     if (isActive) {
       await syncProductActiveRecipe(orgId, input.productId, recipe.id, userId);
+      perfMark('update product.activeRecipeId (1 Firestore write)'); // [PERF-TEMP]
     }
 
+    console.log(
+      `[PERF][service] recipeService.create TOTAL: ${(performance.now() - perfStart).toFixed(0)} ms`,
+    );
     return recipe;
   },
 

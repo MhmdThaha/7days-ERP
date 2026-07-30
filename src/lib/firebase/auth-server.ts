@@ -44,8 +44,18 @@ export type AuthenticatedContextResult =
   | { status: 'org_not_configured'; userId: string };
 
 async function resolveAuthenticatedContext(): Promise<AuthenticatedContext> {
+  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+  const perfTotalStart = performance.now();
+  let perfLast = perfTotalStart;
+
   const userId = await getVerifiedSessionUserId();
+  const sessionMs = performance.now() - perfLast;
+  console.log(`[PERF-GLOBAL][auth] session verification (cookie parse + verifySessionCookie): ${sessionMs.toFixed(0)} ms`);
+  perfLast = performance.now();
+
   const profile = await getCachedUserProfile(userId);
+  const userLookupMs = performance.now() - perfLast;
+  console.log(`[PERF-GLOBAL][auth] user profile lookup (users/{uid} read, includes orgId): ${userLookupMs.toFixed(0)} ms`);
 
   if (!profile) {
     throw new DomainError(
@@ -60,6 +70,10 @@ async function resolveAuthenticatedContext(): Promise<AuthenticatedContext> {
       'Organization is not configured for this account.',
     );
   }
+
+  console.log(
+    `[PERF-GLOBAL][auth] getAuthenticatedContext TOTAL: ${(performance.now() - perfTotalStart).toFixed(0)} ms (no separate org document read)`,
+  );
 
   return {
     orgId: profile.organizationId,

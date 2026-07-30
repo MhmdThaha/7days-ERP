@@ -104,10 +104,17 @@ export const productRepository = {
     const status = params.status ?? 'active';
     const search = params.search ?? '';
 
+    // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+    const perfQueryStart = performance.now();
     const snapshot = await getOrgCollection(orgId, 'products')
       .where('deletedAt', '==', null)
       .get();
+    const queryMs = performance.now() - perfQueryStart;
+    console.log(
+      `[PERF-GLOBAL][firestore] products.list query (deletedAt==null): ${queryMs.toFixed(0)} ms | docs=${snapshot.size}`,
+    );
 
+    const perfProcessStart = performance.now();
     const allItems = snapshot.docs
       .map((doc) => toProduct(doc.id, doc.data() as ProductDocument))
       .filter((product) => matchesStatus(product.isActive, status))
@@ -119,6 +126,10 @@ export const productRepository = {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const safePage = Math.min(page, totalPages);
     const start = (safePage - 1) * pageSize;
+
+    console.log(
+      `[PERF-GLOBAL][firestore] products.list in-memory filter/sort/paginate: ${(performance.now() - perfProcessStart).toFixed(0)} ms | filtered=${total}`,
+    );
 
     return {
       items: allItems.slice(start, start + pageSize),

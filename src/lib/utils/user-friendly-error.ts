@@ -33,5 +33,9 @@ export function toUserFriendlyLoadError(message: string): string {
 }
 
 export function isOrgConfigError(message: string): boolean {
-  return message.includes('Organization context is not configured');
+  return (
+    message.includes('Organization context is not configured') ||
+    message.includes('Organization is not configured') ||
+    message.includes('ORG_NOT_CONFIGURED')
+  );
 }

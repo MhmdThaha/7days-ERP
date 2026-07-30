@@ -13,7 +13,13 @@ import { tryGetAuthenticatedContext } from '@/lib/firebase/auth-server';
 import { quickAddActions } from '@/lib/navigation/quick-add-actions';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+  const perfLayoutStart = performance.now();
+
   const auth = await tryGetAuthenticatedContext();
+  console.log(
+    `[PERF-GLOBAL][layout] dashboard SSR auth (tryGetAuthenticatedContext): ${(performance.now() - perfLayoutStart).toFixed(0)} ms`,
+  );
 
   if (auth.status === 'unauthorized') {
     redirect(DEFAULT_LOGIN_PATH);
@@ -28,6 +34,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const quickAddModules = quickAddActions
     .filter((action) => canAccessModule(action.module, role))
     .map((action) => action.module);
+
+  console.log(
+    `[PERF-GLOBAL][layout] dashboard layout TOTAL (SSR): ${(performance.now() - perfLayoutStart).toFixed(0)} ms`,
+  );
 
   return (
     <BakeryGate>

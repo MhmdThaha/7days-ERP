@@ -11,7 +11,32 @@ import {
   setSessionCookie,
 } from '@/test/security/auth-mocks';
 
-import { DELETE, POST } from '@/app/api/auth/session/route';
+import { DELETE, GET, POST } from '@/app/api/auth/session/route';
+
+describe('GET /api/auth/session', () => {
+  beforeEach(() => {
+    resetAuthMocks();
+  });
+
+  it('returns authenticated false when no cookie is present', async () => {
+    const response = await GET();
+    expect(response.status).toBe(401);
+
+    const body = (await response.json()) as { authenticated: boolean };
+    expect(body.authenticated).toBe(false);
+  });
+
+  it('returns authenticated true for a valid session cookie', async () => {
+    setSessionCookie('valid-session');
+    mockVerifySessionCookie.mockResolvedValue({ uid: 'user-a' });
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as { authenticated: boolean };
+    expect(body.authenticated).toBe(true);
+  });
+});
 
 describe('POST /api/auth/session', () => {
   beforeEach(() => {

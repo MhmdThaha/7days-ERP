@@ -291,6 +291,17 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
                       <TableCell>{index + 1}</TableCell>
                       <TableCell>
                         {lineItem.rawMaterialCode} - {lineItem.rawMaterialName}
+                        {lineItem.packCount !== null &&
+                        lineItem.packSize !== null &&
+                        lineItem.packPrice !== null ? (
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {lineItem.packCount.toLocaleString('en-IN', {
+                              maximumFractionDigits: 3,
+                            })}{' '}
+                            × {formatQuantity(lineItem.packSize)} {lineItem.unit} @{' '}
+                            <MoneyDisplay amount={lineItem.packPrice} />
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatQuantity(lineItem.quantity)}
