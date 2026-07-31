@@ -6,6 +6,8 @@ import {
   PROTECTED_ROUTE_PREFIXES,
   SESSION_COOKIE_NAME,
 } from '@/lib/auth/constants';
+import { authLogEdge } from '@/lib/observability/auth-logger.edge';
+import { AUTH_TRACE_STEPS } from '@/lib/observability/auth-trace.types';
 
 function isProtectedRoute(pathname: string): boolean {
   if (pathname === CREATE_BAKERY_PATH) {
@@ -33,6 +35,11 @@ export function middleware(request: NextRequest) {
     loginUrl.pathname = DEFAULT_LOGIN_PATH;
     loginUrl.searchParams.set('next', pathname);
     const response = NextResponse.redirect(loginUrl);
+    authLogEdge({
+      step: AUTH_TRACE_STEPS.MIDDLEWARE_DECISION,
+      status: 'success',
+      meta: { path: pathname, hasSessionCookie: hasSession, decision: 'redirect' },
+    });
     response.headers.set('x-perf-middleware-ms', (performance.now() - perfStart).toFixed(0));
     return response;
   }
@@ -43,6 +50,11 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
   // [PERF-GLOBAL-TEMP]
+  authLogEdge({
+    step: AUTH_TRACE_STEPS.MIDDLEWARE_DECISION,
+    status: 'success',
+    meta: { path: pathname, hasSessionCookie: hasSession, decision: 'pass' },
+  });
   response.headers.set('x-perf-middleware-ms', (performance.now() - perfStart).toFixed(0));
   return response;
 }

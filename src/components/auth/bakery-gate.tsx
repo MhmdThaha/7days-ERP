@@ -6,6 +6,8 @@ import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { DEFAULT_LOGIN_PATH } from '@/lib/auth/constants';
 import { useServerSessionVerified } from '@/providers/server-auth-context';
+import { authLogClient } from '@/lib/observability/auth-logger.client';
+import { AUTH_TRACE_STEPS } from '@/lib/observability/auth-trace.types';
 
 type BakeryGateProps = {
   children: ReactNode;
@@ -23,16 +25,22 @@ export function BakeryGate({ children }: BakeryGateProps) {
 
   useEffect(() => {
     if (serverSessionVerified) {
+      authLogClient({ step: AUTH_TRACE_STEPS.GATE_READY, status: 'success' });
       return;
     }
 
     if (isLoading) {
+      authLogClient({ step: AUTH_TRACE_STEPS.GATE_LOADING, status: 'started' });
       return;
     }
 
     if (!isAuthenticated || !user?.uid) {
+      authLogClient({ step: AUTH_TRACE_STEPS.GATE_REDIRECT, status: 'started' });
       router.replace(DEFAULT_LOGIN_PATH);
+      return;
     }
+
+    authLogClient({ step: AUTH_TRACE_STEPS.GATE_AUTHENTICATED, status: 'success' });
   }, [isAuthenticated, isLoading, router, serverSessionVerified, user?.uid]);
 
   if (!serverSessionVerified && (isLoading || !isAuthenticated)) {

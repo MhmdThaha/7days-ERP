@@ -15,6 +15,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { AuthClientError } from '@/lib/auth/errors';
 import { resolvePostAuthRedirectPath } from '@/lib/auth/resolve-post-auth-redirect';
 import { loginFormSchema, type LoginFormValues } from '@/lib/auth/schemas/auth-forms.schema';
+import { beginLoginTrace } from '@/lib/observability/auth-trace-context';
+import { authLogClient } from '@/lib/observability/auth-logger.client';
+import { AUTH_TRACE_STEPS } from '@/lib/observability/auth-trace.types';
 
 const defaultValues: LoginFormValues = {
   email: '',
@@ -71,6 +74,13 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginFormValues) {
     setFormError(null);
+    const traceId = beginLoginTrace('email');
+    authLogClient({
+      step: AUTH_TRACE_STEPS.LOGIN_BUTTON_CLICKED,
+      status: 'started',
+      traceId,
+      meta: { method: 'email' },
+    });
 
     try {
       await signIn({
@@ -86,6 +96,13 @@ export function LoginForm() {
   async function handleGoogleSignIn() {
     setFormError(null);
     setIsGoogleSigningIn(true);
+    const traceId = beginLoginTrace('google');
+    authLogClient({
+      step: AUTH_TRACE_STEPS.LOGIN_BUTTON_CLICKED,
+      status: 'started',
+      traceId,
+      meta: { method: 'google' },
+    });
 
     try {
       await signInWithGoogle();

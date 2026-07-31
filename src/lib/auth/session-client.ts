@@ -2,7 +2,49 @@
 
 import type { User } from 'firebase/auth';
 
+import { getActiveLoginTraceId } from '@/lib/observability/auth-trace-context';
+import { LOGIN_TRACE_HEADER } from '@/lib/observability/auth-trace-header';
+import { authLogClient } from '@/lib/observability/auth-logger.client';
+import { AUTH_TRACE_STEPS } from '@/lib/observability/auth-trace.types';
+
 const SESSION_API_PATH = '/api/auth/session';
+
+function buildSessionRequestHeaders(
+  extraHeaders?: Record<string, string>,
+): Record<string, string> {
+  const headers: Record<string, string> = { ...extraHeaders };
+  const traceId = getActiveLoginTraceId();
+
+  if (traceId) {
+    headers[LOGIN_TRACE_HEADER] = traceId;
+  }
+
+  return headers;
+}
+
+async function logSessionFetch(
+  method: string,
+  fetchPromise: Promise<Response>,
+): Promise<Response> {
+  const startedAt = performance.now();
+  authLogClient({
+    step: AUTH_TRACE_STEPS.SESSION_REQUEST_STARTED,
+    status: 'started',
+    meta: { method, path: SESSION_API_PATH },
+  });
+
+  const response = await fetchPromise;
+
+  authLogClient({
+    step: AUTH_TRACE_STEPS.SESSION_RESPONSE,
+    status: response.ok ? 'success' : 'failure',
+    durationMs: Math.round(performance.now() - startedAt),
+    errorCode: response.ok ? undefined : String(response.status),
+    meta: { method, path: SESSION_API_PATH, httpStatus: response.status },
+  });
+
+  return response;
+}
 
 export type SyncSessionOptions = {
   /** Always mint a new httpOnly session cookie (sign-in, sign-up, forced recovery). */
@@ -12,7 +54,13 @@ export type SyncSessionOptions = {
 };
 
 export async function checkServerSession(): Promise<boolean> {
-  const response = await fetch(SESSION_API_PATH, { method: 'GET' });
+  const response = await logSessionFetch(
+    'GET',
+    fetch(SESSION_API_PATH, {
+      method: 'GET',
+      headers: buildSessionRequestHeaders(),
+    }),
+  );
 
   if (!response.ok) {
     return false;
@@ -23,11 +71,14 @@ export async function checkServerSession(): Promise<boolean> {
 }
 
 export async function createServerSession(idToken: string): Promise<void> {
-  const response = await fetch(SESSION_API_PATH, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken }),
-  });
+  const response = await logSessionFetch(
+    'POST',
+    fetch(SESSION_API_PATH, {
+      method: 'POST',
+      headers: buildSessionRequestHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ idToken }),
+    }),
+  );
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;

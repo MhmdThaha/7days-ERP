@@ -11,7 +11,18 @@ import {
 
 import { getClientAuth } from '@/lib/firebase/client';
 
-import { toAuthClientError } from './errors';
+import { authLogClient } from '@/lib/observability/auth-logger.client';
+import { AUTH_TRACE_STEPS } from '@/lib/observability/auth-trace.types';
+
+import { AuthClientError, toAuthClientError } from './errors';
+
+function getAuthErrorCode(error: unknown): string {
+  if (error instanceof AuthClientError) {
+    return error.code;
+  }
+
+  return 'auth/unknown';
+}
 
 export type SignUpInput = {
   email: string;
@@ -50,16 +61,42 @@ export async function signUpWithEmailPassword(input: SignUpInput): Promise<UserC
 }
 
 export async function signInWithEmailPassword(input: SignInInput): Promise<UserCredential> {
-  return runAuthOperation(async () => {
-    return signInWithEmailAndPassword(getClientAuth(), input.email, input.password);
-  });
+  authLogClient({ step: AUTH_TRACE_STEPS.EMAIL_STARTED, status: 'started' });
+
+  try {
+    const credential = await runAuthOperation(async () => {
+      return signInWithEmailAndPassword(getClientAuth(), input.email, input.password);
+    });
+    authLogClient({ step: AUTH_TRACE_STEPS.EMAIL_SUCCESS, status: 'success' });
+    return credential;
+  } catch (error: unknown) {
+    authLogClient({
+      step: AUTH_TRACE_STEPS.EMAIL_FAILED,
+      status: 'failure',
+      errorCode: getAuthErrorCode(error),
+    });
+    throw error;
+  }
 }
 
 export async function signInWithGoogle(): Promise<UserCredential> {
-  return runAuthOperation(async () => {
-    const provider = new GoogleAuthProvider();
-    return signInWithPopup(getClientAuth(), provider);
-  });
+  authLogClient({ step: AUTH_TRACE_STEPS.GOOGLE_POPUP_STARTED, status: 'started' });
+
+  try {
+    const credential = await runAuthOperation(async () => {
+      const provider = new GoogleAuthProvider();
+      return signInWithPopup(getClientAuth(), provider);
+    });
+    authLogClient({ step: AUTH_TRACE_STEPS.GOOGLE_POPUP_SUCCESS, status: 'success' });
+    return credential;
+  } catch (error: unknown) {
+    authLogClient({
+      step: AUTH_TRACE_STEPS.GOOGLE_POPUP_FAILED,
+      status: 'failure',
+      errorCode: getAuthErrorCode(error),
+    });
+    throw error;
+  }
 }
 
 export async function signOutUser(): Promise<void> {
