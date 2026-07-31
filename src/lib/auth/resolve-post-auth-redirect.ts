@@ -10,7 +10,7 @@ import { getActiveLoginTraceId } from '@/lib/observability/auth-trace-context';
  */
 export async function resolvePostAuthRedirectPath(): Promise<string> {
   // TEMP-TRACE: remove after login-hang investigation
-  console.info('[TEMP-TRACE]', {
+  console.log('[TEMP-TRACE]', {
     TRACE_ID: getActiveLoginTraceId(),
     FUNCTION: 'resolvePostAuthRedirectPath',
     EVENT: 'ENTER',
@@ -22,7 +22,7 @@ export async function resolvePostAuthRedirectPath(): Promise<string> {
 
   if (!result.success || !result.data?.organizationId) {
     // TEMP-TRACE: remove after login-hang investigation
-    console.info('[TEMP-TRACE]', {
+    console.log('[TEMP-TRACE]', {
       TRACE_ID: getActiveLoginTraceId(),
       FUNCTION: 'resolvePostAuthRedirectPath',
       EVENT: 'EXIT',
@@ -36,7 +36,7 @@ export async function resolvePostAuthRedirectPath(): Promise<string> {
   }
 
   // TEMP-TRACE: remove after login-hang investigation
-  console.info('[TEMP-TRACE]', {
+  console.log('[TEMP-TRACE]', {
     TRACE_ID: getActiveLoginTraceId(),
     FUNCTION: 'resolvePostAuthRedirectPath',
     EVENT: 'EXIT',

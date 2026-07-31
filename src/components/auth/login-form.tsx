@@ -33,7 +33,7 @@ function tempTrace(payload: {
   [key: string]: unknown;
 }) {
   try {
-    console.info('[TEMP-TRACE]', {
+    console.log('[TEMP-TRACE]', {
       ...payload,
       CURRENT_URL: typeof window !== 'undefined' ? window.location.href : null,
     });

@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const previous = previousPathnameRef.current;
     try {
-      console.info('[TEMP-TRACE]', {
+      console.log('[TEMP-TRACE]', {
         TRACE_ID: getActiveLoginTraceId(),
         FUNCTION: 'AuthProvider',
         EVENT: previous === null ? 'router pathname initial' : 'router navigation completed',
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (firebaseUser: User, idToken: string) => {
       // TEMP-TRACE: remove after login-hang investigation
       try {
-        console.info('[TEMP-TRACE]', {
+        console.log('[TEMP-TRACE]', {
           TRACE_ID: getActiveLoginTraceId(),
           FUNCTION: 'applyAuthenticatedUser',
           EVENT: 'ENTER',
@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // TEMP-TRACE: remove after login-hang investigation
       try {
-        console.info('[TEMP-TRACE]', {
+        console.log('[TEMP-TRACE]', {
           TRACE_ID: getActiveLoginTraceId(),
           FUNCTION: 'applyAuthenticatedUser',
           EVENT: 'EXIT',
