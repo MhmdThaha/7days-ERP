@@ -1,15 +1,14 @@
 'use server';
 
 import { createBakeryFormSchema } from '@/lib/auth/schemas/create-bakery.schema';
-import { getAuthenticatedUserId } from '@/lib/firebase/auth-server';
+import { getAuthenticatedUserId, getAuthenticatedUserProfile } from '@/lib/firebase/auth-server';
 import { userRepository } from '@/lib/repositories/user.repository';
 import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type { UserProfile } from '@/types/user';
 
 export async function getUserProfileAction(): Promise<ActionResult<UserProfile | null>> {
   return wrapAction(async () => {
-    const userId = await getAuthenticatedUserId();
-    return userRepository.getById(userId);
+    return getAuthenticatedUserProfile();
   });
 }
 

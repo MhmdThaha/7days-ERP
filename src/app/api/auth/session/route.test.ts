@@ -32,6 +32,7 @@ describe('GET /api/auth/session', () => {
 
     const response = await GET();
     expect(response.status).toBe(200);
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith('valid-session', false);
 
     const body = (await response.json()) as { authenticated: boolean };
     expect(body.authenticated).toBe(true);
@@ -110,6 +111,7 @@ describe('DELETE /api/auth/session', () => {
     const response = await DELETE();
 
     expect(response.status).toBe(200);
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith('existing-session', true);
     expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('user-a');
 
     const cookie = response.cookies.get(SESSION_COOKIE_NAME);

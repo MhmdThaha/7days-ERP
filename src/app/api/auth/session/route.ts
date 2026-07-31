@@ -4,7 +4,10 @@ import { NextResponse } from 'next/server';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { SESSION_COOKIE_MAX_AGE_MS, SESSION_COOKIE_MAX_AGE_SECONDS } from '@/lib/auth/session-config';
 import { getAdminAuth } from '@/lib/firebase/admin';
-
+import {
+  verifySessionCookieForRequest,
+  verifySessionCookieStrict,
+} from '@/lib/firebase/session-verify';
 type CreateSessionBody = {
   idToken?: string;
 };
@@ -18,9 +21,8 @@ export async function GET() {
   }
 
   try {
-    await getAdminAuth().verifySessionCookie(sessionCookie, true);
-    return NextResponse.json({ authenticated: true });
-  } catch {
+    await verifySessionCookieForRequest(sessionCookie);
+    return NextResponse.json({ authenticated: true });  } catch {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 }
@@ -69,9 +71,8 @@ export async function DELETE() {
 
   if (sessionCookie) {
     try {
-      const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-      await getAdminAuth().revokeRefreshTokens(decoded.sub);
-    } catch {
+      const decoded = await verifySessionCookieStrict(sessionCookie);
+      await getAdminAuth().revokeRefreshTokens(decoded.sub);    } catch {
       // Cookie may already be invalid — still clear it.
     }
   }

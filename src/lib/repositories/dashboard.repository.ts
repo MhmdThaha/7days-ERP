@@ -204,14 +204,12 @@ function buildRecentActivity(
 }
 
 export const dashboardRepository = {
-  async getData(orgId: string, today: string): Promise<DashboardData> {
+  async getStaticData(orgId: string): Promise<
+    Pick<DashboardData, 'quickCounts' | 'lowStockProducts' | 'recentActivity'>
+  > {
     const recentLimit = DASHBOARD_RECENT_ACTIVITY_LIMIT;
 
     const [
-      todaySalesSnapshot,
-      todayProductionSnapshot,
-      todayExpensesSnapshot,
-      todayWastageSnapshot,
       totalProducts,
       totalRawMaterials,
       draftPurchases,
@@ -225,22 +223,6 @@ export const dashboardRepository = {
       recentReturnsSnapshot,
       recentExpensesSnapshot,
     ] = await Promise.all([
-      activeOrgQuery(orgId, 'sales')
-        .where('saleDate', '==', today)
-        .where('status', '==', 'completed')
-        .get(),
-      activeOrgQuery(orgId, 'production')
-        .where('productionDate', '==', today)
-        .where('status', '==', 'completed')
-        .get(),
-      activeOrgQuery(orgId, 'expenses')
-        .where('expenseDate', '==', today)
-        .where('status', '==', 'completed')
-        .get(),
-      activeOrgQuery(orgId, 'wastage')
-        .where('wastageDate', '==', today)
-        .where('status', '==', 'completed')
-        .get(),
       countActiveRecords(orgId, 'products'),
       countActiveRecords(orgId, 'rawMaterials'),
       countDraftDocuments(orgId, 'purchases'),
@@ -262,11 +244,6 @@ export const dashboardRepository = {
       activeOrgQuery(orgId, 'returns').orderBy('createdAt', 'desc').limit(recentLimit).get(),
       activeOrgQuery(orgId, 'expenses').orderBy('createdAt', 'desc').limit(recentLimit).get(),
     ]);
-
-    const todaySales = todaySalesSnapshot.docs.map((doc) => doc.data() as SaleDocument);
-    const todayProduction = todayProductionSnapshot.docs.map((doc) => doc.data() as ProductionDocument);
-    const todayExpenses = todayExpensesSnapshot.docs.map((doc) => doc.data() as ExpenseDocument);
-    const todayWastage = todayWastageSnapshot.docs.map((doc) => doc.data() as WastageDocument);
 
     const quickCounts: DashboardQuickCounts = {
       totalProducts,
@@ -312,10 +289,54 @@ export const dashboardRepository = {
     }));
 
     return {
-      summary: buildSummaryFromTodayDocs(today, todaySales, todayProduction, todayExpenses, todayWastage),
       quickCounts,
       lowStockProducts,
       recentActivity: buildRecentActivity(production, sales, wastage, returns, expenses),
+    };
+  },
+
+  async getTodaySummary(orgId: string, today: string): Promise<DashboardSummary> {
+    const [
+      todaySalesSnapshot,
+      todayProductionSnapshot,
+      todayExpensesSnapshot,
+      todayWastageSnapshot,
+    ] = await Promise.all([
+      activeOrgQuery(orgId, 'sales')
+        .where('saleDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      activeOrgQuery(orgId, 'production')
+        .where('productionDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      activeOrgQuery(orgId, 'expenses')
+        .where('expenseDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+      activeOrgQuery(orgId, 'wastage')
+        .where('wastageDate', '==', today)
+        .where('status', '==', 'completed')
+        .get(),
+    ]);
+
+    const todaySales = todaySalesSnapshot.docs.map((doc) => doc.data() as SaleDocument);
+    const todayProduction = todayProductionSnapshot.docs.map((doc) => doc.data() as ProductionDocument);
+    const todayExpenses = todayExpensesSnapshot.docs.map((doc) => doc.data() as ExpenseDocument);
+    const todayWastage = todayWastageSnapshot.docs.map((doc) => doc.data() as WastageDocument);
+
+    return buildSummaryFromTodayDocs(today, todaySales, todayProduction, todayExpenses, todayWastage);
+  },
+
+  async getData(orgId: string, today: string): Promise<DashboardData> {
+    const [staticData, summary] = await Promise.all([
+      this.getStaticData(orgId),
+      this.getTodaySummary(orgId, today),
+    ]);
+
+    return {
+      ...staticData,
+      summary,
     };
   },
 };

@@ -43,12 +43,31 @@ describe('getAuthenticatedContext', () => {
     });
   });
 
-  it('throws UNAUTHORIZED when refresh tokens are revoked', async () => {
-    setSessionCookie('revoked-session');
-    mockVerifySessionCookie.mockRejectedValue(new Error('Firebase session cookie has been revoked'));
+  it('uses fast verification without revocation check on the hot path', async () => {
+    grantValidSession({ userId: 'user-a', orgId: 'org-a', role: 'owner' });
 
-    await expect(getAuthenticatedContext()).rejects.toMatchObject({
-      code: 'UNAUTHORIZED',
+    await getAuthenticatedContext();
+
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith('session-user-a', false);
+  });
+
+  it('allows hot-path auth when revocation check would fail (cookie still within TTL)', async () => {
+    setSessionCookie('revoked-session');
+    mockVerifySessionCookie.mockImplementation(async (_cookie: string, checkRevoked?: boolean) => {
+      if (checkRevoked) {
+        throw new Error('Firebase session cookie has been revoked');
+      }
+
+      return { uid: 'user-a', sub: 'user-a' };
+    });
+    mockUserRepositoryGetById.mockResolvedValue(
+      createTestProfile({ id: 'user-a', organizationId: 'org-a', role: 'owner' }),
+    );
+
+    await expect(getAuthenticatedContext()).resolves.toEqual({
+      orgId: 'org-a',
+      userId: 'user-a',
+      role: 'owner',
     });
   });
 

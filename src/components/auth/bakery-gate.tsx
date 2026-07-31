@@ -5,27 +5,27 @@ import { useEffect, type ReactNode } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { DEFAULT_LOGIN_PATH } from '@/lib/auth/constants';
+import { useServerSessionVerified } from '@/providers/server-auth-context';
 
 type BakeryGateProps = {
   children: ReactNode;
 };
 
 /**
- * Waits for client Firebase auth + session cookie sync. Server layout already
- * verified the session and org — no duplicate profile fetch here.
+ * Waits for client Firebase auth when SSR has not already validated the session.
+ * Dashboard layout passes serverSessionVerified so children render immediately
+ * after SSR auth while client session sync completes in parallel.
  */
 export function BakeryGate({ children }: BakeryGateProps) {
   const router = useRouter();
+  const serverSessionVerified = useServerSessionVerified();
   const { user, isLoading, isAuthenticated } = useAuth();
 
-  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      console.log('[PERF-GLOBAL][client] BakeryGate opened — page content now visible');
+    if (serverSessionVerified) {
+      return;
     }
-  }, [isAuthenticated, isLoading]);
 
-  useEffect(() => {
     if (isLoading) {
       return;
     }
@@ -33,9 +33,9 @@ export function BakeryGate({ children }: BakeryGateProps) {
     if (!isAuthenticated || !user?.uid) {
       router.replace(DEFAULT_LOGIN_PATH);
     }
-  }, [isAuthenticated, isLoading, router, user?.uid]);
+  }, [isAuthenticated, isLoading, router, serverSessionVerified, user?.uid]);
 
-  if (isLoading || !isAuthenticated) {
+  if (!serverSessionVerified && (isLoading || !isAuthenticated)) {
     return (
       <div
         className="flex min-h-[50vh] flex-1 items-center justify-center text-sm text-muted-foreground"

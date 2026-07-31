@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { BakeryGate } from '@/components/auth/bakery-gate';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { ServerAuthProvider } from '@/providers/server-auth-context';
 import { filterNavGroupsByRole, navGroups } from '@/components/layout/nav-items';
 import {
   CREATE_BAKERY_PATH,
@@ -40,10 +41,12 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   );
 
   return (
-    <BakeryGate>
-      <DashboardShell navGroups={sidebarNavGroups} quickAddModules={quickAddModules}>
-        {children}
-      </DashboardShell>
-    </BakeryGate>
+    <ServerAuthProvider verified>
+      <BakeryGate>
+        <DashboardShell navGroups={sidebarNavGroups} quickAddModules={quickAddModules}>
+          {children}
+        </DashboardShell>
+      </BakeryGate>
+    </ServerAuthProvider>
   );
 }
