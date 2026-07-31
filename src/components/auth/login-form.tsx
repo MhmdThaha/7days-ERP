@@ -2,8 +2,8 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { FormField } from '@/components/shared/form-field';
@@ -23,6 +23,52 @@ const defaultValues: LoginFormValues = {
   email: '',
   password: '',
 };
+
+// TEMP-TRACE: remove after login-hang investigation.
+function tempTrace(payload: {
+  TRACE_ID: string | null;
+  FUNCTION: string;
+  EVENT: string;
+  NEXT_STEP: string;
+  [key: string]: unknown;
+}) {
+  try {
+    console.info('[TEMP-TRACE]', {
+      ...payload,
+      CURRENT_URL: typeof window !== 'undefined' ? window.location.href : null,
+    });
+  } catch {
+    // observation only
+  }
+}
+
+// TEMP-TRACE: remove after login-hang investigation.
+function tempTracePostPush(traceId: string, fn: string, pushedPath: string) {
+  try {
+    tempTrace({
+      TRACE_ID: traceId,
+      FUNCTION: fn,
+      EVENT: 'router.push executed',
+      NEXT_STEP: 'wait 1500ms then observe location',
+      pushedPath,
+      pathnameAtPush: window.location.pathname,
+    });
+    setTimeout(() => {
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: fn,
+        EVENT: 'post-push check (+1500ms)',
+        NEXT_STEP: 'none (final observation)',
+        window_location_href: window.location.href,
+        window_location_pathname: window.location.pathname,
+        stillOnLogin: window.location.pathname === '/login',
+        pushedPath,
+      });
+    }, 1500);
+  } catch {
+    // observation only — never interfere with the flow
+  }
+}
 
 function GoogleIcon() {
   return (
@@ -57,9 +103,21 @@ function getAuthErrorMessage(error: unknown): string {
 
 export function LoginForm() {
   const router = useRouter();
+  const pathname = usePathname();
   const { signIn, signInWithGoogle } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+
+  // TEMP-TRACE: remove after login-hang investigation — router transition observer
+  useEffect(() => {
+    tempTrace({
+      TRACE_ID: null,
+      FUNCTION: 'LoginForm',
+      EVENT: 'router pathname observed',
+      NEXT_STEP: 'watch for pathname change after router.push',
+      pathname,
+    });
+  }, [pathname]);
 
   const {
     register,
@@ -82,12 +140,62 @@ export function LoginForm() {
       meta: { method: 'email' },
     });
 
+    // TEMP-TRACE: remove after login-hang investigation
+    tempTrace({
+      TRACE_ID: traceId,
+      FUNCTION: 'onSubmit',
+      EVENT: 'Login button clicked',
+      NEXT_STEP: 'signIn()',
+      method: 'email',
+    });
+
     try {
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'onSubmit',
+        EVENT: 'signIn() started',
+        NEXT_STEP: 'await AuthProvider.signIn → Firebase + session sync',
+      });
       await signIn({
         email: values.email,
         password: values.password,
       });
-      router.push(await resolvePostAuthRedirectPath());
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'onSubmit',
+        EVENT: 'signIn() finished',
+        NEXT_STEP: 'resolvePostAuthRedirectPath()',
+      });
+
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'onSubmit',
+        EVENT: 'resolvePostAuthRedirectPath() started',
+        NEXT_STEP: 'await getUserProfileAction server action',
+      });
+      const redirectPath = await resolvePostAuthRedirectPath();
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'onSubmit',
+        EVENT: 'resolvePostAuthRedirectPath() returned',
+        NEXT_STEP: `router.push('${redirectPath}')`,
+        redirectPath,
+      });
+
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'onSubmit',
+        EVENT: 'router.push() about to execute',
+        NEXT_STEP: `router.push('${redirectPath}')`,
+        redirectPath,
+      });
+      router.push(redirectPath);
+      tempTracePostPush(traceId, 'onSubmit', redirectPath);
     } catch (error: unknown) {
       setFormError(getAuthErrorMessage(error));
     }
@@ -104,9 +212,59 @@ export function LoginForm() {
       meta: { method: 'google' },
     });
 
+    // TEMP-TRACE: remove after login-hang investigation
+    tempTrace({
+      TRACE_ID: traceId,
+      FUNCTION: 'handleGoogleSignIn',
+      EVENT: 'Login button clicked',
+      NEXT_STEP: 'signInWithGoogle()',
+      method: 'google',
+    });
+
     try {
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'handleGoogleSignIn',
+        EVENT: 'signIn() started',
+        NEXT_STEP: 'await AuthProvider.signInWithGoogle → Firebase + session sync',
+      });
       await signInWithGoogle();
-      router.push(await resolvePostAuthRedirectPath());
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'handleGoogleSignIn',
+        EVENT: 'signIn() finished',
+        NEXT_STEP: 'resolvePostAuthRedirectPath()',
+      });
+
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'handleGoogleSignIn',
+        EVENT: 'resolvePostAuthRedirectPath() started',
+        NEXT_STEP: 'await getUserProfileAction server action',
+      });
+      const redirectPath = await resolvePostAuthRedirectPath();
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'handleGoogleSignIn',
+        EVENT: 'resolvePostAuthRedirectPath() returned',
+        NEXT_STEP: `router.push('${redirectPath}')`,
+        redirectPath,
+      });
+
+      // TEMP-TRACE: remove after login-hang investigation
+      tempTrace({
+        TRACE_ID: traceId,
+        FUNCTION: 'handleGoogleSignIn',
+        EVENT: 'router.push() about to execute',
+        NEXT_STEP: `router.push('${redirectPath}')`,
+        redirectPath,
+      });
+      router.push(redirectPath);
+      tempTracePostPush(traceId, 'handleGoogleSignIn', redirectPath);
     } catch (error: unknown) {
       setFormError(getAuthErrorMessage(error));
     } finally {

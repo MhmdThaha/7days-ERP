@@ -30,6 +30,9 @@ import {
 } from '@/lib/auth/session-client';
 import type { AuthUser } from '@/lib/auth/types';
 import { getClientAuth } from '@/lib/firebase/client';
+// TEMP-TRACE: remove after login-hang investigation
+import { getActiveLoginTraceId } from '@/lib/observability/auth-trace-context';
+import { usePathname } from 'next/navigation';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -56,11 +59,34 @@ function toAuthUser(user: User | null): AuthUser | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const lastSyncedIdTokenRef = useRef<string | null>(null);
   /** While sign-in/up is minting the session, onIdTokenChanged must not race it. */
   const explicitSessionSyncRef = useRef(false);
+  // TEMP-TRACE: remove after login-hang investigation
+  const previousPathnameRef = useRef<string | null>(null);
+
+  // TEMP-TRACE: remove after login-hang investigation — app-wide router transition observer
+  useEffect(() => {
+    const previous = previousPathnameRef.current;
+    try {
+      console.info('[TEMP-TRACE]', {
+        TRACE_ID: getActiveLoginTraceId(),
+        FUNCTION: 'AuthProvider',
+        EVENT: previous === null ? 'router pathname initial' : 'router navigation completed',
+        CURRENT_URL: typeof window !== 'undefined' ? window.location.href : null,
+        NEXT_STEP: 'observe further navigations',
+        previousPathname: previous,
+        pathname,
+        navigationStarted: previous !== null && previous !== pathname,
+      });
+    } catch {
+      // observation only
+    }
+    previousPathnameRef.current = pathname;
+  }, [pathname]);
 
   const rememberSyncedToken = useCallback((idToken: string) => {
     lastSyncedIdTokenRef.current = idToken;
@@ -68,8 +94,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applyAuthenticatedUser = useCallback(
     (firebaseUser: User, idToken: string) => {
+      // TEMP-TRACE: remove after login-hang investigation
+      try {
+        console.info('[TEMP-TRACE]', {
+          TRACE_ID: getActiveLoginTraceId(),
+          FUNCTION: 'applyAuthenticatedUser',
+          EVENT: 'ENTER',
+          CURRENT_URL: typeof window !== 'undefined' ? window.location.href : null,
+          NEXT_STEP: 'setUser(toAuthUser(firebaseUser))',
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+        });
+      } catch {
+        // observation only
+      }
+
       rememberSyncedToken(idToken);
       setUser(toAuthUser(firebaseUser));
+
+      // TEMP-TRACE: remove after login-hang investigation
+      try {
+        console.info('[TEMP-TRACE]', {
+          TRACE_ID: getActiveLoginTraceId(),
+          FUNCTION: 'applyAuthenticatedUser',
+          EVENT: 'EXIT',
+          CURRENT_URL: typeof window !== 'undefined' ? window.location.href : null,
+          NEXT_STEP: 'runExplicitSessionSync resolves → signIn() finishes',
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+        });
+      } catch {
+        // observation only
+      }
     },
     [rememberSyncedToken],
   );
