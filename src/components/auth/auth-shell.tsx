@@ -22,6 +22,7 @@ export function AuthShell({ title, description, children, footer }: AuthShellPro
       <div className="mb-8 flex flex-col items-center gap-2 text-center">
         <Link
           href="/"
+          prefetch={false}
           className="flex items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="flex aspect-square size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
