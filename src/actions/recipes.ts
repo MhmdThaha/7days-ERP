@@ -39,16 +39,29 @@ export async function getRecipeAction(recipeId: string): Promise<ActionResult<Re
 
 export async function createRecipeAction(input: CreateRecipeInput): Promise<ActionResult<Recipe>> {
   return wrapAction(async () => {
+    // [PERF-TEMP] instrumentation — remove after performance investigation
+    const perfStart = performance.now();
+    let perfLast = perfStart;
+    const perfMark = (label: string) => {
+      const now = performance.now();
+      console.log(`[PERF][action] ${label}: ${(now - perfLast).toFixed(0)} ms`);
+      perfLast = now;
+    };
+    console.log(`[PERF][action] createRecipeAction started at ${new Date().toISOString()}`);
+
     const { orgId, userId, role } = await getAuthenticatedContext();
+    perfMark('authentication (session verify + user profile read)'); // [PERF-TEMP]
     assertCan(role, 'create', 'recipe');
+    perfMark('authorization (assertCan)'); // [PERF-TEMP]
     const validated = createRecipeSchema.parse({
       ...input,
       recipeCode: input.recipeCode ?? '',
       notes: input.notes ?? null,
       isActive: input.isActive ?? true,
     });
+    perfMark('zod validation'); // [PERF-TEMP]
 
-    return recipeService.create(
+    const created = await recipeService.create(
       orgId,
       {
         productId: validated.productId,
@@ -60,6 +73,11 @@ export async function createRecipeAction(input: CreateRecipeInput): Promise<Acti
       },
       userId,
     );
+    perfMark('recipeService.create total'); // [PERF-TEMP]
+    console.log(
+      `[PERF][action] createRecipeAction TOTAL (server): ${(performance.now() - perfStart).toFixed(0)} ms`,
+    );
+    return created;
   });
 }
 

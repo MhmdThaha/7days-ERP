@@ -21,7 +21,10 @@ export function calculateNewWac(
 
   const totalExistingValue = existingQty * existingAvgCost;
   const totalIncomingValue = incomingQty * incomingUnitCost;
-  const newAvgCost = Math.round((totalExistingValue + totalIncomingValue) / newQty);
+  // Average cost is a rate (paise per stock unit), not a money amount, so it keeps
+  // fractional paise. Rounded to 4 decimals only to suppress float drift.
+  const newAvgCost =
+    Math.round(((totalExistingValue + totalIncomingValue) / newQty) * 10000) / 10000;
 
   return { newQty, newAvgCost };
 }

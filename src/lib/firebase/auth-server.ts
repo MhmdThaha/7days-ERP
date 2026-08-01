@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { requireUserRole } from '@/lib/auth/user-role';
 import { DomainError } from '@/lib/domain/errors';
-import { getAdminAuth } from '@/lib/firebase/admin';
+import { verifySessionCookieForRequest } from '@/lib/firebase/session-verify';
 import { userRepository } from '@/lib/repositories/user.repository';
 import type { UserProfile } from '@/types/user';
 import type { UserRole } from '@/types/user';
@@ -24,7 +24,7 @@ const getVerifiedSessionUserId = cache(async (): Promise<string> => {
   }
 
   try {
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
+    const decoded = await verifySessionCookieForRequest(sessionCookie);
     return decoded.uid;
   } catch {
     throw new DomainError('UNAUTHORIZED', 'Authentication required.');
@@ -76,6 +76,15 @@ async function resolveAuthenticatedContext(): Promise<AuthenticatedContext> {
 export const getAuthenticatedContext = cache(resolveAuthenticatedContext);
 
 /**
+ * Verified user profile for onboarding actions. Cached per request together
+ * with session verification to avoid duplicate users/{uid} reads.
+ */
+export const getAuthenticatedUserProfile = cache(async (): Promise<UserProfile | null> => {
+  const userId = await getVerifiedSessionUserId();
+  return getCachedUserProfile(userId);
+});
+
+/**
  * Same as getAuthenticatedContext but returns a result instead of throwing
  * for onboarding/auth states that should redirect rather than crash SSR.
  */
@@ -115,10 +124,10 @@ export const tryGetAuthenticatedContext = cache(
 /**
  * Verified session uid only — for onboarding before an organization exists.
  */
-export async function getAuthenticatedUserId(): Promise<string> {
+export const getAuthenticatedUserId = cache(async (): Promise<string> => {
   try {
     return await getVerifiedSessionUserId();
   } catch {
     throw new DomainError('UNAUTHORIZED', 'Authentication required.');
   }
-}
+});

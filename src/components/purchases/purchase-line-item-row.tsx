@@ -29,16 +29,41 @@ type PurchaseLineItemRowProps = {
   errors: FieldErrors<PurchaseFormValues>;
   rawMaterialId: string;
   unit: string;
-  unitCost: number;
-  quantity: number;
+  packCount: number;
+  packSize: number;
+  packPrice: number;
   selectedRawMaterialIds: string[];
   disabled?: boolean;
   onRemove: () => void;
   onRawMaterialChange: (rawMaterialId: string) => void;
   onDuplicateRawMaterial: (index: number) => void;
-  onUnitCostChange: (unitCost: number) => void;
+  onPackPriceChange: (packPrice: number) => void;
   onAdvanceToNextLine?: () => void;
 };
+
+function formatDerivedUnitCost(packPrice: number, packSize: number, unit: string): string | null {
+  if (!(packPrice > 0) || !(packSize > 0)) {
+    return null;
+  }
+
+  const rupeesPerUnit = packPrice / packSize / 100;
+  const formatted = rupeesPerUnit.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+
+  return `₹${formatted}/${unit || 'unit'}`;
+}
+
+function formatDerivedQuantity(packCount: number, packSize: number, unit: string): string | null {
+  if (!(packCount > 0) || !(packSize > 0)) {
+    return null;
+  }
+
+  const quantity = Math.round(packCount * packSize * 1000) / 1000;
+
+  return `= ${quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${unit || ''}`.trim();
+}
 
 export function PurchaseLineItemRow({
   index,
@@ -47,22 +72,30 @@ export function PurchaseLineItemRow({
   errors,
   rawMaterialId,
   unit,
-  unitCost,
-  quantity,
+  packCount,
+  packSize,
+  packPrice,
   selectedRawMaterialIds,
   disabled = false,
   onRemove,
   onRawMaterialChange,
   onDuplicateRawMaterial,
-  onUnitCostChange,
+  onPackPriceChange,
   onAdvanceToNextLine,
 }: PurchaseLineItemRowProps) {
   const lineItemErrors = errors.lineItems?.[index];
   const materialErrorId = `line-item-${index}-rawMaterialId-error`;
-  const quantityErrorId = `line-item-${index}-quantity-error`;
-  const unitCostErrorId = `line-item-${index}-unitCost-error`;
+  const packCountErrorId = `line-item-${index}-packCount-error`;
+  const packSizeErrorId = `line-item-${index}-packSize-error`;
+  const packPriceErrorId = `line-item-${index}-packPrice-error`;
 
-  const lineTotal = Math.round((Number(quantity) || 0) * (Number(unitCost) || 0));
+  const safePackCount = Number(packCount) || 0;
+  const safePackSize = Number(packSize) || 0;
+  const safePackPrice = Number(packPrice) || 0;
+  const lineTotal = Math.round(safePackCount * safePackPrice);
+  const derivedUnitCost = formatDerivedUnitCost(safePackPrice, safePackSize, unit);
+  const derivedQuantity =
+    safePackCount !== 1 ? formatDerivedQuantity(safePackCount, safePackSize, unit) : null;
 
   const materialErrorMessage =
     lineItemErrors?.rawMaterialId?.message === DUPLICATE_RAW_MATERIAL_MESSAGE
@@ -78,13 +111,18 @@ export function PurchaseLineItemRow({
     onRawMaterialChange(value);
     setValue(`lineItems.${index}.rawMaterialId`, value, { shouldValidate: true });
     rememberRawMaterial(value);
-    focusPurchaseLineItemField(index, 'quantity');
+    focusPurchaseLineItemField(index, 'packSize');
   }
 
   return (
     <LineItemsGridRow
       rowClassName={PURCHASE_GRID_ROW_CLASS}
-      hasError={Boolean(lineItemErrors?.rawMaterialId || lineItemErrors?.quantity || lineItemErrors?.unitCost)}
+      hasError={Boolean(
+        lineItemErrors?.rawMaterialId ||
+          lineItemErrors?.packCount ||
+          lineItemErrors?.packSize ||
+          lineItemErrors?.packPrice,
+      )}
     >
       <LineItemGridCell
         label="Material"
@@ -103,22 +141,43 @@ export function PurchaseLineItemRow({
       </LineItemGridCell>
 
       <LineItemGridCell
-        label="Qty"
-        htmlFor={`line-item-${index}-quantity`}
-        error={lineItemErrors?.quantity?.message}
+        label="Packs"
+        htmlFor={`line-item-${index}-packCount`}
+        error={lineItemErrors?.packCount?.message}
       >
         <Input
-          id={`line-item-${index}-quantity`}
+          id={`line-item-${index}-packCount`}
+          type="number"
+          step="any"
+          min="0.001"
+          placeholder="1"
+          disabled={disabled}
+          aria-invalid={Boolean(lineItemErrors?.packCount)}
+          aria-describedby={lineItemErrors?.packCount ? packCountErrorId : undefined}
+          className="h-8 tabular-nums"
+          {...register(`lineItems.${index}.packCount`, { valueAsNumber: true })}
+          onKeyDown={(event) => handleEnterAsTab(event, `line-item-${index}-packSize`)}
+        />
+      </LineItemGridCell>
+
+      <LineItemGridCell
+        label="Pack Size"
+        htmlFor={`line-item-${index}-packSize`}
+        error={lineItemErrors?.packSize?.message}
+        hint={derivedQuantity ?? undefined}
+      >
+        <Input
+          id={`line-item-${index}-packSize`}
           type="number"
           step="any"
           min="0.001"
           placeholder="0"
           disabled={disabled}
-          aria-invalid={Boolean(lineItemErrors?.quantity)}
-          aria-describedby={lineItemErrors?.quantity ? quantityErrorId : undefined}
+          aria-invalid={Boolean(lineItemErrors?.packSize)}
+          aria-describedby={lineItemErrors?.packSize ? packSizeErrorId : undefined}
           className="h-8 tabular-nums"
-          {...register(`lineItems.${index}.quantity`, { valueAsNumber: true })}
-          onKeyDown={(event) => handleEnterAsTab(event, `line-item-${index}-unitCost`)}
+          {...register(`lineItems.${index}.packSize`, { valueAsNumber: true })}
+          onKeyDown={(event) => handleEnterAsTab(event, `line-item-${index}-packPrice`)}
         />
       </LineItemGridCell>
 
@@ -127,20 +186,21 @@ export function PurchaseLineItemRow({
       </LineItemGridCell>
 
       <LineItemGridCell
-        label="Cost"
-        htmlFor={`line-item-${index}-unitCost`}
-        error={lineItemErrors?.unitCost?.message}
+        label="Pack Price"
+        htmlFor={`line-item-${index}-packPrice`}
+        error={lineItemErrors?.packPrice?.message}
+        hint={derivedUnitCost ?? undefined}
       >
         <MoneyInput
-          id={`line-item-${index}-unitCost`}
-          value={unitCost}
+          id={`line-item-${index}-packPrice`}
+          value={packPrice}
           onChange={(value) => {
-            onUnitCostChange(value);
-            setValue(`lineItems.${index}.unitCost`, value, { shouldValidate: true });
+            onPackPriceChange(value);
+            setValue(`lineItems.${index}.packPrice`, value, { shouldValidate: true });
           }}
           disabled={disabled}
-          aria-invalid={Boolean(lineItemErrors?.unitCost)}
-          aria-describedby={lineItemErrors?.unitCost ? unitCostErrorId : undefined}
+          aria-invalid={Boolean(lineItemErrors?.packPrice)}
+          aria-describedby={lineItemErrors?.packPrice ? packPriceErrorId : undefined}
           className="[&_input]:h-8"
           onKeyDown={(event) => {
             if (event.key !== 'Enter') {
@@ -155,7 +215,15 @@ export function PurchaseLineItemRow({
 
       <LineItemGridCell label="Total">
         <LineItemTotalCell id={`line-item-${index}-lineTotal`}>
-          <MoneyDisplay amount={lineTotal} />
+          <span
+            title={
+              derivedUnitCost
+                ? `${derivedQuantity ?? ''} ${derivedQuantity ? '· ' : ''}${derivedUnitCost} auto-calculated`.trim()
+                : undefined
+            }
+          >
+            <MoneyDisplay amount={lineTotal} />
+          </span>
         </LineItemTotalCell>
       </LineItemGridCell>
 

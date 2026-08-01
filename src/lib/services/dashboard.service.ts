@@ -7,9 +7,16 @@ import type { DashboardData } from '@/types/dashboard';
 
 export const dashboardService = {
   async getDashboard(orgId: string): Promise<DashboardData> {
-    const timezone = await organizationRepository.getTimezone(orgId);
-    const today = getDateStringInTimezone(timezone);
+    const timezonePromise = organizationRepository.getTimezone(orgId);
+    const staticDataPromise = dashboardRepository.getStaticData(orgId);
 
-    return dashboardRepository.getData(orgId, today);
+    const [timezone, staticData] = await Promise.all([timezonePromise, staticDataPromise]);
+    const today = getDateStringInTimezone(timezone);
+    const summary = await dashboardRepository.getTodaySummary(orgId, today);
+
+    return {
+      ...staticData,
+      summary,
+    };
   },
 };

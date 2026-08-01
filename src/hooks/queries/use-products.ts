@@ -13,12 +13,17 @@ export function useProducts(params: ProductListParams) {
   return useQuery({
     queryKey: ['products', user?.uid, params],
     queryFn: async () => {
+      // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+      const perfStart = performance.now();
       const result = await listProductsAction({
         search: params.search,
         status: params.status ?? 'active',
         page: params.page ?? 1,
         pageSize: params.pageSize ?? PRODUCT_PAGE_SIZE,
       });
+      console.log(
+        `[PERF-GLOBAL][client] listProductsAction round-trip: ${(performance.now() - perfStart).toFixed(0)} ms`,
+      );
 
       if (!result.success) {
         throw new Error(result.error);

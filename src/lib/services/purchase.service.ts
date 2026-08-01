@@ -1,5 +1,10 @@
 import 'server-only';
 
+import {
+  calculatePurchaseLineTotal,
+  derivePurchaseQuantity,
+  derivePurchaseUnitCost,
+} from '@/lib/domain/calculations/purchase-pricing';
 import { PURCHASE_NUMBER_PREFIX } from '@/lib/domain/constants/purchase';
 import { DomainError } from '@/lib/domain/errors';
 import { rawMaterialRepository } from '@/lib/repositories/raw-material.repository';
@@ -22,9 +27,6 @@ function formatGeneratedNumber(sequence: number): string {
   return `${PURCHASE_NUMBER_PREFIX}-${String(sequence).padStart(3, '0')}`;
 }
 
-function calculateLineTotal(quantity: number, unitCost: number): number {
-  return Math.round(quantity * unitCost);
-}
 
 function calculateTotalAmount(lineItems: PurchaseLineItem[]): number {
   return lineItems.reduce((sum, lineItem) => sum + lineItem.lineTotal, 0);
@@ -65,10 +67,13 @@ async function resolveLineItems(
       rawMaterialId: rawMaterial.id,
       rawMaterialCode: rawMaterial.code,
       rawMaterialName: rawMaterial.name,
-      quantity: lineItem.quantity,
+      quantity: derivePurchaseQuantity(lineItem.packCount, lineItem.packSize),
       unit: lineItem.unit || rawMaterial.unit,
-      unitCost: lineItem.unitCost,
-      lineTotal: calculateLineTotal(lineItem.quantity, lineItem.unitCost),
+      unitCost: derivePurchaseUnitCost(lineItem.packPrice, lineItem.packSize),
+      lineTotal: calculatePurchaseLineTotal(lineItem.packCount, lineItem.packPrice),
+      packCount: lineItem.packCount,
+      packSize: lineItem.packSize,
+      packPrice: lineItem.packPrice,
     });
   }
 

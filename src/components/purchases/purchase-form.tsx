@@ -100,9 +100,10 @@ export function PurchaseForm({
   const appendEmptyLineItem = useCallback(() => {
     append({
       rawMaterialId: '',
-      quantity: Number.NaN,
+      packCount: 1,
+      packSize: Number.NaN,
       unit: '',
-      unitCost: 0,
+      packPrice: 0,
     });
   }, [append]);
 
@@ -134,14 +135,14 @@ export function PurchaseForm({
   const grandTotal = useMemo(
     () =>
       lineItems.reduce((sum, lineItem) => {
-        const quantity = Number(lineItem.quantity);
-        const unitCost = Number(lineItem.unitCost);
+        const packCount = Number(lineItem.packCount);
+        const packPrice = Number(lineItem.packPrice);
 
-        if (Number.isNaN(quantity) || Number.isNaN(unitCost)) {
+        if (Number.isNaN(packCount) || Number.isNaN(packPrice)) {
           return sum;
         }
 
-        return sum + Math.round(quantity * unitCost);
+        return sum + Math.round(packCount * packPrice);
       }, 0),
     [lineItems],
   );
@@ -153,12 +154,15 @@ export function PurchaseForm({
         supplierName: purchase.supplierName,
         invoiceNumber: purchase.invoiceNumber ?? '',
         paymentStatus: purchase.paymentStatus,
+        // Legacy drafts (no pack metadata) load as 1 pack whose size is the full
+        // quantity and whose price is the line total — same money, same stock.
         lineItems: purchase.lineItems.map((lineItem) => ({
           id: lineItem.id,
           rawMaterialId: lineItem.rawMaterialId,
-          quantity: lineItem.quantity,
+          packCount: lineItem.packCount ?? 1,
+          packSize: lineItem.packSize ?? lineItem.quantity,
           unit: lineItem.unit,
-          unitCost: lineItem.unitCost,
+          packPrice: lineItem.packPrice ?? lineItem.lineTotal,
         })),
         notes: purchase.notes ?? '',
       });
@@ -406,8 +410,9 @@ export function PurchaseForm({
                 errors={errors}
                 rawMaterialId={lineItems[index]?.rawMaterialId ?? ''}
                 unit={lineItems[index]?.unit ?? ''}
-                unitCost={lineItems[index]?.unitCost ?? 0}
-                quantity={lineItems[index]?.quantity ?? 0}
+                packCount={lineItems[index]?.packCount ?? 1}
+                packSize={lineItems[index]?.packSize ?? 0}
+                packPrice={lineItems[index]?.packPrice ?? 0}
                 selectedRawMaterialIds={selectedRawMaterialIdsByIndex[index] ?? []}
                 disabled={isFormDisabled}
                 onRemove={() => remove(index)}
@@ -415,8 +420,8 @@ export function PurchaseForm({
                   handleRawMaterialChange(index, rawMaterialId)
                 }
                 onDuplicateRawMaterial={handleDuplicateRawMaterial}
-                onUnitCostChange={(unitCost) =>
-                  setValue(`lineItems.${index}.unitCost`, unitCost)
+                onPackPriceChange={(packPrice) =>
+                  setValue(`lineItems.${index}.packPrice`, packPrice)
                 }
                 onAdvanceToNextLine={() => {
                   const nextIndex = index + 1;

@@ -4,12 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getDashboardAction } from '@/actions/dashboard';
 import { useAuth } from '@/hooks/use-auth';
+import { useServerSessionVerified } from '@/providers/server-auth-context';
 
 export function useDashboard() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const serverSessionVerified = useServerSessionVerified();
 
   return useQuery({
-    queryKey: ['dashboard', user?.uid],
+    queryKey: ['dashboard'],
     queryFn: async () => {
       const result = await getDashboardAction();
 
@@ -19,8 +21,7 @@ export function useDashboard() {
 
       return result.data;
     },
-    enabled: isAuthenticated,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    enabled: serverSessionVerified || isAuthenticated,
+    staleTime: 30_000,
   });
 }

@@ -22,10 +22,31 @@ export async function listProductsAction(
   params: ProductListParams,
 ): Promise<ActionResult<ProductListResult>> {
   return wrapAction(async () => {
+    // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+    const perfStart = performance.now();
+    let perfLast = perfStart;
+
     const { orgId, role } = await getAuthenticatedContext();
+    console.log(
+      `[PERF-GLOBAL][action] listProductsAction auth: ${(performance.now() - perfLast).toFixed(0)} ms`,
+    );
+    perfLast = performance.now();
+
     assertCan(role, 'read', 'product');
     const validated = productListParamsSchema.parse(params);
-    return productService.list(orgId, validated);
+    console.log(
+      `[PERF-GLOBAL][action] listProductsAction validation: ${(performance.now() - perfLast).toFixed(0)} ms`,
+    );
+    perfLast = performance.now();
+
+    const result = await productService.list(orgId, validated);
+    console.log(
+      `[PERF-GLOBAL][action] listProductsAction productService.list: ${(performance.now() - perfLast).toFixed(0)} ms`,
+    );
+    console.log(
+      `[PERF-GLOBAL][action] listProductsAction TOTAL: ${(performance.now() - perfStart).toFixed(0)} ms`,
+    );
+    return result;
   });
 }
 

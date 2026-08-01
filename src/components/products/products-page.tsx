@@ -29,6 +29,21 @@ import type { ProductListItem, ProductStatusFilter } from '@/types/product';
 export function ProductsPage() {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
+
+  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+  useEffect(() => {
+    const navStart = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (navStart) {
+      console.log(
+        `[PERF-GLOBAL][client] navigation timing | TTFB: ${(navStart.responseStart - navStart.requestStart).toFixed(0)} ms | ` +
+          `response: ${(navStart.responseEnd - navStart.responseStart).toFixed(0)} ms | ` +
+          `DOMContentLoaded: ${(navStart.domContentLoadedEventEnd - navStart.startTime).toFixed(0)} ms | ` +
+          `load: ${(navStart.loadEventEnd - navStart.startTime).toFixed(0)} ms`,
+      );
+    }
+    console.log('[PERF-GLOBAL][client] ProductsPage mounted');
+  }, []);
+
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState<ProductStatusFilter>('active');
@@ -53,6 +68,13 @@ export function ProductsPage() {
     page,
     pageSize: PRODUCT_PAGE_SIZE,
   });
+
+  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
+  useEffect(() => {
+    if (!isLoading && data) {
+      console.log('[PERF-GLOBAL][client] ProductsPage interactive — product table data ready');
+    }
+  }, [isLoading, data]);
 
   const {
     data: editingProductResult,

@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useDashboard } from '@/hooks/queries/use-dashboard';
 import { formatDisplayDate } from '@/lib/utils/date';
+import { isOrgConfigError } from '@/lib/utils/user-friendly-error';
 
 export function DashboardPage({
   allowedQuickActionModules,
@@ -22,7 +23,7 @@ export function DashboardPage({
     return <DashboardSkeleton />;
   }
 
-  const isOrgError = error?.message.includes('Organization context is not configured');
+  const isOrgError = error?.message ? isOrgConfigError(error.message) : false;
 
   if (error || !data) {
     return (

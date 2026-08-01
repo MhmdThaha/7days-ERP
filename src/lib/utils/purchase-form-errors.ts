@@ -6,8 +6,9 @@ export type PurchaseFieldError = {
   field:
     | keyof PurchaseFormValues
     | `lineItems.${number}.rawMaterialId`
-    | `lineItems.${number}.quantity`
-    | `lineItems.${number}.unitCost`;
+    | `lineItems.${number}.packCount`
+    | `lineItems.${number}.packSize`
+    | `lineItems.${number}.packPrice`;
   message: string;
 };
 
@@ -18,7 +19,7 @@ export function mapPurchaseActionError(code?: string): PurchaseFieldError | null
 
 export function focusPurchaseLineItemField(
   index: number,
-  field: 'rawMaterialId' | 'quantity' | 'unitCost',
+  field: 'rawMaterialId' | 'packCount' | 'packSize' | 'packPrice',
 ): void {
   window.requestAnimationFrame(() => {
     const element = document.getElementById(`line-item-${index}-${field}`);
@@ -30,12 +31,14 @@ export function focusPurchaseLineItemField(
 }
 
 export function focusPurchaseFormField(field: PurchaseFieldError['field']): void {
-  const lineItemMatch = /^lineItems\.(\d+)\.(rawMaterialId|quantity|unitCost)$/.exec(field);
+  const lineItemMatch = /^lineItems\.(\d+)\.(rawMaterialId|packCount|packSize|packPrice)$/.exec(
+    field,
+  );
 
   if (lineItemMatch?.[1] && lineItemMatch[2]) {
     focusPurchaseLineItemField(
       Number.parseInt(lineItemMatch[1], 10),
-      lineItemMatch[2] as 'rawMaterialId' | 'quantity' | 'unitCost',
+      lineItemMatch[2] as 'rawMaterialId' | 'packCount' | 'packSize' | 'packPrice',
     );
     return;
   }
@@ -91,13 +94,18 @@ export function focusFirstPurchaseFormError(errors: FieldErrors<PurchaseFormValu
       return;
     }
 
-    if (lineItemErrors.quantity) {
-      focusPurchaseLineItemField(index, 'quantity');
+    if (lineItemErrors.packCount) {
+      focusPurchaseLineItemField(index, 'packCount');
       return;
     }
 
-    if (lineItemErrors.unitCost) {
-      focusPurchaseLineItemField(index, 'unitCost');
+    if (lineItemErrors.packSize) {
+      focusPurchaseLineItemField(index, 'packSize');
+      return;
+    }
+
+    if (lineItemErrors.packPrice) {
+      focusPurchaseLineItemField(index, 'packPrice');
       return;
     }
   }
