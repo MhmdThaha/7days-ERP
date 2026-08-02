@@ -26,6 +26,8 @@ type RecipeDocument = {
   recipeCode: string;
   recipeName: string;
   version: number;
+  batchOutputQuantity?: number | null;
+  targetWeightGrams?: number | null;
   ingredients: RecipeIngredientDocument[];
   totalWeight: number;
   notes: string | null;
@@ -55,6 +57,9 @@ function toRecipe(id: string, data: RecipeDocument): Recipe {
     recipeCode: data.recipeCode,
     recipeName: data.recipeName,
     version: data.version,
+    batchOutputQuantity:
+      typeof data.batchOutputQuantity === 'number' ? data.batchOutputQuantity : null,
+    targetWeightGrams: typeof data.targetWeightGrams === 'number' ? data.targetWeightGrams : null,
     ingredients: data.ingredients.map(toRecipeIngredient),
     totalWeight: data.totalWeight,
     notes: data.notes,
@@ -236,6 +241,8 @@ export const recipeRepository = {
       productId: string;
       recipeCode: string;
       recipeName: string;
+      batchOutputQuantity?: number | null;
+      targetWeightGrams?: number | null;
       ingredients: RecipeIngredient[];
       totalWeight: number;
       notes?: string | null;
@@ -253,6 +260,8 @@ export const recipeRepository = {
       recipeCode: input.recipeCode.trim().toUpperCase(),
       recipeName: input.recipeName.trim(),
       version: 1,
+      batchOutputQuantity: input.batchOutputQuantity ?? null,
+      targetWeightGrams: input.targetWeightGrams ?? null,
       ingredients: input.ingredients.map((ingredient) => ({
         rawMaterialId: ingredient.rawMaterialId,
         rawMaterialName: ingredient.rawMaterialName,
@@ -279,6 +288,8 @@ export const recipeRepository = {
     recipeId: string,
     input: {
       recipeName?: string;
+      batchOutputQuantity?: number | null;
+      targetWeightGrams?: number | null;
       ingredients?: RecipeIngredient[];
       totalWeight?: number;
       notes?: string | null;
@@ -301,6 +312,14 @@ export const recipeRepository = {
 
     if (input.recipeName !== undefined) {
       updates.recipeName = input.recipeName.trim();
+    }
+
+    if (input.batchOutputQuantity !== undefined) {
+      updates.batchOutputQuantity = input.batchOutputQuantity;
+    }
+
+    if (input.targetWeightGrams !== undefined) {
+      updates.targetWeightGrams = input.targetWeightGrams;
     }
 
     if (input.ingredients !== undefined) {

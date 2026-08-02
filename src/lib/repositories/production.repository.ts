@@ -6,6 +6,7 @@ import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
 
 import {
   calculateLineUnitCost,
+  resolveRecipeBatchOutputQuantity,
   scaleIngredientQuantity,
 } from '@/lib/domain/calculations/production-materials';
 import { calculateNewWac } from '@/lib/domain/calculations/wac';
@@ -38,6 +39,7 @@ type RecipeIngredientDocument = {
 
 type RecipeDocument = {
   productId: string;
+  batchOutputQuantity?: number | null;
   ingredients: RecipeIngredientDocument[];
   isActive: boolean;
   deletedAt: Timestamp | null;
@@ -588,10 +590,13 @@ export const productionRepository = {
           wacAtConsumption.set(ingredient.rawMaterialId, state.avgCost);
         }
 
+        const batchOutputQuantity = resolveRecipeBatchOutputQuantity(recipe.batchOutputQuantity);
+
         const lineUnitCost = calculateLineUnitCost(
           recipe.ingredients,
           line.quantity,
           wacAtConsumption,
+          batchOutputQuantity,
         );
 
         for (const ingredient of recipe.ingredients) {
@@ -601,7 +606,11 @@ export const productionRepository = {
             throw new DomainError('NOT_FOUND', 'One or more raw materials were not found');
           }
 
-          const consumed = scaleIngredientQuantity(ingredient.quantity, line.quantity);
+          const consumed = scaleIngredientQuantity(
+            ingredient.quantity,
+            line.quantity,
+            batchOutputQuantity,
+          );
           const unitCost = state.avgCost;
           const totalCost = Math.round(consumed * unitCost);
 

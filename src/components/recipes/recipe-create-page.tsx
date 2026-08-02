@@ -55,6 +55,8 @@ export function RecipeCreatePage() {
         productId: values.productId,
         recipeCode: values.recipeCode || undefined,
         recipeName: values.recipeName,
+        batchOutputQuantity: values.batchOutputQuantity ?? null,
+        targetWeightGrams: values.targetWeightGrams ?? null,
         ingredients: values.ingredients,
         notes: values.notes ?? null,
         isActive: values.isActive,

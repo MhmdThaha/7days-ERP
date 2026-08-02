@@ -82,6 +82,8 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
     try {
       const result = await updateRecipeAction(recipeId, {
         recipeName: values.recipeName,
+        batchOutputQuantity: values.batchOutputQuantity ?? null,
+        targetWeightGrams: values.targetWeightGrams ?? null,
         ingredients: values.ingredients,
         notes: values.notes ?? null,
         isActive: values.isActive,

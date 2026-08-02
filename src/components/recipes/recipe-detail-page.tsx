@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { getProductAction } from '@/actions/products';
 import { useAuth } from '@/hooks/use-auth';
 import { deleteRecipeAction, getRecipeAction } from '@/actions/recipes';
+import { RecipeOneRequires } from '@/components/recipes/recipe-one-requires';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -201,6 +202,18 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
             />
             <DetailField label="Version" value={recipe.version} />
             <DetailField label="Status" value={<StatusBadge isActive={recipe.isActive} />} />
+            <DetailField
+              label="Makes"
+              value={recipe.batchOutputQuantity ?? '—'}
+            />
+            <DetailField
+              label="Target Weight"
+              value={
+                recipe.targetWeightGrams != null
+                  ? `${formatWeight(recipe.targetWeightGrams)} g`
+                  : '—'
+              }
+            />
             <DetailField label="Ingredient Count" value={recipe.ingredients.length} />
             <DetailField label="Total Weight" value={formatWeight(recipe.totalWeight)} />
             <DetailField
@@ -244,6 +257,12 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
               </Table>
           </CardContent>
         </Card>
+
+        <RecipeOneRequires
+          recipeName={recipe.recipeName}
+          batchOutputQuantity={recipe.batchOutputQuantity}
+          ingredients={recipe.ingredients}
+        />
 
         <ConfirmDialog
           open={isDeleteOpen}

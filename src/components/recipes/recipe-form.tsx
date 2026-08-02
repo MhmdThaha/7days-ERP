@@ -7,6 +7,7 @@ import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 
 import { getRawMaterialAction } from '@/actions/raw-materials';
 import { RecipeIngredientRow } from '@/components/recipes/recipe-ingredient-row';
+import { RecipeOneRequires } from '@/components/recipes/recipe-one-requires';
 import { RecipeSummary } from '@/components/recipes/recipe-summary';
 import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
 import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
@@ -55,10 +56,21 @@ const defaultValues: RecipeFormValues = {
   productId: '',
   recipeCode: '',
   recipeName: '',
+  batchOutputQuantity: null,
+  targetWeightGrams: null,
   ingredients: [],
   notes: '',
   isActive: true,
 };
+
+function toOptionalNumber(value: unknown): number | null {
+  if (value === '' || value === null || value === undefined) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 export function RecipeForm({
   recipe,
@@ -92,6 +104,8 @@ export function RecipeForm({
   });
 
   const productId = watch('productId');
+  const recipeName = watch('recipeName');
+  const batchOutputQuantity = watch('batchOutputQuantity');
   const ingredients =
     useWatch({ control, name: 'ingredients', defaultValue: defaultValues.ingredients }) ?? [];
   const isActive = watch('isActive');
@@ -135,6 +149,8 @@ export function RecipeForm({
         productId: recipe.productId,
         recipeCode: recipe.recipeCode,
         recipeName: recipe.recipeName,
+        batchOutputQuantity: recipe.batchOutputQuantity,
+        targetWeightGrams: recipe.targetWeightGrams,
         ingredients: recipe.ingredients.map((ingredient) => ({
           rawMaterialId: ingredient.rawMaterialId,
           quantity: ingredient.quantity,
@@ -254,6 +270,50 @@ export function RecipeForm({
           ) : null}
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="batchOutputQuantity">Makes</Label>
+          <Input
+            id="batchOutputQuantity"
+            type="number"
+            min={0}
+            step="any"
+            placeholder="e.g. 5"
+            disabled={isSubmitting}
+            aria-invalid={Boolean(errors.batchOutputQuantity)}
+            {...register('batchOutputQuantity', { setValueAs: toOptionalNumber })}
+          />
+          {errors.batchOutputQuantity ? (
+            <p className="text-sm text-destructive">{errors.batchOutputQuantity.message}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">How many finished products this batch makes.</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="targetWeightGrams">Target Weight</Label>
+          <div className="relative">
+            <Input
+              id="targetWeightGrams"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="e.g. 400"
+              className="pr-8"
+              disabled={isSubmitting}
+              aria-invalid={Boolean(errors.targetWeightGrams)}
+              {...register('targetWeightGrams', { setValueAs: toOptionalNumber })}
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+              g
+            </span>
+          </div>
+          {errors.targetWeightGrams ? (
+            <p className="text-sm text-destructive">{errors.targetWeightGrams.message}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Finished product weight in grams.</p>
+          )}
+        </div>
+
         <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5 sm:col-span-2">
           <Switch
             id="isActive"
@@ -357,6 +417,17 @@ export function RecipeForm({
               </LineItemsGrid>
             )}
           </div>
+
+          <RecipeOneRequires
+            recipeName={recipeName ?? ''}
+            batchOutputQuantity={batchOutputQuantity}
+            ingredients={ingredients.map((ingredient) => ({
+              rawMaterialId: ingredient.rawMaterialId,
+              quantity: Number(ingredient.quantity),
+              unit: ingredient.unit,
+            }))}
+            resolveName={(rawMaterialId) => rawMaterialsById.get(rawMaterialId)?.name}
+          />
         </div>
 
         <aside className="hidden xl:block">

@@ -67,6 +67,8 @@ export async function createRecipeAction(input: CreateRecipeInput): Promise<Acti
         productId: validated.productId,
         recipeCode: validated.recipeCode,
         recipeName: validated.recipeName,
+        batchOutputQuantity: validated.batchOutputQuantity ?? null,
+        targetWeightGrams: validated.targetWeightGrams ?? null,
         ingredients: validated.ingredients,
         notes: validated.notes ?? null,
         isActive: validated.isActive,

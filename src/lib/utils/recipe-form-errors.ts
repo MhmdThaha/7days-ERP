@@ -68,6 +68,16 @@ export function focusFirstRecipeFormError(errors: FieldErrors<RecipeFormValues>)
     return;
   }
 
+  if (errors.batchOutputQuantity) {
+    focusRecipeFormField('batchOutputQuantity');
+    return;
+  }
+
+  if (errors.targetWeightGrams) {
+    focusRecipeFormField('targetWeightGrams');
+    return;
+  }
+
   if (errors.ingredients?.message) {
     const firstLine = document.querySelector<HTMLElement>('[id^="ingredient-"][id$="-rawMaterialId"]');
     firstLine?.focus();

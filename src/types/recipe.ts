@@ -14,6 +14,10 @@ export type Recipe = {
   recipeCode: string;
   recipeName: string;
   version: number;
+  /** How many finished products this batch makes. UI label: "Makes". */
+  batchOutputQuantity: number | null;
+  /** Finished product target weight in grams. */
+  targetWeightGrams: number | null;
   ingredients: RecipeIngredient[];
   totalWeight: number;
   notes: string | null;
@@ -67,6 +71,8 @@ export type CreateRecipeInput = {
   productId: string;
   recipeCode?: string;
   recipeName: string;
+  batchOutputQuantity?: number | null;
+  targetWeightGrams?: number | null;
   ingredients: RecipeIngredientInput[];
   notes?: string | null;
   isActive?: boolean;
@@ -74,6 +80,8 @@ export type CreateRecipeInput = {
 
 export type UpdateRecipeInput = {
   recipeName?: string;
+  batchOutputQuantity?: number | null;
+  targetWeightGrams?: number | null;
   ingredients?: RecipeIngredientInput[];
   notes?: string | null;
   isActive?: boolean;
