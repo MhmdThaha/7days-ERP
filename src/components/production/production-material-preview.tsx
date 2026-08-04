@@ -18,6 +18,7 @@ type ProductionMaterialPreviewProps = {
   rows: MaterialPreviewRow[];
   isLoading?: boolean;
   hasValidLines: boolean;
+  mode?: 'draft' | 'completed';
 };
 
 function formatQuantity(value: number): string {
@@ -28,8 +29,10 @@ export function ProductionMaterialPreview({
   rows,
   isLoading = false,
   hasValidLines,
+  mode = 'draft',
 }: ProductionMaterialPreviewProps) {
   const shortageCount = rows.filter((row) => row.shortage > 0).length;
+  const isCompleted = mode === 'completed';
 
   if (isLoading) {
     return (
@@ -43,7 +46,9 @@ export function ProductionMaterialPreview({
   if (!hasValidLines) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-        Add products with quantities to preview required raw materials.
+        {isCompleted
+          ? 'No raw material usage recorded for this production.'
+          : 'Add products with quantities to preview required raw materials.'}
       </div>
     );
   }
@@ -51,14 +56,17 @@ export function ProductionMaterialPreview({
   return (
     <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
       <div>
-        <h3 className="text-sm font-semibold">Material Preview</h3>
+        <h3 className="text-sm font-semibold">
+          {isCompleted ? 'Materials Used' : 'Material Preview'}
+        </h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Read-only estimate based on active recipes and current stock. Inventory is updated when
-          you complete production.
+          {isCompleted
+            ? 'Raw materials deducted when this production was completed.'
+            : 'Read-only estimate based on active recipes and current stock. Inventory is updated when you complete production.'}
         </p>
       </div>
 
-      {shortageCount > 0 ? (
+      {!isCompleted && shortageCount > 0 ? (
         <Alert variant="destructive" className="border-amber-200 bg-amber-50 text-amber-950">
           <AlertTriangle className="text-amber-700" />
           <AlertTitle>Insufficient stock preview</AlertTitle>
@@ -74,16 +82,27 @@ export function ProductionMaterialPreview({
           <TableHeader>
             <TableRow>
               <TableHead className="min-w-[180px]">Raw Material</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Required</TableHead>
-              <TableHead className="text-right whitespace-nowrap">In Stock</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Shortage</TableHead>
+              <TableHead className="text-right whitespace-nowrap">
+                {isCompleted ? 'Consumed' : 'Required'}
+              </TableHead>
+              {!isCompleted ? (
+                <>
+                  <TableHead className="text-right whitespace-nowrap">In Stock</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Shortage</TableHead>
+                </>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
-                  No materials to preview for the selected products.
+                <TableCell
+                  colSpan={isCompleted ? 2 : 4}
+                  className="h-24 text-center text-sm text-muted-foreground"
+                >
+                  {isCompleted
+                    ? 'No materials recorded for this production.'
+                    : 'No materials to preview for the selected products.'}
                 </TableCell>
               </TableRow>
             ) : (
@@ -97,16 +116,20 @@ export function ProductionMaterialPreview({
                   <TableCell className="text-right tabular-nums">
                     {formatQuantity(row.requiredQuantity)} {row.unit}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatQuantity(row.currentStock)} {row.unit}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right tabular-nums ${
-                      row.shortage > 0 ? 'font-medium text-destructive' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {row.shortage > 0 ? `${formatQuantity(row.shortage)} ${row.unit}` : '—'}
-                  </TableCell>
+                  {!isCompleted ? (
+                    <>
+                      <TableCell className="text-right tabular-nums">
+                        {formatQuantity(row.currentStock)} {row.unit}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums ${
+                          row.shortage > 0 ? 'font-medium text-destructive' : 'text-muted-foreground'
+                        }`}
+                      >
+                        {row.shortage > 0 ? `${formatQuantity(row.shortage)} ${row.unit}` : '—'}
+                      </TableCell>
+                    </>
+                  ) : null}
                 </TableRow>
               ))
             )}

@@ -12,11 +12,14 @@ import {
   completeProductionAction,
   deleteProductionAction,
   getProductionAction,
+  getProductionConsumedMaterialsAction,
 } from '@/actions/production';
 import { useAuth } from '@/hooks/use-auth';
 import { getRecipeAction } from '@/actions/recipes';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
+import { RecipeChangedDialog } from '@/components/production/recipe-changed-dialog';
+import { useDraftRecipeVersionCheck } from '@/components/production/use-draft-recipe-version-check';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
@@ -92,6 +95,9 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
     enabled: isAuthenticated,
   });
 
+  const isCompleted = production?.status === 'completed';
+  const isDraft = production?.status === 'draft';
+
   const recipeIds = useMemo(
     () => [...new Set((production?.lines ?? []).map((line) => line.recipeId))].sort(),
     [production?.lines],
@@ -99,7 +105,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
   const { data: recipes, isLoading: isLoadingRecipes } = useQuery({
     queryKey: ['recipes', 'production-detail', recipeIds],
-    enabled: isAuthenticated && recipeIds.length > 0,
+    enabled: isAuthenticated && isDraft && recipeIds.length > 0,
     queryFn: async () => {
       const results = await Promise.all(recipeIds.map((id) => getRecipeAction(id)));
       const loaded: Recipe[] = [];
@@ -111,6 +117,20 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       }
 
       return loaded;
+    },
+  });
+
+  const { data: consumedMaterials, isLoading: isLoadingConsumedMaterials } = useQuery({
+    queryKey: ['production', productionId, 'consumed-materials'],
+    enabled: isAuthenticated && isCompleted,
+    queryFn: async () => {
+      const result = await getProductionConsumedMaterialsAction(productionId);
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
     },
   });
 
@@ -144,6 +164,10 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       return [];
     }
 
+    if (isCompleted) {
+      return consumedMaterials ?? [];
+    }
+
     return buildMaterialPreview(
       production.lines.map((line) => ({
         productId: line.productId,
@@ -153,7 +177,21 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       recipesById,
       rawMaterialsById,
     );
-  }, [production, recipesById, rawMaterialsById]);
+  }, [production, isCompleted, consumedMaterials, recipesById, rawMaterialsById]);
+
+  const {
+    dialogOpen: recipeChangedDialogOpen,
+    isUpdatingDraft: isUpdatingDraftRecipe,
+    handleUpdateDraft,
+    handleContinueWithCurrentDraft,
+    handleClose: handleCloseRecipeChangedDialog,
+    setDialogOpen: setRecipeChangedDialogOpen,
+  } = useDraftRecipeVersionCheck({
+    production,
+    productionId,
+    isAuthenticated,
+    queryClient,
+  });
 
   async function invalidateProductionQueries() {
     await Promise.all([
@@ -260,7 +298,9 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
   const canEdit = production.status === 'draft';
   const isBusy = isDeleting || isCompleting;
-  const isPreviewLoading = isLoadingRecipes || isLoadingRawMaterials;
+  const isPreviewLoading = isCompleted
+    ? isLoadingConsumedMaterials
+    : isLoadingRecipes || isLoadingRawMaterials;
 
   return (
     <div className="space-y-6">
@@ -377,7 +417,19 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
         rows={materialPreviewRows}
         isLoading={isPreviewLoading}
         hasValidLines={production.lines.length > 0}
+        mode={isCompleted ? 'completed' : 'draft'}
       />
+
+      {isDraft ? (
+        <RecipeChangedDialog
+          open={recipeChangedDialogOpen}
+          onOpenChange={setRecipeChangedDialogOpen}
+          isUpdating={isUpdatingDraftRecipe}
+          onUpdateDraft={() => void handleUpdateDraft()}
+          onContinueWithCurrentDraft={handleContinueWithCurrentDraft}
+          onClose={handleCloseRecipeChangedDialog}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={isDeleteOpen}

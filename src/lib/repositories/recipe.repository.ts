@@ -343,6 +343,17 @@ export const recipeRepository = {
       updates.isActive = input.isActive;
     }
 
+    const contentChanged =
+      input.recipeName !== undefined ||
+      input.batchOutputQuantity !== undefined ||
+      input.targetWeightGrams !== undefined ||
+      input.ingredients !== undefined;
+
+    if (contentChanged) {
+      const existingData = existing.data() as RecipeDocument;
+      updates.version = existingData.version + 1;
+    }
+
     await docRef.update(updates);
 
     const updated = await docRef.get();
