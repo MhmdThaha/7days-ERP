@@ -9,6 +9,16 @@ export type ProductionPreviewLine = {
   recipeId: string | null;
 };
 
+export function resolveRecipeBatchOutputQuantity(
+  batchOutputQuantity: number | null | undefined,
+): number {
+  if (typeof batchOutputQuantity === 'number' && batchOutputQuantity > 0) {
+    return batchOutputQuantity;
+  }
+
+  return DEFAULT_RECIPE_YIELD_QUANTITY;
+}
+
 export function calculateLineUnitCost(
   ingredients: Array<{ rawMaterialId: string; quantity: number }>,
   productionQuantity: number,
@@ -73,7 +83,11 @@ export function buildMaterialPreview(
     }
 
     for (const ingredient of recipe.ingredients) {
-      const required = scaleIngredientQuantity(ingredient.quantity, line.quantity);
+      const required = scaleIngredientQuantity(
+        ingredient.quantity,
+        line.quantity,
+        resolveRecipeBatchOutputQuantity(recipe.batchOutputQuantity),
+      );
       const existing = aggregated.get(ingredient.rawMaterialId);
 
       if (existing) {

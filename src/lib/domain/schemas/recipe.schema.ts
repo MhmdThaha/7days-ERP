@@ -10,6 +10,11 @@ export const recipeIngredientSchema = z.object({
   unit: z.string().min(1, 'Unit is required.'),
 });
 
+const optionalPositiveNumber = z
+  .number({ error: 'Must be a number.' })
+  .positive('Must be greater than zero.')
+  .nullable();
+
 export const recipeFormSchema = z
   .object({
     productId: z.string().min(1, 'Product is required.'),
@@ -25,6 +30,8 @@ export const recipeFormSchema = z
       .trim()
       .min(1, 'Recipe name is required.')
       .max(120, 'Recipe name must be 120 characters or less.'),
+    batchOutputQuantity: optionalPositiveNumber,
+    targetWeightGrams: optionalPositiveNumber,
     ingredients: z.array(recipeIngredientSchema).min(1, 'Add at least one ingredient.'),
     notes: z.string().max(1000, 'Notes are too long').optional().nullable(),
     isActive: z.boolean(),
@@ -57,6 +64,8 @@ export const updateRecipeSchema = z
       .min(1, 'Recipe name is required.')
       .max(120, 'Recipe name must be 120 characters or less.')
       .optional(),
+    batchOutputQuantity: optionalPositiveNumber.optional(),
+    targetWeightGrams: optionalPositiveNumber.optional(),
     ingredients: z
       .array(recipeIngredientSchema)
       .min(1, 'Add at least one ingredient.')
