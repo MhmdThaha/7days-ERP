@@ -74,4 +74,19 @@ export const inventoryMovementRepository = {
       .filter((movement) => movement.movementType === movementType)
       .reduce((sum, movement) => sum + movement.totalCost, 0);
   },
+
+  async listBySourceDocument(
+    orgId: string,
+    sourceDocumentType: string,
+    sourceDocumentId: string,
+  ): Promise<InventoryMovement[]> {
+    const snapshot = await getInventoryMovementsCollection(orgId)
+      .where('sourceDocumentType', '==', sourceDocumentType)
+      .where('sourceDocumentId', '==', sourceDocumentId)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => toMovement(doc.id, doc.data() as InventoryMovementDocument))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  },
 };

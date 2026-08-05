@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { getProductionAction, updateProductionAction } from '@/actions/production';
 import { useAuth } from '@/hooks/use-auth';
 import { ProductionForm } from '@/components/production/production-form';
+import { RecipeChangedDialog } from '@/components/production/recipe-changed-dialog';
+import { useDraftRecipeVersionCheck } from '@/components/production/use-draft-recipe-version-check';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -55,6 +57,20 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
       return result.data;
     },
     enabled: isAuthenticated,
+  });
+
+  const {
+    dialogOpen: recipeChangedDialogOpen,
+    isUpdatingDraft: isUpdatingDraftRecipe,
+    handleUpdateDraft,
+    handleContinueWithCurrentDraft,
+    handleClose: handleCloseRecipeChangedDialog,
+    setDialogOpen: setRecipeChangedDialogOpen,
+  } = useDraftRecipeVersionCheck({
+    production,
+    productionId,
+    isAuthenticated,
+    queryClient,
   });
 
   async function handleSubmit(values: ProductionFormValues) {
@@ -185,6 +201,15 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
           />
         </CardContent>
       </Card>
+
+      <RecipeChangedDialog
+        open={recipeChangedDialogOpen}
+        onOpenChange={setRecipeChangedDialogOpen}
+        isUpdating={isUpdatingDraftRecipe}
+        onUpdateDraft={() => void handleUpdateDraft()}
+        onContinueWithCurrentDraft={handleContinueWithCurrentDraft}
+        onClose={handleCloseRecipeChangedDialog}
+      />
     </div>
   );
 }

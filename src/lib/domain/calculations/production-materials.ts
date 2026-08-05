@@ -2,6 +2,7 @@ import { DEFAULT_RECIPE_YIELD_QUANTITY } from '@/lib/domain/constants/production
 import type { MaterialPreviewRow } from '@/types/production';
 import type { Recipe } from '@/types/recipe';
 import type { RawMaterialListItem } from '@/types/raw-material';
+import type { InventoryMovement } from '@/types/inventory';
 
 export type ProductionPreviewLine = {
   productId: string;
@@ -120,6 +121,55 @@ export function buildMaterialPreview(
         requiredQuantity: row.requiredQuantity,
         currentStock,
         shortage,
+      };
+    })
+    .sort((a, b) => a.rawMaterialName.localeCompare(b.rawMaterialName));
+}
+
+export function buildMaterialRowsFromRawOutMovements(
+  movements: InventoryMovement[],
+  rawMaterialsById: Map<string, RawMaterialListItem>,
+): MaterialPreviewRow[] {
+  const aggregated = new Map<
+    string,
+    {
+      rawMaterialName: string;
+      unit: string;
+      requiredQuantity: number;
+    }
+  >();
+
+  for (const movement of movements) {
+    if (movement.movementType !== 'PRODUCTION_RAW_OUT') {
+      continue;
+    }
+
+    const existing = aggregated.get(movement.itemId);
+
+    if (existing) {
+      existing.requiredQuantity += movement.quantity;
+      continue;
+    }
+
+    aggregated.set(movement.itemId, {
+      rawMaterialName: movement.itemName,
+      unit: movement.unit,
+      requiredQuantity: movement.quantity,
+    });
+  }
+
+  return Array.from(aggregated.entries())
+    .map(([rawMaterialId, row]) => {
+      const rawMaterial = rawMaterialsById.get(rawMaterialId);
+
+      return {
+        rawMaterialId,
+        rawMaterialCode: rawMaterial?.code ?? '—',
+        rawMaterialName: row.rawMaterialName,
+        unit: row.unit,
+        requiredQuantity: row.requiredQuantity,
+        currentStock: 0,
+        shortage: 0,
       };
     })
     .sort((a, b) => a.rawMaterialName.localeCompare(b.rawMaterialName));
