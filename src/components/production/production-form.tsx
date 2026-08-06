@@ -4,11 +4,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getProductAction } from '@/actions/products';
 import { useAuth } from '@/hooks/use-auth';
-import { getRecipeAction, listRecipesAction } from '@/actions/recipes';
+import { listRecipesAction } from '@/actions/recipes';
 import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
 import { ProductionLineItemRow } from '@/components/production/production-line-item-row';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
@@ -37,11 +36,15 @@ import {
   type ProductionFieldError,
 } from '@/lib/utils/production-form-errors';
 import {
+  PRODUCTION_PREVIEW_STALE_TIME,
+  fetchProductionPreviewPipeline,
+  productionFullRecipesQueryKey,
+} from '@/lib/utils/production-preview-cache';
+import {
   PRODUCTION_GRID_MIN_WIDTH,
   PRODUCTION_GRID_ROW_CLASS,
   PRODUCTION_LINE_COLUMNS,
 } from '@/lib/ui/line-items-grid-config';
-import { toProductListItem } from '@/lib/utils/catalog-list-item';
 import type { Production } from '@/types/production';
 import type { ProductListItem } from '@/types/product';
 import type { Recipe, RecipeListItem } from '@/types/recipe';
@@ -100,7 +103,8 @@ export function ProductionForm({
   onServerFieldErrorHandled,
   footerActions,
 }: ProductionFormProps) {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const {
     register,
     handleSubmit,
@@ -196,20 +200,10 @@ export function ProductionForm({
   }, [lines, productsById]);
 
   const { data: fullRecipes, isLoading: isLoadingFullRecipes } = useQuery({
-    queryKey: ['recipes', 'production-full', activeRecipeIds],
+    queryKey: productionFullRecipesQueryKey(activeRecipeIds),
     enabled: isAuthenticated && activeRecipeIds.length > 0,
-    queryFn: async () => {
-      const results = await Promise.all(activeRecipeIds.map((id) => getRecipeAction(id)));
-      const recipes: Recipe[] = [];
-
-      for (const result of results) {
-        if (result.success) {
-          recipes.push(result.data);
-        }
-      }
-
-      return recipes;
-    },
+    queryFn: () => fetchProductionPreviewPipeline(queryClient, user?.uid, activeRecipeIds),
+    staleTime: PRODUCTION_PREVIEW_STALE_TIME,
   });
 
   const fullRecipesById = useMemo(() => {
@@ -327,23 +321,46 @@ export function ProductionForm({
     appendEmptyLine();
   }
 
-  function handleProductChange(index: number, productId: string) {
-    void (async () => {
-      let product = productsById.get(productId);
+  const handleProductResolved = useCallback(
+    (index: number, product: ProductListItem) => {
+      if (user?.uid) {
+        queryClient.setQueryData(['product', user.uid, product.id], product);
+      }
 
-      if (!product) {
-        const result = await getProductAction(productId);
+      setValue(`lines.${index}.unit`, product.unit, { shouldValidate: true });
 
-        if (result.success) {
-          product = toProductListItem(result.data);
+      if (!isAuthenticated || !product.activeRecipeId) {
+        return;
+      }
+
+      const recipeIds = new Set<string>([product.activeRecipeId]);
+
+      for (const [lineIndex, line] of lines.entries()) {
+        if (lineIndex === index || !line.productId) {
+          continue;
+        }
+
+        const cachedProduct =
+          queryClient.getQueryData<ProductListItem>(['product', user?.uid, line.productId]) ??
+          productsById.get(line.productId);
+
+        if (cachedProduct?.activeRecipeId) {
+          recipeIds.add(cachedProduct.activeRecipeId);
         }
       }
 
-      if (product) {
-        setValue(`lines.${index}.unit`, product.unit, { shouldValidate: true });
-      }
-    })();
+      const sortedRecipeIds = [...recipeIds].sort();
 
+      void queryClient.prefetchQuery({
+        queryKey: productionFullRecipesQueryKey(sortedRecipeIds),
+        queryFn: () => fetchProductionPreviewPipeline(queryClient, user?.uid, sortedRecipeIds),
+        staleTime: PRODUCTION_PREVIEW_STALE_TIME,
+      });
+    },
+    [queryClient, setValue, user?.uid, isAuthenticated, lines, productsById],
+  );
+
+  function handleProductChange(index: number, _productId: string) {
     clearErrors(`lines.${index}.productId`);
   }
 
@@ -507,6 +524,7 @@ export function ProductionForm({
                     disabled={isFormDisabled}
                     onRemove={() => remove(index)}
                     onProductChange={(productId) => handleProductChange(index, productId)}
+                    onProductResolved={(product) => handleProductResolved(index, product)}
                     onDuplicateProduct={handleDuplicateProduct}
                     onAdvanceToNextLine={() => {
                       const nextIndex = index + 1;

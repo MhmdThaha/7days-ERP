@@ -38,6 +38,7 @@ type ProductionLineItemRowProps = {
   disabled?: boolean;
   onRemove: () => void;
   onProductChange: (productId: string) => void;
+  onProductResolved?: (product: ProductListItem) => void;
   onDuplicateProduct: (index: number) => void;
   onAdvanceToNextLine?: () => void;
 };
@@ -56,6 +57,7 @@ export function ProductionLineItemRow({
   disabled = false,
   onRemove,
   onProductChange,
+  onProductResolved,
   onDuplicateProduct,
   onAdvanceToNextLine,
 }: ProductionLineItemRowProps) {
@@ -67,6 +69,14 @@ export function ProductionLineItemRow({
     lineErrors?.productId?.message === DUPLICATE_PRODUCT_MESSAGE
       ? DUPLICATE_PRODUCT_MESSAGE
       : lineErrors?.productId?.message;
+
+  function handleProductResolved(product: ProductListItem) {
+    if (selectedProductIds.includes(product.id)) {
+      return;
+    }
+
+    onProductResolved?.(product);
+  }
 
   function handleProductSelect(value: string) {
     if (selectedProductIds.includes(value)) {
@@ -99,6 +109,7 @@ export function ProductionLineItemRow({
           value={productId || null}
           disabledProductIds={selectedProductIds}
           filterProduct={filterProduct}
+          onProductResolved={handleProductResolved}
           onValueChange={handleProductSelect}
           emptyMessage="No eligible products match your search."
           disabled={disabled}

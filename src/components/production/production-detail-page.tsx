@@ -15,7 +15,6 @@ import {
   getProductionConsumedMaterialsAction,
 } from '@/actions/production';
 import { useAuth } from '@/hooks/use-auth';
-import { getRecipeAction } from '@/actions/recipes';
 import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
@@ -31,6 +30,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
+import {
+  PRODUCTION_PREVIEW_STALE_TIME,
+  fetchProductionPreviewPipeline,
+} from '@/lib/utils/production-preview-cache';
 import {
   Table,
   TableBody,
@@ -74,7 +77,7 @@ function formatQuantity(value: number): string {
 }
 
 export function ProductionDetailPage({ productionId }: ProductionDetailPageProps) {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -107,18 +110,8 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
   const { data: recipes, isLoading: isLoadingRecipes } = useQuery({
     queryKey: ['recipes', 'production-detail', recipeIds],
     enabled: isAuthenticated && isDraft && recipeIds.length > 0,
-    queryFn: async () => {
-      const results = await Promise.all(recipeIds.map((id) => getRecipeAction(id)));
-      const loaded: Recipe[] = [];
-
-      for (const result of results) {
-        if (result.success) {
-          loaded.push(result.data);
-        }
-      }
-
-      return loaded;
-    },
+    queryFn: () => fetchProductionPreviewPipeline(queryClient, user?.uid, recipeIds),
+    staleTime: PRODUCTION_PREVIEW_STALE_TIME,
   });
 
   const { data: consumedMaterials, isLoading: isLoadingConsumedMaterials } = useQuery({

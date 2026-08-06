@@ -37,6 +37,31 @@ export async function getRawMaterialAction(rawMaterialId: string): Promise<Actio
   });
 }
 
+export async function getRawMaterialsByIdsAction(
+  rawMaterialIds: string[],
+): Promise<ActionResult<RawMaterial[]>> {
+  return wrapAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'rawMaterial');
+
+    const uniqueIds = [...new Set(rawMaterialIds.filter(Boolean))];
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const settled = await Promise.allSettled(
+      uniqueIds.map((id) => rawMaterialService.getById(orgId, id)),
+    );
+
+    return settled
+      .filter(
+        (result): result is PromiseFulfilledResult<RawMaterial> => result.status === 'fulfilled',
+      )
+      .map((result) => result.value);
+  });
+}
+
 export async function createRawMaterialAction(
   input: CreateRawMaterialInput,
 ): Promise<ActionResult<RawMaterial>> {

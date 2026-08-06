@@ -1,57 +1,36 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getRawMaterialAction } from '@/actions/raw-materials';
 import { useAuth } from '@/hooks/use-auth';
-import { toRawMaterialListItem } from '@/lib/utils/catalog-list-item';
+import {
+  fetchRawMaterialsMap,
+  PRODUCTION_PREVIEW_STALE_TIME,
+  rawMaterialsByIdsQueryKey,
+} from '@/lib/utils/production-preview-cache';
 import type { RawMaterialListItem } from '@/types/raw-material';
+
+const EMPTY_RAW_MATERIALS = new Map<string, RawMaterialListItem>();
 
 export function useRawMaterialsByIds(rawMaterialIds: string[]) {
   const { user, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
 
   const uniqueIds = useMemo(
     () => [...new Set(rawMaterialIds.filter(Boolean))].sort(),
     [rawMaterialIds],
   );
 
-  const queries = useQueries({
-    queries: uniqueIds.map((id) => ({
-      queryKey: ['raw-material', user?.uid, id],
-      queryFn: async () => {
-        const result = await getRawMaterialAction(id);
-
-        if (!result.success) {
-          throw new Error(result.error);
-        }
-
-        return toRawMaterialListItem(result.data);
-      },
-      enabled: isAuthenticated,
-      staleTime: 5 * 60 * 1000,
-    })),
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: rawMaterialsByIdsQueryKey(user?.uid, uniqueIds),
+    queryFn: () => fetchRawMaterialsMap(uniqueIds, user?.uid, queryClient),
+    enabled: isAuthenticated && uniqueIds.length > 0,
+    staleTime: PRODUCTION_PREVIEW_STALE_TIME,
   });
 
-  const rawMaterialsById = useMemo(() => {
-    const map = new Map<string, RawMaterialListItem>();
-
-    queries.forEach((query, index) => {
-      const id = uniqueIds[index];
-
-      if (id && query.data) {
-        map.set(id, query.data);
-      }
-    });
-
-    return map;
-  }, [queries, uniqueIds]);
-
-  const isLoading = queries.some((query) => query.isLoading);
-  const isFetching = queries.some((query) => query.isFetching);
-
   return {
-    rawMaterialsById,
+    rawMaterialsById: data ?? EMPTY_RAW_MATERIALS,
     isLoading,
     isFetching,
   };
