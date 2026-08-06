@@ -11,11 +11,11 @@ import { toast } from 'sonner';
 import { getProductAction } from '@/actions/products';
 import { useAuth } from '@/hooks/use-auth';
 import { deleteRecipeAction, getRecipeAction } from '@/actions/recipes';
+import { RecipeDetailSummary } from '@/components/recipes/recipe-detail-summary';
 import { RecipeOneRequires } from '@/components/recipes/recipe-one-requires';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
-import { StatusBadge } from '@/components/shared/status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -30,11 +30,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 
 type RecipeDetailPageProps = {
   recipeId: string;
 };
+
+const TABLE_CELL_CLASS = 'py-4 text-base';
 
 function formatDateTime(date: Date): string {
   return date.toLocaleString('en-IN', {
@@ -118,6 +121,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
     return (
       <div className="space-y-4" aria-busy="true" aria-label="Loading recipe">
         <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-16 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -142,6 +146,10 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
     );
   }
 
+  const isProductionReady = Boolean(
+    recipe.isActive && product?.activeRecipeId === recipe.id,
+  );
+
   return (
     <TooltipProvider delay={300}>
       <div className="space-y-6">
@@ -162,16 +170,70 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
           }
         >
           <div className="flex shrink-0 gap-2">
-            <Button nativeButton={false} variant="outline" render={<Link href={`/recipes/${recipeId}/edit`} />}>
+            <Button
+              nativeButton={false}
+              variant="outline"
+              className="text-primary"
+              render={<Link href={`/recipes/${recipeId}/edit`} />}
+            >
               <Pencil />
               Edit
             </Button>
-            <Button variant="destructive" onClick={() => setIsDeleteOpen(true)} disabled={isDeleting}>
+            <Button variant="ghost" onClick={() => setIsDeleteOpen(true)} disabled={isDeleting}>
               <Trash2 />
               Delete
             </Button>
           </div>
         </PageHeader>
+
+        <RecipeDetailSummary
+          productId={recipe.productId}
+          productName={product?.name ?? recipe.productId}
+          batchOutputQuantity={recipe.batchOutputQuantity}
+          ingredientCount={recipe.ingredients.length}
+          isActive={recipe.isActive}
+          isProductionReady={isProductionReady}
+        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Ingredients</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative max-h-[min(70vh,640px)] overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
+                  <TableRow>
+                    <TableHead className={cn('w-12', TABLE_CELL_CLASS)}>#</TableHead>
+                    <TableHead className={TABLE_CELL_CLASS}>Raw Material</TableHead>
+                    <TableHead className={cn('text-right', TABLE_CELL_CLASS)}>Quantity</TableHead>
+                    <TableHead className={TABLE_CELL_CLASS}>Unit</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recipe.ingredients.map((ingredient, index) => (
+                    <TableRow key={`${ingredient.rawMaterialId}-${index}`}>
+                      <TableCell className={TABLE_CELL_CLASS}>{index + 1}</TableCell>
+                      <TableCell className={cn('font-medium', TABLE_CELL_CLASS)}>
+                        {ingredient.rawMaterialName}
+                      </TableCell>
+                      <TableCell className={cn('text-right tabular-nums', TABLE_CELL_CLASS)}>
+                        {formatWeight(ingredient.quantity)}
+                      </TableCell>
+                      <TableCell className={TABLE_CELL_CLASS}>{ingredient.unit}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <RecipeOneRequires
+          recipeName={recipe.recipeName}
+          batchOutputQuantity={recipe.batchOutputQuantity}
+          ingredients={recipe.ingredients}
+        />
 
         <Card>
           <CardHeader>
@@ -188,24 +250,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
                 />
               }
             />
-            <DetailField
-              label="Product"
-              value={
-                product ? (
-                  <Link href={`/products/${product.id}`} className="text-primary hover:underline">
-                    {product.name}
-                  </Link>
-                ) : (
-                  '—'
-                )
-              }
-            />
             <DetailField label="Version" value={recipe.version} />
-            <DetailField label="Status" value={<StatusBadge isActive={recipe.isActive} />} />
-            <DetailField
-              label="Makes"
-              value={recipe.batchOutputQuantity ?? '—'}
-            />
             <DetailField
               label="Target Weight"
               value={
@@ -214,8 +259,7 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
                   : '—'
               }
             />
-            <DetailField label="Ingredient Count" value={recipe.ingredients.length} />
-            <DetailField label="Total Weight" value={formatWeight(recipe.totalWeight)} />
+            <DetailField label="Total Batch Weight" value={formatWeight(recipe.totalWeight)} />
             <DetailField
               label="Notes"
               value={
@@ -223,46 +267,14 @@ export function RecipeDetailPage({ recipeId }: RecipeDetailPageProps) {
               }
               className="sm:col-span-2"
             />
-            <DetailField label="Created At" value={formatDateTime(recipe.createdAt)} />
-            <DetailField label="Updated At" value={formatDateTime(recipe.updatedAt)} />
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Ingredients</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Raw Material</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead>Unit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recipe.ingredients.map((ingredient, index) => (
-                    <TableRow key={`${ingredient.rawMaterialId}-${index}`}>
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell>{ingredient.rawMaterialName}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatWeight(ingredient.quantity)}
-                      </TableCell>
-                      <TableCell>{ingredient.unit}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-          </CardContent>
-        </Card>
-
-        <RecipeOneRequires
-          recipeName={recipe.recipeName}
-          batchOutputQuantity={recipe.batchOutputQuantity}
-          ingredients={recipe.ingredients}
-        />
+        <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+          <p>
+            Created {formatDateTime(recipe.createdAt)} · Updated {formatDateTime(recipe.updatedAt)}
+          </p>
+        </div>
 
         <ConfirmDialog
           open={isDeleteOpen}

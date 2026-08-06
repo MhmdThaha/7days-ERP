@@ -1,13 +1,14 @@
-'use client';
-
-import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Wheat } from 'lucide-react';
+import { Wheat } from 'lucide-react';
 
+import {
+  getStockQuantityClassName,
+  getStockRowClassName,
+} from '@/components/inventory/stock-overview-table-utils';
 import { StockStatusBadge } from '@/components/shared/stock-status-badge';
 import { EmptyState } from '@/components/shared/empty-state';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -16,11 +17,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
+import { isNegativeStock } from '@/lib/domain/stock-status';
 import type { StockOverviewRawMaterialItem } from '@/types/stock-overview';
 
 type StockOverviewRawMaterialsSectionProps = {
   rawMaterials: StockOverviewRawMaterialItem[];
+  totalCount: number;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
 };
+
+const TABLE_CELL_CLASS = 'py-4 text-base';
 
 function formatStock(value: number, unit: string): string {
   return `${value.toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${unit}`;
@@ -34,104 +42,100 @@ function formatReorderLevel(reorderLevel: number | null, unit: string): string {
   return `${reorderLevel.toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${unit}`;
 }
 
-function matchesSearch(material: StockOverviewRawMaterialItem, search: string): boolean {
-  const term = search.trim().toLowerCase();
-
-  if (!term) {
-    return true;
-  }
-
-  return (
-    material.name.toLowerCase().includes(term) || material.code.toLowerCase().includes(term)
-  );
-}
-
 export function StockOverviewRawMaterialsSection({
   rawMaterials,
+  totalCount,
+  hasActiveFilters,
+  onClearFilters,
 }: StockOverviewRawMaterialsSectionProps) {
-  const [search, setSearch] = useState('');
-
-  const filteredMaterials = useMemo(
-    () => rawMaterials.filter((material) => matchesSearch(material, search)),
-    [rawMaterials, search],
-  );
-
   return (
     <section aria-labelledby="stock-overview-raw-materials-heading">
       <Card>
-        <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader>
           <CardTitle id="stock-overview-raw-materials-heading" className="flex items-center gap-2">
             <Wheat className="size-4 text-muted-foreground" aria-hidden="true" />
             Raw Materials
           </CardTitle>
-          <div className="relative w-full sm:max-w-xs">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search raw materials..."
-              className="pl-9"
-              aria-label="Search raw materials"
-            />
-          </div>
         </CardHeader>
         <CardContent>
-          {rawMaterials.length === 0 ? (
+          {totalCount === 0 ? (
             <EmptyState
               title="No active raw materials"
               description="Add raw materials to track ingredient stock."
               icon={Wheat}
             />
-          ) : filteredMaterials.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No raw materials match your search.
-            </p>
+          ) : rawMaterials.length === 0 ? (
+            <EmptyState
+              title="No raw materials match"
+              description="Try a different search term or clear your filters."
+              icon={Wheat}
+              actionLabel="Clear filters"
+              onAction={onClearFilters}
+            />
           ) : (
-                          <Table>
-                <TableHeader>
+            <div className="relative max-h-[min(70vh,640px)] overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
                   <TableRow>
-                    <TableHead>Raw Material</TableHead>
-                    <TableHead className="hidden sm:table-cell">Code</TableHead>
-                    <TableHead className="text-right">Current Stock</TableHead>
-                    <TableHead className="hidden md:table-cell">Unit</TableHead>
-                    <TableHead className="text-right">Reorder Level</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className={TABLE_CELL_CLASS}>Raw Material</TableHead>
+                    <TableHead className={cn('hidden sm:table-cell', TABLE_CELL_CLASS)}>Code</TableHead>
+                    <TableHead className={cn('text-right', TABLE_CELL_CLASS)}>Current Stock</TableHead>
+                    <TableHead className={cn('hidden md:table-cell', TABLE_CELL_CLASS)}>Unit</TableHead>
+                    <TableHead className={cn('text-right', TABLE_CELL_CLASS)}>Reorder Level</TableHead>
+                    <TableHead className={TABLE_CELL_CLASS}>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredMaterials.map((material) => (
-                    <TableRow key={material.id}>
-                      <TableCell>
+                  {rawMaterials.map((material) => (
+                    <TableRow
+                      key={material.id}
+                      className={getStockRowClassName(material.currentStock, material.status)}
+                    >
+                      <TableCell className={TABLE_CELL_CLASS}>
                         <Link
                           href={material.href}
                           className="font-medium hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                           {material.name}
                         </Link>
+                        {isNegativeStock(material.currentStock) ? (
+                          <p className="mt-0.5 text-xs text-destructive">Negative stock</p>
+                        ) : null}
                       </TableCell>
-                      <TableCell className="hidden font-mono text-xs sm:table-cell">
+                      <TableCell className={cn('hidden font-mono text-xs sm:table-cell', TABLE_CELL_CLASS)}>
                         {material.code}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell
+                        className={cn(
+                          'text-right tabular-nums',
+                          getStockQuantityClassName(material.currentStock, material.status),
+                          TABLE_CELL_CLASS,
+                        )}
+                      >
                         {formatStock(material.currentStock, material.unit)}
                       </TableCell>
-                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                      <TableCell className={cn('hidden text-muted-foreground md:table-cell', TABLE_CELL_CLASS)}>
                         {material.unit}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                      <TableCell className={cn('text-right tabular-nums text-muted-foreground', TABLE_CELL_CLASS)}>
                         {formatReorderLevel(material.reorderLevel, material.unit)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={TABLE_CELL_CLASS}>
                         <StockStatusBadge status={material.status} />
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </div>
           )}
+          {hasActiveFilters && rawMaterials.length > 0 ? (
+            <div className="mt-4 flex justify-end">
+              <Button type="button" variant="ghost" size="sm" onClick={onClearFilters}>
+                Clear filters
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </section>

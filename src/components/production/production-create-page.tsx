@@ -12,7 +12,6 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
@@ -233,7 +232,7 @@ export function ProductionCreatePage() {
 
       <PageHeader
         title="Record Production"
-        description="Enter products and quantities for today's production. Save as draft to finish later, or save and complete to update inventory immediately."
+        description="Add products and quantities, then finish to update stock."
       >
         <Button
           type="button"
@@ -255,53 +254,46 @@ export function ProductionCreatePage() {
         />
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Production Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProductionForm
-            key={formKey}
-            formId={FORM_ID}
-            initialLines={repeatLines ?? undefined}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-            footerActions={
-              <>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link href="/production" />}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  form={FORM_ID}
-                  variant="outline"
-                  disabled={isSubmitting}
-                  onClick={handleSaveDraftClick}
-                >
-                  {isSubmitting && submitMode === 'draft'
-                    ? 'Saving...'
-                    : 'Save Draft'}
-                </Button>
-                <Button
-                  type="submit"
-                  form={FORM_ID}
-                  disabled={isSubmitting}
-                  onClick={handleSaveAndCompleteClick}
-                >
-                  {isSubmitting && submitMode === 'complete' ? 'Completing...' : 'Save & Complete'}
-                </Button>
-              </>
-            }
-          />
-        </CardContent>
-      </Card>
+      <ProductionForm
+        key={formKey}
+        formId={FORM_ID}
+        initialLines={repeatLines ?? undefined}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        serverFieldError={serverFieldError}
+        onServerFieldErrorHandled={() => setServerFieldError(null)}
+        footerActions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="ghost"
+              render={<Link href="/production" />}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={handleSaveDraftClick}
+            >
+              {isSubmitting && submitMode === 'draft' ? 'Saving...' : 'Save Draft'}
+            </Button>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="success"
+              size="xl"
+              disabled={isSubmitting}
+              onClick={handleSaveAndCompleteClick}
+            >
+              {isSubmitting && submitMode === 'complete' ? 'Finishing...' : 'Save & Finish'}
+            </Button>
+          </>
+        }
+      />
 
       <ConfirmDialog
         open={confirmOpen}
@@ -316,14 +308,15 @@ export function ProductionCreatePage() {
             pendingDraftIdRef.current = null;
           }
         }}
-        title="Complete Production"
+        title="Finish Production"
         description={
           pendingValues
-            ? `Complete this production batch? Raw materials will be deducted and product stock updated for ${lineCount} product line${lineCount === 1 ? '' : 's'}. This cannot be undone.`
+            ? `Finish this production batch? Raw materials will be deducted and product stock updated for ${lineCount} product line${lineCount === 1 ? '' : 's'}. This cannot be undone.`
             : ''
         }
-        confirmLabel="Save & Complete"
-        loadingLabel="Completing..."
+        confirmLabel="Finish Production"
+        confirmVariant="success"
+        loadingLabel="Finishing..."
         isLoading={isSubmitting}
         onConfirm={() => void handleConfirmComplete()}
       />

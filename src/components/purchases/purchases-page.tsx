@@ -18,12 +18,29 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PURCHASE_PAGE_SIZE } from '@/lib/domain/constants/purchase';
+import { cn } from '@/lib/utils';
 import { usePurchases } from '@/hooks/queries/use-purchases';
 import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
-import type { PurchaseListItem } from '@/types/purchase';
+import type { PurchaseListItem, PurchaseStatusFilter } from '@/types/purchase';
+
+function getPurchaseListSummary(status: PurchaseStatusFilter, total: number): string {
+  if (status === 'draft') {
+    return total === 1
+      ? '1 draft — receive to update stock'
+      : `${total.toLocaleString('en-IN')} drafts — receive to update stock`;
+  }
+
+  if (status === 'received') {
+    return total === 1
+      ? '1 received purchase'
+      : `${total.toLocaleString('en-IN')} received purchases`;
+  }
+
+  return total === 1 ? '1 purchase' : `${total.toLocaleString('en-IN')} purchases`;
+}
 
 export function PurchasesPage() {
   const router = useRouter();
@@ -152,7 +169,7 @@ export function PurchasesPage() {
         description="Record raw material purchases and receive them into inventory when goods arrive."
       >
         {!showEmptyCatalog ? (
-          <Button nativeButton={false} render={<Link href="/purchases/new" />}>
+          <Button nativeButton={false} variant="success" size="xl" render={<Link href="/purchases/new" />}>
             <Plus />
             Record Purchase
           </Button>
@@ -188,6 +205,18 @@ export function PurchasesPage() {
           onRetry={() => void refetch()}
           isRetrying={isRefetching}
         />
+      ) : null}
+
+      {!showEmptyCatalog && !showNoResults && data && data.total > 0 ? (
+        <div
+          className={cn(
+            'rounded-lg border bg-muted/30 px-4 py-3 text-base font-medium',
+            status === 'draft' && 'text-warning-foreground',
+            status === 'received' && 'text-success-foreground',
+          )}
+        >
+          {getPurchaseListSummary(status, data.total)}
+        </div>
       ) : null}
 
       {showEmptyCatalog ? (
@@ -274,6 +303,7 @@ export function PurchasesPage() {
             : ''
         }
         confirmLabel="Receive Purchase"
+        confirmVariant="success"
         loadingLabel="Receiving..."
         isLoading={isReceiving}
         onConfirm={handleReceive}

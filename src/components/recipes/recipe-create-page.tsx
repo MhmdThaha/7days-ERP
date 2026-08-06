@@ -44,13 +44,7 @@ export function RecipeCreatePage() {
     setIsSubmitting(true);
     setServerFieldError(null);
 
-    // [PERF-TEMP] instrumentation — remove after performance investigation
-    const perfTotalStart = performance.now();
-    let perfActionMs = 0;
-    let perfInvalidateMs = 0;
-
     try {
-      const perfActionStart = performance.now(); // [PERF-TEMP]
       const result = await createRecipeAction({
         productId: values.productId,
         recipeCode: values.recipeCode || undefined,
@@ -61,7 +55,6 @@ export function RecipeCreatePage() {
         notes: values.notes ?? null,
         isActive: values.isActive,
       });
-      perfActionMs = performance.now() - perfActionStart; // [PERF-TEMP]
 
       if (!result.success) {
         const fieldError = mapRecipeActionError(result.code);
@@ -74,23 +67,14 @@ export function RecipeCreatePage() {
         return;
       }
 
-      const perfInvalidateStart = performance.now(); // [PERF-TEMP]
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['recipes'] }),
         queryClient.invalidateQueries({ queryKey: ['products'] }),
       ]);
-      perfInvalidateMs = performance.now() - perfInvalidateStart; // [PERF-TEMP]
 
       setSuccessState({ recipeName: result.data.recipeName });
       setFormKey((current) => current + 1);
     } finally {
-      // [PERF-TEMP] instrumentation — remove after performance investigation
-      const perfTotalMs = performance.now() - perfTotalStart;
-      console.log(
-        `[PERF][client] createRecipeAction round-trip: ${perfActionMs.toFixed(0)} ms | ` +
-          `react-query invalidation: ${perfInvalidateMs.toFixed(0)} ms | ` +
-          `handleSubmit total: ${perfTotalMs.toFixed(0)} ms`,
-      );
       setIsSubmitting(false);
     }
   }
@@ -155,7 +139,7 @@ export function RecipeCreatePage() {
                     View recipes
                   </Button>
                 ) : null}
-                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                <Button type="submit" form={FORM_ID} variant="success" disabled={isSubmitting}>
                   {isSubmitting ? 'Creating...' : 'Create Recipe'}
                 </Button>
               </>

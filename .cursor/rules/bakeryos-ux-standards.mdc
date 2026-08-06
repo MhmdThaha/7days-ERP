@@ -1,0 +1,125 @@
+---
+description: Permanent BakeryOS UX and Product standards — optimize for zero thinking, not aesthetics
+alwaysApply: true
+---
+
+# BakeryOS UX & Product Standards (Permanent)
+
+BakeryOS is a **work assistant for bakery owners**, not a CRUD app. Optimize for **zero thinking**, not beautiful UI.
+
+## Users
+
+Bakery owners, typically 40–65, limited computer knowledge, busy, tired, often not fluent in English, some rarely use software.
+
+## 3-Second Test (Every Screen)
+
+The screen must answer within 3 seconds:
+
+1. **Where am I?** (title + context)
+2. **What is happening?** (status + summary)
+3. **What should I do next?** (one obvious action — user never searches)
+
+## Product Goal
+
+Reduce **work**, **mistakes**, **thinking**, and **training**.
+
+Design around what the bakery owner is trying to accomplish — **never** around the database, Firestore, or models.
+
+## Mandatory Design Questions (Before Any UI Proposal)
+
+Answer all seven before proposing implementation. If unanswered, do not propose.
+
+1. What is the bakery owner's goal on this screen?
+2. What decision are they trying to make?
+3. What information is required to make that decision?
+4. What information is unnecessary at that moment?
+5. What is the single most important action?
+6. Why would a tired bakery owner hesitate?
+7. How does this proposal reduce hesitation?
+
+Also explain: which UX principle is violated, expected usability improvement, and risk. **Wait for approval before implementing.**
+
+## UX Principles
+
+### One screen = one job
+
+Everything that does not help complete the current task must justify its presence or move behind "More Details."
+
+### One primary action
+
+- **Primary:** green, largest, most visible (Save / Finish / Record / Confirm)
+- **Secondary:** quiet, smaller (Edit = blue, Cancel/Close = gray)
+- Never let two buttons compete for primary attention
+
+### Color has permanent meaning
+
+| Color | Meaning |
+|-------|---------|
+| Green | Save, Finish, Record, Confirm |
+| Blue | Edit, View |
+| Gray | Cancel, Close, Secondary |
+| Orange | Warning, Needs attention |
+| Red | Delete, Dangerous |
+
+Users learn colors once; use consistently everywhere.
+
+### Recognition over reading
+
+Prefer badges, icons, colors, and hierarchy over paragraphs. Reduce text.
+
+### Reduce cognitive load
+
+Show only information needed for the current task. Move technical info behind More Details / Advanced / Expand.
+
+### Information hierarchy (visual weight = importance)
+
+1. Title → 2. Status → 3. Primary Action → 4. Summary → 5. Working Area → 6. Technical Details
+
+### Touch targets
+
+Primary actions: **44–48px minimum** height, comfortable spacing.
+
+### Consistency
+
+Every screen follows the same mental model. Users learn the app once.
+
+### Remove friction
+
+Always try to reduce: clicks, scrolling, reading, searching, remembering, repeated data entry.
+
+### Progressive disclosure
+
+Show only what is necessary now. Avoid overwhelming users.
+
+### Every component must justify itself
+
+Every card, button, badge, field, table, and section must answer: **"Why is this on this screen?"**
+
+## UX Success Metric
+
+Judge success by behavior, not appearance:
+
+- Can a first-time bakery owner complete the task?
+- Without asking questions?
+- Quickly?
+- Without mistakes?
+- Can they recognize the next action immediately?
+
+## Engineering Constraints (Never Change for UI Work)
+
+Business logic, Firestore, inventory, COGS, production logic, recipe logic, calculations, repositories, services, routing, authentication.
+
+**UI improvements only.** Do not redesign the app. Do not change workflows.
+
+## After Each UX Phase
+
+1. Suggest how to test with a real bakery owner
+2. What behaviors to observe
+3. What feedback indicates success or failure
+4. Recommend the next highest-impact UX improvement
+
+## Implementation Rules
+
+- Improve the existing UI incrementally
+- Every UI change needs a **measurable usability reason** — never change only because it looks modern
+- Keep git diffs as small as possible; reuse existing shared components

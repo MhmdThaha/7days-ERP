@@ -13,11 +13,11 @@ export function SaleTotalBar({ lineCount, subtotal, variant = 'default' }: SaleT
   const content = (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
       <div className="flex items-baseline gap-2">
-        <p className="text-sm font-medium text-muted-foreground">Product Lines</p>
+        <p className="text-sm font-medium text-muted-foreground">Product lines</p>
         <p
           className={
             variant === 'compact'
-              ? 'text-base font-semibold tabular-nums'
+              ? 'text-sm font-medium tabular-nums text-muted-foreground'
               : 'text-lg font-semibold tabular-nums'
           }
         >
@@ -29,7 +29,7 @@ export function SaleTotalBar({ lineCount, subtotal, variant = 'default' }: SaleT
         <p
           className={
             variant === 'compact'
-              ? 'text-xl font-semibold tabular-nums'
+              ? 'text-2xl font-semibold tabular-nums'
               : 'text-2xl font-semibold tabular-nums'
           }
         >
@@ -47,7 +47,7 @@ export function SaleTotalBar({ lineCount, subtotal, variant = 'default' }: SaleT
     <Card>
       <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Product Lines</p>
+          <p className="text-sm font-medium text-muted-foreground">Product lines</p>
           <p className="text-lg font-semibold tabular-nums">{lineCount}</p>
         </div>
         <div className="text-left sm:text-right">

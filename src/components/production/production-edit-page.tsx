@@ -16,7 +16,6 @@ import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
@@ -171,36 +170,29 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
         description={`Update draft production ${production.productionNumber}.`}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Production Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProductionForm
-            formId={FORM_ID}
-            production={production}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-            footerActions={
-              <>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link href={`/production/${productionId}`} />}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </>
-            }
-          />
-        </CardContent>
-      </Card>
+      <ProductionForm
+        formId={FORM_ID}
+        production={production}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        serverFieldError={serverFieldError}
+        onServerFieldErrorHandled={() => setServerFieldError(null)}
+        footerActions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="ghost"
+              render={<Link href={`/production/${productionId}`} />}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form={FORM_ID} variant="success" size="xl" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </>
+        }
+      />
 
       <RecipeChangedDialog
         open={recipeChangedDialogOpen}

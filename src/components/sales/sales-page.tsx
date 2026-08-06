@@ -18,12 +18,29 @@ import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { SALE_PAGE_SIZE } from '@/lib/domain/constants/sale';
+import { cn } from '@/lib/utils';
 import { useSales } from '@/hooks/queries/use-sales';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
-import type { SaleListItem } from '@/types/sale';
+import type { SaleListItem, SaleStatusFilter } from '@/types/sale';
+
+function getSaleListSummary(status: SaleStatusFilter, total: number): string {
+  if (status === 'draft') {
+    return total === 1
+      ? '1 draft — complete to update stock'
+      : `${total.toLocaleString('en-IN')} drafts — complete to update stock`;
+  }
+
+  if (status === 'completed') {
+    return total === 1
+      ? '1 completed sale'
+      : `${total.toLocaleString('en-IN')} completed sales`;
+  }
+
+  return total === 1 ? '1 sale' : `${total.toLocaleString('en-IN')} sales`;
+}
 
 export function SalesPage() {
   const router = useRouter();
@@ -155,7 +172,7 @@ export function SalesPage() {
               <Upload />
               Import Sales
             </Button>
-            <Button nativeButton={false} render={<Link href="/sales/new" />}>
+            <Button nativeButton={false} variant="success" size="xl" render={<Link href="/sales/new" />}>
               <Plus />
               Record Sale
             </Button>
@@ -192,6 +209,18 @@ export function SalesPage() {
           onRetry={() => void refetch()}
           isRetrying={isRefetching}
         />
+      ) : null}
+
+      {!showEmptyCatalog && !showNoResults && data && data.total > 0 ? (
+        <div
+          className={cn(
+            'rounded-lg border bg-muted/30 px-4 py-3 text-base font-medium',
+            status === 'draft' && 'text-warning-foreground',
+            status === 'completed' && 'text-success-foreground',
+          )}
+        >
+          {getSaleListSummary(status, data.total)}
+        </div>
       ) : null}
 
       {showEmptyCatalog ? (
@@ -278,6 +307,7 @@ export function SalesPage() {
             : ''
         }
         confirmLabel="Complete Sale"
+        confirmVariant="success"
         loadingLabel="Completing..."
         isLoading={isCompleting}
         onConfirm={handleComplete}

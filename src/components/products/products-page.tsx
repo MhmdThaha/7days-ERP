@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, SearchX, Upload } from 'lucide-react';
@@ -10,6 +10,7 @@ import {
   deleteProductAction,
   getProductAction,
 } from '@/actions/products';
+import { ProductCatalogHealth } from '@/components/products/product-catalog-health';
 import { ProductFilters } from '@/components/products/product-filters';
 import { useAuth } from '@/hooks/use-auth';
 import { ProductFormDialog } from '@/components/products/product-form-dialog';
@@ -26,23 +27,21 @@ import { useProducts } from '@/hooks/queries/use-products';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { ProductListItem, ProductStatusFilter } from '@/types/product';
 
+function getProductListSummary(status: ProductStatusFilter, total: number): string {
+  if (status === 'active') {
+    return total === 1 ? '1 active product' : `${total.toLocaleString('en-IN')} active products`;
+  }
+
+  if (status === 'inactive') {
+    return total === 1 ? '1 inactive product' : `${total.toLocaleString('en-IN')} inactive products`;
+  }
+
+  return total === 1 ? '1 product' : `${total.toLocaleString('en-IN')} products`;
+}
+
 export function ProductsPage() {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
-
-  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
-  useEffect(() => {
-    const navStart = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    if (navStart) {
-      console.log(
-        `[PERF-GLOBAL][client] navigation timing | TTFB: ${(navStart.responseStart - navStart.requestStart).toFixed(0)} ms | ` +
-          `response: ${(navStart.responseEnd - navStart.responseStart).toFixed(0)} ms | ` +
-          `DOMContentLoaded: ${(navStart.domContentLoadedEventEnd - navStart.startTime).toFixed(0)} ms | ` +
-          `load: ${(navStart.loadEventEnd - navStart.startTime).toFixed(0)} ms`,
-      );
-    }
-    console.log('[PERF-GLOBAL][client] ProductsPage mounted');
-  }, []);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -69,12 +68,31 @@ export function ProductsPage() {
     pageSize: PRODUCT_PAGE_SIZE,
   });
 
-  // [PERF-GLOBAL-TEMP] instrumentation — remove after investigation
-  useEffect(() => {
-    if (!isLoading && data) {
-      console.log('[PERF-GLOBAL][client] ProductsPage interactive — product table data ready');
-    }
-  }, [isLoading, data]);
+  const { data: catalogMeta, isLoading: isCatalogMetaLoading } = useProducts({
+    search: '',
+    status: 'all',
+    page: 1,
+    pageSize: 1,
+  });
+
+  const catalogFetchSize = Math.max(catalogMeta?.total ?? 0, 1);
+
+  const { data: catalogData, isLoading: isCatalogLoading } = useProducts({
+    search: '',
+    status: 'all',
+    page: 1,
+    pageSize: catalogFetchSize,
+  });
+
+  const catalogHealth = useMemo(() => {
+    const items = catalogData?.items ?? [];
+
+    return {
+      activeCount: items.filter((product) => product.isActive).length,
+      inactiveCount: items.filter((product) => !product.isActive).length,
+      missingRecipeCount: items.filter((product) => product.isActive && !product.activeRecipeId).length,
+    };
+  }, [catalogData]);
 
   const {
     data: editingProductResult,
@@ -98,6 +116,7 @@ export function ProductsPage() {
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
+  const showCatalogHealth = !showEmptyCatalog && !isOrgError;
 
   function clearFilters() {
     setSearch('');
@@ -136,18 +155,30 @@ export function ProductsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Products">
+      <PageHeader
+        title="Products"
+        description="Manage finished products, prices, and recipe links."
+      >
         <Button nativeButton={false} variant="outline" render={<Link href="/products/import" />}>
           <Upload />
           Import
         </Button>
         {!showEmptyCatalog ? (
-          <Button onClick={() => setIsCreateOpen(true)}>
+          <Button variant="success" size="xl" onClick={() => setIsCreateOpen(true)}>
             <Plus />
             Add Product
           </Button>
         ) : null}
       </PageHeader>
+
+      {showCatalogHealth ? (
+        <ProductCatalogHealth
+          activeCount={catalogHealth.activeCount}
+          missingRecipeCount={catalogHealth.missingRecipeCount}
+          inactiveCount={catalogHealth.inactiveCount}
+          isLoading={isCatalogMetaLoading || isCatalogLoading}
+        />
+      ) : null}
 
       {isOrgError ? (
         <Alert variant="destructive">
@@ -187,26 +218,33 @@ export function ProductsPage() {
           actionLabel="Add Product"
           onAction={() => setIsCreateOpen(true)}
         />
+      ) : showNoResults ? (
+        <EmptyState
+          icon={SearchX}
+          title="No matching records."
+          description="Try clearing your filters to see all products."
+          actionLabel="Clear Filters"
+          onAction={clearFilters}
+        />
       ) : (
         <>
-          {showNoResults ? (
-            <EmptyState
-              icon={SearchX}
-              title="No matching records."
-              description="Try clearing your filters to see all products."
-              actionLabel="Clear Filters"
-              onAction={clearFilters}
-            />
-          ) : (
-            <ProductTable
-              products={data?.items ?? []}
-              isLoading={isLoading}
-              isFetching={isFetching}
-              disabled={isDeleting}
-              onEdit={(productId) => setEditingProductId(productId)}
-              onDelete={(product) => setDeletingProduct(product)}
-            />
-          )}
+          {data && data.total > 0 ? (
+            <div
+              className="rounded-lg border bg-muted/30 px-4 py-3 text-base font-medium text-muted-foreground"
+              role="status"
+            >
+              {getProductListSummary(status, data.total)}
+            </div>
+          ) : null}
+
+          <ProductTable
+            products={data?.items ?? []}
+            isLoading={isLoading}
+            isFetching={isFetching}
+            disabled={isDeleting}
+            onEdit={(productId) => setEditingProductId(productId)}
+            onDelete={(product) => setDeletingProduct(product)}
+          />
 
           {data && data.total > 0 ? (
             <DataTablePagination

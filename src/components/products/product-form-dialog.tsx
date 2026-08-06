@@ -169,6 +169,7 @@ export function ProductFormDialog({
           <Button
             type="submit"
             form={formId}
+            variant="success"
             disabled={isSubmitting || isLoadingProduct || !showForm}
           >
             {isSubmitting ? (

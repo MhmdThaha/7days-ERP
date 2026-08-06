@@ -1,159 +1,100 @@
 import type { ReactNode } from 'react';
-import { BarChart3, Factory, TrendingDown, TrendingUp } from 'lucide-react';
 
-import { ReportBarList } from '@/components/reports/report-bar-list';
+import {
+  hasDonutChartData,
+  ReportDonutChart,
+  type ReportDonutSegment,
+} from '@/components/reports/report-donut-chart';
+import {
+  hasLineChartData,
+  ReportLineChart,
+  type ReportLineChartPoint,
+} from '@/components/reports/report-line-chart';
+import { ReportBarList, ReportChartCard } from '@/components/reports/report-bar-list';
 import { MoneyDisplay } from '@/components/shared/money-display';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type {
   MonthlyReportBreakdownItem,
   MonthlyReportDailyAnalytics,
+  MonthlyReportProductRank,
 } from '@/types/monthly-report';
 
 type MonthlyReportAnalyticsSectionProps = {
-  monthLabel: string;
   dailyAnalytics: MonthlyReportDailyAnalytics[];
   expenseBreakdown: MonthlyReportBreakdownItem[];
-  wastageBreakdown: MonthlyReportBreakdownItem[];
+  topRevenueProducts: MonthlyReportProductRank[];
 };
 
-function buildTrendItems(
+function buildDailyPoints(
   dailyAnalytics: MonthlyReportDailyAnalytics[],
-  valueKey: 'netSales' | 'netProfit' | 'productionUnits',
-  formatValue: (value: number) => ReactNode,
-) {
-  const activeDays = dailyAnalytics.filter((entry) => entry[valueKey] !== 0);
-
-  return activeDays.map((entry) => ({
+  valueKey: 'netSales' | 'netProfit',
+): ReportLineChartPoint[] {
+  return dailyAnalytics.map((entry) => ({
     key: entry.date,
-    label: `Day ${entry.day}`,
-    value: Math.abs(entry[valueKey]),
-    displayValue: formatValue(entry[valueKey]),
+    label: String(entry.day),
+    value: entry[valueKey],
   }));
 }
 
-function formatUnits(value: number): string {
-  return `${value.toLocaleString('en-IN')} units`;
-}
-
-function BreakdownCard({
-  title,
-  icon: Icon,
-  items,
-  emptyMessage,
-}: {
-  title: string;
-  icon: typeof BarChart3;
-  items: MonthlyReportBreakdownItem[];
-  emptyMessage: string;
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base font-medium">
-          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ReportBarList
-          items={items.map((item) => ({
-            key: item.key,
-            label: item.label,
-            value: item.amount,
-            displayValue: <MoneyDisplay amount={item.amount} />,
-          }))}
-          emptyMessage={emptyMessage}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
 export function MonthlyReportAnalyticsSection({
-  monthLabel,
   dailyAnalytics,
   expenseBreakdown,
-  wastageBreakdown,
+  topRevenueProducts,
 }: MonthlyReportAnalyticsSectionProps) {
-  const salesTrend = buildTrendItems(dailyAnalytics, 'netSales', (value) => (
-    <MoneyDisplay amount={value} />
-  ));
-  const profitTrend = buildTrendItems(dailyAnalytics, 'netProfit', (value) => (
-    <MoneyDisplay amount={value} />
-  ));
-  const productionTrend = buildTrendItems(dailyAnalytics, 'productionUnits', formatUnits);
+  const salesPoints = buildDailyPoints(dailyAnalytics, 'netSales');
+  const profitPoints = buildDailyPoints(dailyAnalytics, 'netProfit');
+
+  const revenueByProduct = topRevenueProducts.slice(0, 5).map((product) => ({
+    key: product.productId,
+    label: product.productName,
+    value: product.revenue,
+    displayValue: <MoneyDisplay amount={product.revenue} />,
+  }));
+
+  const expenseSegments: ReportDonutSegment[] = expenseBreakdown
+    .filter((item) => item.amount > 0)
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
+      value: item.amount,
+    }));
+
+  const charts = [
+    hasLineChartData(salesPoints) ? (
+      <ReportChartCard key="sales-trend" question="Are sales improving?">
+        <ReportLineChart points={salesPoints} variant="sales" />
+      </ReportChartCard>
+    ) : null,
+    hasLineChartData(profitPoints) ? (
+      <ReportChartCard key="profit-trend" question="Are we making more profit?">
+        <ReportLineChart points={profitPoints} variant="profit" />
+      </ReportChartCard>
+    ) : null,
+    revenueByProduct.length > 0 ? (
+      <ReportChartCard key="revenue-products" question="Which products earn the most?">
+        <ReportBarList items={revenueByProduct} barTone="sales" />
+      </ReportChartCard>
+    ) : null,
+    hasDonutChartData(expenseSegments) ? (
+      <ReportChartCard key="expense-donut" question="Where is our money going?">
+        <ReportDonutChart segments={expenseSegments} />
+      </ReportChartCard>
+    ) : null,
+  ].filter(Boolean);
+
+  if (charts.length === 0) {
+    return null;
+  }
 
   return (
-    <section aria-labelledby="monthly-report-analytics-heading" className="space-y-4">
-      <div>
+    <section aria-labelledby="monthly-report-analytics-heading" className="section-stack">
+      <div className="space-y-1">
         <h2 id="monthly-report-analytics-heading" className="text-lg font-semibold tracking-tight">
           Analytics
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Daily trends and spending breakdowns for {monthLabel}.
-        </p>
+        <p className="text-sm text-muted-foreground">Four questions about how the month performed.</p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-medium">
-              <TrendingUp className="size-4 text-muted-foreground" aria-hidden="true" />
-              Daily Sales Trend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ReportBarList
-              items={salesTrend}
-              emptyMessage="No sales recorded this month."
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-medium">
-              <TrendingDown className="size-4 text-muted-foreground" aria-hidden="true" />
-              Daily Profit Trend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ReportBarList
-              items={profitTrend}
-              emptyMessage="No profit data recorded this month."
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-medium">
-              <Factory className="size-4 text-muted-foreground" aria-hidden="true" />
-              Production Trend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ReportBarList
-              items={productionTrend}
-              emptyMessage="No production recorded this month."
-            />
-          </CardContent>
-        </Card>
-
-        <BreakdownCard
-          title="Expense Breakdown"
-          icon={BarChart3}
-          items={expenseBreakdown}
-          emptyMessage="No expenses recorded this month."
-        />
-
-        <BreakdownCard
-          title="Wastage Breakdown"
-          icon={BarChart3}
-          items={wastageBreakdown}
-          emptyMessage="No wastage recorded this month."
-        />
-      </div>
+      <div className="grid gap-5 xl:grid-cols-2">{charts}</div>
     </section>
   );
 }

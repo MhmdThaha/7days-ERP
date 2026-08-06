@@ -18,12 +18,29 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PRODUCTION_PAGE_SIZE } from '@/lib/domain/constants/production';
+import { cn } from '@/lib/utils';
 import { useProductions } from '@/hooks/queries/use-productions';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
-import type { ProductionListItem } from '@/types/production';
+import type { ProductionListItem, ProductionStatusFilter } from '@/types/production';
+
+function getProductionListSummary(status: ProductionStatusFilter, total: number): string {
+  if (status === 'draft') {
+    return total === 1
+      ? '1 draft — finish to update stock'
+      : `${total.toLocaleString('en-IN')} drafts — finish to update stock`;
+  }
+
+  if (status === 'completed') {
+    return total === 1
+      ? '1 finished production'
+      : `${total.toLocaleString('en-IN')} finished productions`;
+  }
+
+  return total === 1 ? '1 production' : `${total.toLocaleString('en-IN')} productions`;
+}
 
 export function ProductionsPage() {
   const router = useRouter();
@@ -154,7 +171,7 @@ export function ProductionsPage() {
         description="Record daily production and complete it to update inventory automatically."
       >
         {!showEmptyCatalog ? (
-          <Button nativeButton={false} render={<Link href="/production/new" />}>
+          <Button nativeButton={false} variant="success" size="xl" render={<Link href="/production/new" />}>
             <Plus />
             Record Production
           </Button>
@@ -190,6 +207,18 @@ export function ProductionsPage() {
           onRetry={() => void refetch()}
           isRetrying={isRefetching}
         />
+      ) : null}
+
+      {!showEmptyCatalog && !showNoResults && data && data.total > 0 ? (
+        <div
+          className={cn(
+            'rounded-lg border bg-muted/30 px-4 py-3 text-base font-medium',
+            status === 'draft' && 'text-warning-foreground',
+            status === 'completed' && 'text-success-foreground',
+          )}
+        >
+          {getProductionListSummary(status, data.total)}
+        </div>
       ) : null}
 
       {showEmptyCatalog ? (
@@ -269,14 +298,15 @@ export function ProductionsPage() {
             setCompletingProduction(null);
           }
         }}
-        title="Complete Production"
+        title="Finish Production"
         description={
           completingProduction
-            ? `Complete "${completingProduction.productionNumber}"? Raw materials will be deducted and ${completingProduction.totalUnits.toLocaleString('en-IN')} units added to product stock. This cannot be undone.`
+            ? `Finish "${completingProduction.productionNumber}"? Ingredients will be taken from stock and ${completingProduction.totalUnits.toLocaleString('en-IN')} finished products will be added. This cannot be undone.`
             : ''
         }
-        confirmLabel="Complete Production"
-        loadingLabel="Completing..."
+        confirmLabel="Finish Production"
+        confirmVariant="success"
+        loadingLabel="Finishing..."
         isLoading={isCompleting}
         onConfirm={handleComplete}
       />

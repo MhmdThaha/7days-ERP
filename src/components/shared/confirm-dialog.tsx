@@ -19,7 +19,7 @@ type ConfirmDialogProps = {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  confirmVariant?: 'default' | 'destructive';
+  confirmVariant?: 'default' | 'destructive' | 'success';
   loadingLabel?: string;
   isLoading?: boolean;
   onConfirm: () => void;

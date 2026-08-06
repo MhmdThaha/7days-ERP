@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { deleteRecipeAction } from '@/actions/recipes';
 import { RecipeFilters } from '@/components/recipes/recipe-filters';
+import { RecipeProductionReadiness } from '@/components/recipes/recipe-production-readiness';
 import { RecipeTable } from '@/components/recipes/recipe-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTablePagination } from '@/components/shared/data-table-pagination';
@@ -18,9 +19,22 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { RECIPE_PAGE_SIZE } from '@/lib/domain/constants/recipe';
+import { useProducts } from '@/hooks/queries/use-products';
 import { useRecipes } from '@/hooks/queries/use-recipes';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { RecipeListItem, RecipeStatusFilter } from '@/types/recipe';
+
+function getRecipeListSummary(status: RecipeStatusFilter, total: number): string {
+  if (status === 'active') {
+    return total === 1 ? '1 active recipe' : `${total.toLocaleString('en-IN')} active recipes`;
+  }
+
+  if (status === 'inactive') {
+    return total === 1 ? '1 inactive recipe' : `${total.toLocaleString('en-IN')} inactive recipes`;
+  }
+
+  return total === 1 ? '1 recipe' : `${total.toLocaleString('en-IN')} recipes`;
+}
 
 export function RecipesPage() {
   const router = useRouter();
@@ -48,11 +62,60 @@ export function RecipesPage() {
     pageSize: RECIPE_PAGE_SIZE,
   });
 
+  const { data: recipeCatalogMeta, isLoading: isRecipeCatalogMetaLoading } = useRecipes({
+    search: '',
+    status: 'all',
+    page: 1,
+    pageSize: 1,
+  });
+
+  const recipeCatalogFetchSize = Math.max(recipeCatalogMeta?.total ?? 0, 1);
+
+  const { data: recipeCatalogData, isLoading: isRecipeCatalogLoading } = useRecipes({
+    search: '',
+    status: 'all',
+    page: 1,
+    pageSize: recipeCatalogFetchSize,
+  });
+
+  const { data: productCatalogMeta, isLoading: isProductCatalogMetaLoading } = useProducts({
+    search: '',
+    status: 'active',
+    page: 1,
+    pageSize: 1,
+  });
+
+  const productCatalogFetchSize = Math.max(productCatalogMeta?.total ?? 0, 1);
+
+  const { data: productCatalogData, isLoading: isProductCatalogLoading } = useProducts({
+    search: '',
+    status: 'active',
+    page: 1,
+    pageSize: productCatalogFetchSize,
+  });
+
+  const productionReadiness = useMemo(() => {
+    const recipes = recipeCatalogData?.items ?? [];
+    const products = productCatalogData?.items ?? [];
+
+    return {
+      readyCount: recipes.filter((recipe) => recipe.isActive).length,
+      inactiveCount: recipes.filter((recipe) => !recipe.isActive).length,
+      needRecipeCount: products.filter((product) => !product.activeRecipeId).length,
+    };
+  }, [recipeCatalogData, productCatalogData]);
+
   const isSearching = search !== debouncedSearch;
   const hasActiveFilters = Boolean(debouncedSearch.trim()) || status !== 'active';
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
+  const showProductionReadiness = !showEmptyCatalog && !isOrgError;
+  const isReadinessLoading =
+    isRecipeCatalogMetaLoading ||
+    isRecipeCatalogLoading ||
+    isProductCatalogMetaLoading ||
+    isProductCatalogLoading;
 
   function clearFilters() {
     setSearch('');
@@ -96,12 +159,21 @@ export function RecipesPage() {
     <div className="space-y-6">
       <PageHeader title="Recipes" description="Define how finished products are made from raw materials.">
         {!showEmptyCatalog ? (
-          <Button nativeButton={false} render={<Link href="/recipes/new" />}>
+          <Button nativeButton={false} variant="success" size="xl" render={<Link href="/recipes/new" />}>
             <Plus />
             Add Recipe
           </Button>
         ) : null}
       </PageHeader>
+
+      {showProductionReadiness ? (
+        <RecipeProductionReadiness
+          readyCount={productionReadiness.readyCount}
+          needRecipeCount={productionReadiness.needRecipeCount}
+          inactiveCount={productionReadiness.inactiveCount}
+          isLoading={isReadinessLoading}
+        />
+      ) : null}
 
       {isOrgError ? (
         <Alert variant="destructive">
@@ -141,25 +213,33 @@ export function RecipesPage() {
           actionLabel="Add Recipe"
           onAction={() => router.push('/recipes/new')}
         />
+      ) : showNoResults ? (
+        <EmptyState
+          icon={SearchX}
+          title="No matching records."
+          description="Try clearing your filters to see all recipes."
+          actionLabel="Clear Filters"
+          onAction={clearFilters}
+        />
       ) : (
         <>
-          {showNoResults ? (
-            <EmptyState
-              icon={SearchX}
-              title="No matching records."
-              description="Try clearing your filters to see all recipes."
-              actionLabel="Clear Filters"
-              onAction={clearFilters}
-            />
-          ) : (
-            <RecipeTable
-              recipes={data?.items ?? []}
-              isLoading={isLoading}
-              isFetching={isFetching}
-              disabled={isDeleting}
-              onDelete={(recipe) => setDeletingRecipe(recipe)}
-            />
-          )}
+          {data && data.total > 0 ? (
+            <div
+              className="rounded-lg border bg-muted/30 px-4 py-3 text-base font-medium text-muted-foreground"
+              role="status"
+            >
+              {getRecipeListSummary(status, data.total)}
+            </div>
+          ) : null}
+
+          <RecipeTable
+            recipes={data?.items ?? []}
+            isLoading={isLoading}
+            isFetching={isFetching}
+            disabled={isDeleting}
+            onEdit={(recipeId) => router.push(`/recipes/${recipeId}/edit`)}
+            onDelete={(recipe) => setDeletingRecipe(recipe)}
+          />
 
           {data && data.total > 0 ? (
             <DataTablePagination

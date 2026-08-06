@@ -5,6 +5,7 @@ import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'luci
 
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,7 +105,7 @@ export function ProductionTable({
               <TableHead className="hidden w-[90px] sm:table-cell">Products</TableHead>
               <TableHead className="w-[120px]">Total Units</TableHead>
               <TableHead className="w-[90px]">Status</TableHead>
-              <TableHead className="w-12 text-right">
+              <TableHead className="min-w-[140px] text-right">
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
@@ -145,48 +146,54 @@ export function ProductionTable({
                     <ProductionStatusBadge status={production.status} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                        aria-label={`Actions for ${production.productionNumber}`}
-                        disabled={disabled}
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem render={<Link href={`/production/${production.id}`} />}>
-                          <Eye />
-                          View Details
-                        </DropdownMenuItem>
-                        {isDraft ? (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => onComplete(production)}
-                              disabled={disabled}
-                            >
-                              <CheckCircle2 />
-                              Complete Production
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              render={<Link href={`/production/${production.id}/edit`} />}
-                              disabled={disabled}
-                            >
-                              <Pencil />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => onDelete(production)}
-                              disabled={disabled}
-                            >
-                              <Trash2 />
-                              Delete
-                            </DropdownMenuItem>
-                          </>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center justify-end gap-1">
+                      {isDraft ? (
+                        <Button
+                          variant="success"
+                          size="default"
+                          onClick={() => onComplete(production)}
+                          disabled={disabled}
+                        >
+                          <CheckCircle2 />
+                          Finish
+                        </Button>
+                      ) : null}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          aria-label={`Actions for ${production.productionNumber}`}
+                          disabled={disabled}
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem render={<Link href={`/production/${production.id}`} />}>
+                            <Eye />
+                            View Details
+                          </DropdownMenuItem>
+                          {isDraft ? (
+                            <>
+                              <DropdownMenuItem
+                                render={<Link href={`/production/${production.id}/edit`} />}
+                                disabled={disabled}
+                              >
+                                <Pencil />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => onDelete(production)}
+                                disabled={disabled}
+                              >
+                                <Trash2 />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
                 );

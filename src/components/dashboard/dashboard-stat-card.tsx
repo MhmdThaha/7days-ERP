@@ -14,9 +14,33 @@ type DashboardStatCardProps = {
   icon: LucideIcon;
   href?: string;
   variant?: 'hero' | 'metric' | 'primary' | 'compact';
+  tone?: 'sales' | 'production' | 'pending' | 'expenses' | 'neutral';
   emphasis?: 'default' | 'warning' | 'success';
   className?: string;
 };
+
+const toneStyles = {
+  sales: {
+    card: 'border-primary/25 bg-primary/5 hover:border-primary/35 hover:bg-primary/8',
+    iconWrap: 'rounded-lg bg-primary/10 text-primary',
+  },
+  production: {
+    card: 'hover:border-muted-foreground/25 hover:bg-muted/30',
+    iconWrap: 'rounded-lg bg-muted text-muted-foreground',
+  },
+  pending: {
+    card: 'border-warning/25 bg-warning/5 hover:border-warning/35 hover:bg-warning/8',
+    iconWrap: 'rounded-lg bg-warning/15 text-warning-foreground',
+  },
+  expenses: {
+    card: 'hover:border-muted-foreground/25 hover:bg-muted/25',
+    iconWrap: 'rounded-lg bg-muted text-muted-foreground',
+  },
+  neutral: {
+    card: 'hover:border-muted-foreground/25 hover:bg-muted/25',
+    iconWrap: 'rounded-lg bg-muted text-muted-foreground',
+  },
+} as const;
 
 const variantConfig = {
   hero: {
@@ -68,18 +92,20 @@ export function DashboardStatCard({
   icon: Icon,
   href,
   variant = 'primary',
+  tone = 'neutral',
   emphasis = 'default',
   className,
 }: DashboardStatCardProps) {
   const config = variantConfig[variant];
+  const toneConfig = toneStyles[tone];
   const isClickable = Boolean(href);
 
   const card = (
     <Card
       className={cn(
         'relative gap-0 transition-all duration-200',
-        config.card,
-        emphasis === 'warning' && 'border-warning/30 bg-warning/5',
+        variant === 'metric' ? toneConfig.card : config.card,
+        emphasis === 'warning' && tone !== 'pending' && 'border-warning/30 bg-warning/5',
         isClickable && 'cursor-pointer group/card',
         className,
       )}
@@ -93,7 +119,7 @@ export function DashboardStatCard({
               {description ? <p className={cn('mt-1', config.description)}>{description}</p> : null}
             </div>
           </div>
-          <div className={cn('shrink-0', config.iconWrap)}>
+          <div className={cn('shrink-0', variant === 'metric' ? toneConfig.iconWrap : config.iconWrap)}>
             <Icon className={config.icon} aria-hidden="true" />
           </div>
         </div>

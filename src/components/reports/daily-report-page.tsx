@@ -11,44 +11,76 @@ import {
 } from 'lucide-react';
 
 import { AccessDenied } from '@/components/shared/access-denied';
-import { DailyReportTransactionsSection } from '@/components/reports/daily-report-transactions-section';
+import {
+  ReportActionCenter,
+  ReportFinancialDetailsSection,
+  ReportOperationalMetricsStrip,
+  type ReportActionItem,
+  type ReportOperationalMetric,
+} from '@/components/reports/report-action-center';
+import {
+  ReportExecutiveKpiCard,
+  ReportExecutiveKpiGrid,
+} from '@/components/reports/report-executive-kpi-card';
+import { ReportExecutiveVerdict } from '@/components/reports/report-executive-verdict';
+import { ReportProfitFlowSection } from '@/components/reports/report-profit-flow-section';
+import { ReportTransactionsSection } from '@/components/reports/report-transactions-section';
+import { getProfitTone } from '@/components/reports/report-tone-utils';
 import { ReportMetricCard } from '@/components/reports/report-metric-card';
+import { reportPrimaryMetricGridClass } from '@/components/reports/report-kpi-value';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
-import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useDailyReport } from '@/hooks/queries/use-daily-report';
 import { formatDisplayDate } from '@/lib/utils/date';
+
+import { DailyReportSkeleton } from './daily-report-skeleton';
 
 function formatUnits(value: number): string {
   return `${value.toLocaleString('en-IN')} units`;
 }
 
-function DailyReportSkeleton() {
-  return (
-    <div className="min-w-0 space-y-10" aria-busy="true" aria-label="Loading daily report">
-      <Skeleton className="h-10 w-56" />
-      <Skeleton className="h-28 w-full rounded-xl" />
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-40" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-32 rounded-xl" />
-          ))}
-        </div>
-      </div>
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-44" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Skeleton key={index} className="h-32 rounded-xl" />
-          ))}
-        </div>
-      </div>
-      <Skeleton className="h-64 w-full rounded-xl" />
-    </div>
-  );
+function formatExecutiveDate(dateString: string): string {
+  const [year, month, day] = dateString.split('-').map(Number);
+
+  if (!year || !month || !day) {
+    return formatDisplayDate(dateString);
+  }
+
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, day));
+}
+
+function buildActionItems(
+  netProfit: number,
+  netSales: number,
+  wastageCost: number,
+): ReportActionItem[] {
+  const items: ReportActionItem[] = [];
+
+  if (netProfit < 0) {
+    items.push({
+      id: 'loss',
+      title: 'Today lost money',
+      description: 'Review expenses and wastage to understand what drove the loss.',
+      tone: 'destructive',
+    });
+  }
+
+  if (netSales > 0 && wastageCost / netSales > 0.1) {
+    items.push({
+      id: 'wastage',
+      title: 'Wastage is high today',
+      description: 'Wastage cost is a large share of today’s sales. Check what was written off.',
+      tone: 'warning',
+    });
+  }
+
+  return items;
 }
 
 export function DailyReportPage() {
@@ -63,8 +95,13 @@ export function DailyReportPage() {
 
   if (error || !data) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Today's Report" description="Daily business performance summary." />
+      <div className="page-stack-loose">
+        <ReportExecutiveVerdict
+          title="Today's Report"
+          subtitle="Daily business performance summary."
+          message="Unable to load report data."
+          tone="neutral"
+        />
         {isUnauthorized ? (
           <AccessDenied description="Today's Report is available to owners and managers only." />
         ) : isOrgError ? (
@@ -95,116 +132,177 @@ export function DailyReportPage() {
     );
   }
 
-  const dateLabel = formatDisplayDate(data.reportDate);
-  const transactionCount = data.transactions.length;
+  const { financial } = data;
+  const profitTone = getProfitTone(financial.netProfit);
+  const dateLabel = formatExecutiveDate(data.reportDate);
+  const actionItems = buildActionItems(financial.netProfit, financial.netSales, financial.wastageCost);
+
+  const verdictTone =
+    profitTone === 'profit' ? 'success' : profitTone === 'loss' ? 'destructive' : 'neutral';
+
+  const verdictMessage =
+    profitTone === 'profit' ? (
+      <>
+        You made <MoneyDisplay amount={financial.netProfit} /> profit today.
+      </>
+    ) : profitTone === 'loss' ? (
+      <>
+        Today&apos;s loss is <MoneyDisplay amount={financial.netProfit} />.
+      </>
+    ) : (
+      <>Today broke even — no profit and no loss.</>
+    );
+
+  const operationalMetrics: ReportOperationalMetric[] = [
+    {
+      label: 'Sales',
+      value: data.sales.count.toLocaleString('en-IN'),
+      description: 'Completed sales',
+      icon: Banknote,
+    },
+    {
+      label: 'Production',
+      value: formatUnits(data.production.totalUnits),
+      description: `${data.production.batchCount.toLocaleString('en-IN')} batches`,
+      icon: Factory,
+    },
+    {
+      label: 'Expenses',
+      value: data.expenses.count.toLocaleString('en-IN'),
+      description: 'Completed expenses',
+      icon: Wallet,
+    },
+    {
+      label: 'Wastage',
+      value: formatUnits(data.wastage.totalUnits),
+      description: 'Units written off',
+      icon: Trash2,
+    },
+    {
+      label: 'Returns',
+      value: formatUnits(data.returns.totalUnits),
+      description: 'Units returned',
+      icon: RotateCcw,
+    },
+  ];
 
   return (
-    <div className="min-w-0 space-y-10">
-      <PageHeader
+    <div className="page-stack-loose">
+      <ReportExecutiveVerdict
         title="Today's Report"
-        description="Daily business performance summary for your bakery."
+        subtitle={dateLabel}
+        message={verdictMessage}
+        tone={verdictTone}
       />
 
-      <section
-        aria-labelledby="daily-report-summary-heading"
-        className="rounded-xl border bg-muted/20 px-4 py-5 sm:px-6"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 id="daily-report-summary-heading" className="text-lg font-semibold tracking-tight">
-              Today&apos;s Summary
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Report for {dateLabel} — completed transactions only.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-background px-4 py-3 text-center sm:text-right">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Transactions today
-            </p>
-            <p className="text-2xl font-bold tabular-nums">{transactionCount.toLocaleString('en-IN')}</p>
-          </div>
-        </div>
+      <section aria-labelledby="daily-report-kpis-heading" className="section-stack">
+        <h2 id="daily-report-kpis-heading" className="sr-only">
+          Primary KPIs
+        </h2>
+        <ReportExecutiveKpiGrid>
+          <ReportExecutiveKpiCard
+            title="Today's Sales"
+            value={<MoneyDisplay amount={financial.netSales} />}
+            description="Money received today"
+            icon={Banknote}
+            tone="sales"
+            actionHref="/sales"
+            actionLabel="View sales"
+          />
+          <ReportExecutiveKpiCard
+            title="Today's Profit"
+            value={<MoneyDisplay amount={financial.netProfit} />}
+            description="After all costs"
+            icon={TrendingUp}
+            tone={profitTone === 'loss' ? 'warning' : 'profit'}
+            profitAmount={financial.netProfit}
+          />
+          <ReportExecutiveKpiCard
+            title="Production"
+            value={formatUnits(data.production.totalUnits)}
+            description="Completed today"
+            icon={Factory}
+            tone="production"
+            actionHref="/production"
+            actionLabel="View production"
+          />
+          <ReportExecutiveKpiCard
+            title="Expenses"
+            value={<MoneyDisplay amount={financial.expensesTotal} />}
+            description="Today's spending"
+            icon={Wallet}
+            tone="expense"
+            actionHref="/expenses"
+            actionLabel="View expenses"
+          />
+        </ReportExecutiveKpiGrid>
       </section>
 
-      <section aria-labelledby="daily-report-financial-heading" className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Banknote className="size-5 text-primary" aria-hidden="true" />
-          <h2 id="daily-report-financial-heading" className="text-lg font-semibold tracking-tight">
-            Financial Summary
-          </h2>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ReportMetricCard
-            title="Net Sales"
-            value={<MoneyDisplay amount={data.financial.netSales} />}
-            description={`${data.sales.count.toLocaleString('en-IN')} completed sale${data.sales.count === 1 ? '' : 's'}`}
-            icon={Banknote}
-          />
+      <ReportActionCenter items={actionItems} emptyDescription="Today's numbers look stable." />
+
+      <ReportProfitFlowSection
+        description="How today's sales became profit — step by step."
+        steps={[
+          { label: 'Sales', amount: financial.netSales, tone: 'sales' },
+          {
+            label: 'Cost of Goods Sold',
+            amount: financial.totalCogs,
+            description: 'Product cost at time of sale',
+            tone: 'expense',
+          },
+          { label: 'Gross Profit', amount: financial.grossProfit, tone: 'profit' },
+          {
+            label: 'Expenses',
+            amount: financial.expensesTotal,
+            description: `${data.expenses.count.toLocaleString('en-IN')} completed expenses`,
+            tone: 'expense',
+          },
+          {
+            label: 'Wastage',
+            amount: financial.wastageCost,
+            description: 'Inventory written off today',
+            tone: 'wastage',
+          },
+          { label: 'Net Profit', amount: financial.netProfit, tone: 'profit' },
+        ]}
+      />
+
+      <ReportFinancialDetailsSection description="Additional financial breakdown and counts.">
+        <div className={reportPrimaryMetricGridClass}>
           <ReportMetricCard
             title="Cost of Goods Sold"
-            value={<MoneyDisplay amount={data.financial.totalCogs} />}
+            value={<MoneyDisplay amount={financial.totalCogs} />}
             description="Product cost at time of sale"
             icon={Package}
+            tone="expense"
           />
           <ReportMetricCard
             title="Gross Profit"
-            value={<MoneyDisplay amount={data.financial.grossProfit} />}
+            value={<MoneyDisplay amount={financial.grossProfit} />}
             description="Net sales minus COGS"
-            icon={TrendingUp}
-          />
-          <ReportMetricCard
-            title="Expenses"
-            value={<MoneyDisplay amount={data.financial.expensesTotal} />}
-            description={`${data.expenses.count.toLocaleString('en-IN')} completed expense${data.expenses.count === 1 ? '' : 's'}`}
-            icon={Wallet}
+            icon={Banknote}
+            tone="profit"
+            profitAmount={financial.grossProfit}
           />
           <ReportMetricCard
             title="Wastage Cost"
-            value={<MoneyDisplay amount={data.financial.wastageCost} />}
+            value={<MoneyDisplay amount={financial.wastageCost} />}
             description="Inventory written off today"
             icon={Trash2}
+            tone="wastage"
           />
           <ReportMetricCard
-            title="Net Profit"
-            value={<MoneyDisplay amount={data.financial.netProfit} />}
-            description="Gross profit minus expenses and wastage"
-            icon={TrendingUp}
-            variant="emphasis"
+            title="Transactions Today"
+            value={data.transactions.length.toLocaleString('en-IN')}
+            description="Completed records"
+            icon={Banknote}
           />
         </div>
-      </section>
+      </ReportFinancialDetailsSection>
 
-      <section aria-labelledby="daily-report-operations-heading" className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Factory className="size-5 text-muted-foreground" aria-hidden="true" />
-          <h2 id="daily-report-operations-heading" className="text-lg font-semibold tracking-tight">
-            Operations Summary
-          </h2>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ReportMetricCard
-            title="Today's Production"
-            value={formatUnits(data.production.totalUnits)}
-            description={`${data.production.batchCount.toLocaleString('en-IN')} completed batch${data.production.batchCount === 1 ? '' : 'es'}`}
-            icon={Factory}
-          />
-          <ReportMetricCard
-            title="Today's Wastage"
-            value={formatUnits(data.wastage.totalUnits)}
-            description="Completed wastage written off today"
-            icon={Trash2}
-          />
-          <ReportMetricCard
-            title="Today's Returns"
-            value={formatUnits(data.returns.totalUnits)}
-            description="Completed returns received today"
-            icon={RotateCcw}
-          />
-        </div>
-      </section>
+      <ReportOperationalMetricsStrip metrics={operationalMetrics} />
 
-      <DailyReportTransactionsSection transactions={data.transactions} />
+      <ReportTransactionsSection transactions={data.transactions} />
     </div>
   );
 }

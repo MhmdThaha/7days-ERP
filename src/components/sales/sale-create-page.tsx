@@ -12,7 +12,6 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
 import { rememberCustomer } from '@/lib/utils/form-recent-values';
 import { mapSaleActionError, type SaleFieldError } from '@/lib/utils/sale-form-errors';
@@ -180,7 +179,7 @@ export function SaleCreatePage() {
 
       <PageHeader
         title="Record Sale"
-        description="Enter customer details and product lines. Save as draft to finish later, or save and complete to deduct product stock immediately."
+        description="Add customer and products, then complete to update stock."
       />
 
       {successState ? (
@@ -192,50 +191,45 @@ export function SaleCreatePage() {
         />
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sale Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SaleForm
-            key={formKey}
-            formId={FORM_ID}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-            footerActions={
-              <>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link href="/sales" />}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  form={FORM_ID}
-                  variant="outline"
-                  disabled={isSubmitting}
-                  onClick={handleSaveDraftClick}
-                >
-                  {isSubmitting && submitMode === 'draft' ? 'Saving...' : 'Save Draft'}
-                </Button>
-                <Button
-                  type="submit"
-                  form={FORM_ID}
-                  disabled={isSubmitting}
-                  onClick={handleSaveAndCompleteClick}
-                >
-                  {isSubmitting && submitMode === 'complete' ? 'Completing...' : 'Save & Complete'}
-                </Button>
-              </>
-            }
-          />
-        </CardContent>
-      </Card>
+      <SaleForm
+        key={formKey}
+        formId={FORM_ID}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        serverFieldError={serverFieldError}
+        onServerFieldErrorHandled={() => setServerFieldError(null)}
+        footerActions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="ghost"
+              render={<Link href="/sales" />}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={handleSaveDraftClick}
+            >
+              {isSubmitting && submitMode === 'draft' ? 'Saving...' : 'Save Draft'}
+            </Button>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="success"
+              size="xl"
+              disabled={isSubmitting}
+              onClick={handleSaveAndCompleteClick}
+            >
+              {isSubmitting && submitMode === 'complete' ? 'Completing...' : 'Save & Complete'}
+            </Button>
+          </>
+        }
+      />
 
       <ConfirmDialog
         open={confirmOpen}

@@ -14,7 +14,6 @@ import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
@@ -153,36 +152,29 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
         description={`Update draft sale ${sale.saleNumber}.`}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sale Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SaleForm
-            formId={FORM_ID}
-            sale={sale}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-            footerActions={
-              <>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link href={`/sales/${saleId}`} />}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </>
-            }
-          />
-        </CardContent>
-      </Card>
+      <SaleForm
+        formId={FORM_ID}
+        sale={sale}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        serverFieldError={serverFieldError}
+        onServerFieldErrorHandled={() => setServerFieldError(null)}
+        footerActions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="ghost"
+              render={<Link href={`/sales/${saleId}`} />}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form={FORM_ID} variant="success" size="xl" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

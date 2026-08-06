@@ -7,6 +7,7 @@ import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-for
 import { useQueryClient } from '@tanstack/react-query';
 
 import { getProductAction } from '@/actions/products';
+import { SaleDetailSummary } from '@/components/sales/sale-detail-summary';
 import { SaleLineItemRow } from '@/components/sales/sale-line-item-row';
 import { SaleTotalBar } from '@/components/sales/sale-total-bar';
 import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
@@ -17,6 +18,7 @@ import {
   SALE_LINE_COLUMNS,
 } from '@/lib/ui/line-items-grid-config';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -57,6 +59,16 @@ const defaultValues: SaleFormValues = {
   notes: '',
 };
 
+function formatSaleDateLabel(date: string): string {
+  const [year, month, day] = date.split('-');
+
+  if (!year || !month || !day) {
+    return date;
+  }
+
+  return `${day}/${month}/${year}`;
+}
+
 export function SaleForm({
   sale,
   onSubmit,
@@ -93,6 +105,12 @@ export function SaleForm({
   >(() => new Map());
 
   const lines = useWatch({ control, name: 'lines', defaultValue: defaultValues.lines }) ?? [];
+  const saleDate =
+    useWatch({ control, name: 'saleDate', defaultValue: defaultValues.saleDate }) ??
+    defaultValues.saleDate;
+  const customerName =
+    useWatch({ control, name: 'customerName', defaultValue: defaultValues.customerName }) ??
+    defaultValues.customerName;
 
   useEffect(() => {
     debugLog('SaleForm', 'MOUNTED', { navType: debugNavType(), isEditMode: Boolean(sale) });
@@ -260,90 +278,113 @@ export function SaleForm({
     <form
       id={formId}
       onSubmit={handleSubmit(onSubmit, handleInvalidSubmit)}
-      className="space-y-6"
+      className="space-y-8"
       noValidate
     >
-      <fieldset className="space-y-4" disabled={isFormDisabled}>
-        <legend className="sr-only">Sale header details</legend>
+      <Card>
+        <CardHeader>
+          <CardTitle>Sale details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <fieldset className="space-y-4" disabled={isFormDisabled}>
+            <legend className="sr-only">Sale header details</legend>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {sale ? (
-            <div className="space-y-2">
-              <Label htmlFor="saleNumber">Sale Number</Label>
-              <Input id="saleNumber" value={sale.saleNumber} readOnly disabled />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {sale ? (
+                <div className="space-y-2">
+                  <Label htmlFor="saleNumber">Sale number</Label>
+                  <Input
+                    id="saleNumber"
+                    value={sale.saleNumber}
+                    readOnly
+                    disabled
+                    className="text-base"
+                  />
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <Label htmlFor="saleDate">Sale date *</Label>
+                <Input
+                  id="saleDate"
+                  type="date"
+                  className="min-h-11 text-base"
+                  aria-invalid={Boolean(errors.saleDate)}
+                  aria-describedby={errors.saleDate ? 'saleDate-error' : undefined}
+                  {...register('saleDate')}
+                />
+                {errors.saleDate ? (
+                  <p id="saleDate-error" className="text-sm text-destructive" role="alert">
+                    {errors.saleDate.message}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="customerName">Customer name</Label>
+                <Input
+                  id="customerName"
+                  list="sale-customer-suggestions"
+                  className="text-base"
+                  placeholder="Optional — e.g. Corner Shop, Walk-in"
+                  aria-invalid={Boolean(errors.customerName)}
+                  aria-describedby={
+                    errors.customerName ? 'customerName-error' : 'customerName-hint'
+                  }
+                  {...register('customerName')}
+                />
+                <datalist id="sale-customer-suggestions">
+                  {recentCustomers.map((customer) => (
+                    <option key={customer} value={customer} />
+                  ))}
+                </datalist>
+                {errors.customerName ? (
+                  <p id="customerName-error" className="text-sm text-destructive" role="alert">
+                    {errors.customerName.message}
+                  </p>
+                ) : (
+                  <p id="customerName-hint" className="text-sm text-muted-foreground">
+                    Optional. Leave blank for walk-in or unnamed retail sales.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  rows={3}
+                  className="resize-none text-base"
+                  aria-invalid={Boolean(errors.notes)}
+                  aria-describedby={errors.notes ? 'notes-error' : undefined}
+                  {...register('notes')}
+                />
+                {errors.notes ? (
+                  <p id="notes-error" className="text-sm text-destructive" role="alert">
+                    {errors.notes.message}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          ) : null}
+          </fieldset>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-2">
-            <Label htmlFor="saleDate">Sale Date *</Label>
-            <Input
-              id="saleDate"
-              type="date"
-              aria-invalid={Boolean(errors.saleDate)}
-              aria-describedby={errors.saleDate ? 'saleDate-error' : undefined}
-              {...register('saleDate')}
-            />
-            {errors.saleDate ? (
-              <p id="saleDate-error" className="text-sm text-destructive" role="alert">
-                {errors.saleDate.message}
-              </p>
-            ) : null}
-          </div>
+      <SaleDetailSummary
+        saleDateLabel={formatSaleDateLabel(saleDate)}
+        customerLabel={(customerName ?? '').trim() || 'Walk-in'}
+        subtotal={subtotal}
+        productLineCount={fields.length}
+        isDraft
+      />
 
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="customerName">Customer Name</Label>
-            <Input
-              id="customerName"
-              list="sale-customer-suggestions"
-              placeholder="Optional — e.g. Corner Shop, Walk-in"
-              aria-invalid={Boolean(errors.customerName)}
-              aria-describedby={
-                errors.customerName ? 'customerName-error' : 'customerName-hint'
-              }
-              {...register('customerName')}
-            />
-            <datalist id="sale-customer-suggestions">
-              {recentCustomers.map((customer) => (
-                <option key={customer} value={customer} />
-              ))}
-            </datalist>
-            {errors.customerName ? (
-              <p id="customerName-error" className="text-sm text-destructive" role="alert">
-                {errors.customerName.message}
-              </p>
-            ) : (
-              <p id="customerName-hint" className="text-sm text-muted-foreground">
-                Optional. Leave blank for walk-in or unnamed retail sales.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              rows={3}
-              className="resize-none"
-              aria-invalid={Boolean(errors.notes)}
-              aria-describedby={errors.notes ? 'notes-error' : undefined}
-              {...register('notes')}
-            />
-            {errors.notes ? (
-              <p id="notes-error" className="text-sm text-destructive" role="alert">
-                {errors.notes.message}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      </fieldset>
-
-      <div className="space-y-3 border-t pt-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold">Product Lines</h2>
-            <p className="text-sm text-muted-foreground">
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>Product lines</CardTitle>
+            <CardDescription>
               Add each product once. Price defaults from the product master.
-            </p>
+            </CardDescription>
           </div>
           <Button
             type="button"
@@ -353,85 +394,86 @@ export function SaleForm({
             disabled={isFormDisabled}
           >
             <Plus />
-            Add Product
+            Add product
           </Button>
-        </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {errors.lines?.message ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.lines.message}
+            </p>
+          ) : null}
+          {errors.lines?.root?.message ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.lines.root.message}
+            </p>
+          ) : null}
 
-        {errors.lines?.message ? (
-          <p className="text-sm text-destructive" role="alert">
-            {errors.lines.message}
-          </p>
-        ) : null}
-        {errors.lines?.root?.message ? (
-          <p className="text-sm text-destructive" role="alert">
-            {errors.lines.root.message}
-          </p>
-        ) : null}
+          {fields.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+              No products yet. Add at least one product to record this sale.
+            </div>
+          ) : (
+            <LineItemsGrid
+              columns={SALE_LINE_COLUMNS}
+              rowClassName={SALE_GRID_ROW_CLASS}
+              minWidthClassName={SALE_GRID_MIN_WIDTH}
+              className="overflow-y-visible"
+            >
+              {fields.map((field, index) => {
+                const lineProductId = lines[index]?.productId ?? '';
+                const product =
+                  selectedProductsById.get(lineProductId) ?? productsById.get(lineProductId);
+                const isLoadingLineProduct =
+                  Boolean(lineProductId) && !product && isLoadingSelectedProducts;
 
-        {fields.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-            No products yet. Add at least one product to record this sale.
-          </div>
-        ) : (
-          <LineItemsGrid
-            columns={SALE_LINE_COLUMNS}
-            rowClassName={SALE_GRID_ROW_CLASS}
-            minWidthClassName={SALE_GRID_MIN_WIDTH}
-            className="overflow-y-visible"
-          >
-            {fields.map((field, index) => {
-              const lineProductId = lines[index]?.productId ?? '';
-              const product =
-                selectedProductsById.get(lineProductId) ?? productsById.get(lineProductId);
-              const isLoadingLineProduct =
-                Boolean(lineProductId) && !product && isLoadingSelectedProducts;
-
-              return (
-                <SaleLineItemRow
-                  key={field.id}
-                  fieldId={field.id}
-                  index={index}
-                  control={control}
-                  register={register}
-                  setValue={setValue}
-                  errors={errors}
-                  productId={lineProductId}
-                  unit={product?.unit ?? '—'}
-                  sellingPrice={lines[index]?.sellingPrice ?? 0}
-                  quantity={lines[index]?.quantity ?? 0}
-                  selectedProduct={product ?? null}
-                  isLoadingProduct={isLoadingLineProduct}
-                  selectedProductIds={selectedProductIdsByIndex[index] ?? []}
-                  disabled={isFormDisabled}
-                  onRemove={() => remove(index)}
-                  onProductChange={(productId) => handleProductChange(index, productId)}
-                  onProductResolved={handleProductResolved}
-                  onDuplicateProduct={handleDuplicateProduct}
-                  onSellingPriceChange={(sellingPrice) =>
-                    setValue(`lines.${index}.sellingPrice`, sellingPrice)
-                  }
-                  onAdvanceToNextLine={() => {
-                    const nextIndex = index + 1;
-                    const didAppend = nextIndex >= fields.length;
-
-                    if (didAppend) {
-                      appendEmptyLine();
-                      window.requestAnimationFrame(() => {
-                        window.requestAnimationFrame(() => {
-                          focusSaleLineField(nextIndex, 'productId');
-                        });
-                      });
-                      return;
+                return (
+                  <SaleLineItemRow
+                    key={field.id}
+                    fieldId={field.id}
+                    index={index}
+                    control={control}
+                    register={register}
+                    setValue={setValue}
+                    errors={errors}
+                    productId={lineProductId}
+                    unit={product?.unit ?? '—'}
+                    sellingPrice={lines[index]?.sellingPrice ?? 0}
+                    quantity={lines[index]?.quantity ?? 0}
+                    selectedProduct={product ?? null}
+                    isLoadingProduct={isLoadingLineProduct}
+                    selectedProductIds={selectedProductIdsByIndex[index] ?? []}
+                    disabled={isFormDisabled}
+                    onRemove={() => remove(index)}
+                    onProductChange={(productId) => handleProductChange(index, productId)}
+                    onProductResolved={handleProductResolved}
+                    onDuplicateProduct={handleDuplicateProduct}
+                    onSellingPriceChange={(sellingPrice) =>
+                      setValue(`lines.${index}.sellingPrice`, sellingPrice)
                     }
+                    onAdvanceToNextLine={() => {
+                      const nextIndex = index + 1;
+                      const didAppend = nextIndex >= fields.length;
 
-                    focusSaleLineField(nextIndex, 'productId');
-                  }}
-                />
-              );
-            })}
-          </LineItemsGrid>
-        )}
-      </div>
+                      if (didAppend) {
+                        appendEmptyLine();
+                        window.requestAnimationFrame(() => {
+                          window.requestAnimationFrame(() => {
+                            focusSaleLineField(nextIndex, 'productId');
+                          });
+                        });
+                        return;
+                      }
+
+                      focusSaleLineField(nextIndex, 'productId');
+                    }}
+                  />
+                );
+              })}
+            </LineItemsGrid>
+          )}
+        </CardContent>
+      </Card>
 
       <EntryFormStickyFooter
         summary={<SaleTotalBar lineCount={fields.length} subtotal={subtotal} variant="compact" />}

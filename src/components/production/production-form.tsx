@@ -9,12 +9,14 @@ import { useQuery } from '@tanstack/react-query';
 import { getProductAction } from '@/actions/products';
 import { useAuth } from '@/hooks/use-auth';
 import { getRecipeAction, listRecipesAction } from '@/actions/recipes';
+import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
 import { ProductionLineItemRow } from '@/components/production/production-line-item-row';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionTotalBar } from '@/components/production/production-total-bar';
 import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
 import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -61,6 +63,20 @@ const defaultValues: ProductionFormValues = {
   notes: '',
 };
 
+function formatProductionDateLabel(date: string): string {
+  const [year, month, day] = date.split('-');
+
+  if (!year || !month || !day) {
+    return date;
+  }
+
+  return `${day}/${month}/${year}`;
+}
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 3 });
+}
+
 function isEligibleProduct(
   product: ProductListItem,
   recipesById: Map<string, RecipeListItem>,
@@ -105,6 +121,9 @@ export function ProductionForm({
   });
 
   const lines = useWatch({ control, name: 'lines', defaultValue: defaultValues.lines }) ?? [];
+  const productionDate =
+    useWatch({ control, name: 'productionDate', defaultValue: defaultValues.productionDate }) ??
+    defaultValues.productionDate;
 
   const appendEmptyLine = useCallback(() => {
     append({
@@ -343,6 +362,7 @@ export function ProductionForm({
   const isFormDisabled = isSubmitting;
   const isPreviewLoading = isLoadingFullRecipes || isLoadingPreviewMaterials;
   const isProductLineBusy = isSubmitting || isLoadingRecipes;
+  const ingredientShortageCount = materialPreviewRows.filter((row) => row.shortage > 0).length;
 
   useAutoFirstLine(
     Boolean(production) || Boolean(initialLines?.length),
@@ -355,67 +375,85 @@ export function ProductionForm({
     <form
       id={formId}
       onSubmit={handleSubmit(onSubmit, handleInvalidSubmit)}
-      className="space-y-6"
+      className="space-y-8"
       noValidate
     >
-      <fieldset className="space-y-4" disabled={isFormDisabled}>
-        <legend className="sr-only">Production header details</legend>
+      <Card>
+        <CardHeader>
+          <CardTitle>Production details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <fieldset className="space-y-4" disabled={isFormDisabled}>
+            <legend className="sr-only">Production header details</legend>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {production ? (
-            <div className="space-y-2">
-              <Label htmlFor="productionNumber">Production Number</Label>
-              <Input
-                id="productionNumber"
-                value={production.productionNumber}
-                readOnly
-                disabled
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {production ? (
+                <div className="space-y-2">
+                  <Label htmlFor="productionNumber">Production number</Label>
+                  <Input
+                    id="productionNumber"
+                    value={production.productionNumber}
+                    readOnly
+                    disabled
+                    className="text-base"
+                  />
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <Label htmlFor="productionDate">Production date *</Label>
+                <Input
+                  id="productionDate"
+                  type="date"
+                  className="min-h-11 text-base"
+                  aria-invalid={Boolean(errors.productionDate)}
+                  aria-describedby={errors.productionDate ? 'productionDate-error' : undefined}
+                  {...register('productionDate')}
+                />
+                {errors.productionDate ? (
+                  <p id="productionDate-error" className="text-sm text-destructive" role="alert">
+                    {errors.productionDate.message}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  rows={3}
+                  className="resize-none text-base"
+                  aria-invalid={Boolean(errors.notes)}
+                  aria-describedby={errors.notes ? 'notes-error' : undefined}
+                  {...register('notes')}
+                />
+                {errors.notes ? (
+                  <p id="notes-error" className="text-sm text-destructive" role="alert">
+                    {errors.notes.message}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          ) : null}
+          </fieldset>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-2">
-            <Label htmlFor="productionDate">Production Date *</Label>
-            <Input
-              id="productionDate"
-              type="date"
-              aria-invalid={Boolean(errors.productionDate)}
-              aria-describedby={errors.productionDate ? 'productionDate-error' : undefined}
-              {...register('productionDate')}
-            />
-            {errors.productionDate ? (
-              <p id="productionDate-error" className="text-sm text-destructive" role="alert">
-                {errors.productionDate.message}
-              </p>
-            ) : null}
-          </div>
+      <ProductionDetailSummary
+        productionDateLabel={formatProductionDateLabel(productionDate)}
+        totalUnitsLabel={formatQuantity(totalUnits)}
+        productLineCount={fields.length}
+        isDraft
+        isPreviewLoading={isPreviewLoading}
+        shortageCount={ingredientShortageCount}
+      />
 
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              rows={3}
-              className="resize-none"
-              aria-invalid={Boolean(errors.notes)}
-              aria-describedby={errors.notes ? 'notes-error' : undefined}
-              {...register('notes')}
-            />
-            {errors.notes ? (
-              <p id="notes-error" className="text-sm text-destructive" role="alert">
-                {errors.notes.message}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      </fieldset>
-
-      <div className="space-y-3 border-t pt-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-0.5">
-            <h2 className="text-base font-semibold">Product Lines</h2>
-            <p className="text-sm text-muted-foreground">
-              Active products with an active recipe only. Each product may appear once per entry.
-            </p>
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>Product lines</CardTitle>
+            <CardDescription>
+              Pick each product once. Quantities update ingredients below.
+            </CardDescription>
           </div>
           <Button
             type="button"
@@ -425,79 +463,93 @@ export function ProductionForm({
             disabled={isProductLineBusy}
           >
             <Plus />
-            Add Product Line
+            Add product line
           </Button>
-        </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {errors.lines?.message ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.lines.message}
+            </p>
+          ) : null}
+          {errors.lines?.root?.message ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.lines.root.message}
+            </p>
+          ) : null}
 
-        {errors.lines?.message ? (
-          <p className="text-sm text-destructive" role="alert">
-            {errors.lines.message}
-          </p>
-        ) : null}
-        {errors.lines?.root?.message ? (
-          <p className="text-sm text-destructive" role="alert">
-            {errors.lines.root.message}
-          </p>
-        ) : null}
+          {fields.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+              No product lines yet. Add at least one product to record this production draft.
+            </div>
+          ) : (
+            <LineItemsGrid
+              columns={PRODUCTION_LINE_COLUMNS}
+              rowClassName={PRODUCTION_GRID_ROW_CLASS}
+              minWidthClassName={PRODUCTION_GRID_MIN_WIDTH}
+            >
+              {fields.map((field, index) => {
+                const product = productsById.get(lines[index]?.productId ?? '');
 
-        {fields.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-            No product lines yet. Add at least one product to record this production draft.
-          </div>
-        ) : (
-          <LineItemsGrid
-            columns={PRODUCTION_LINE_COLUMNS}
-            rowClassName={PRODUCTION_GRID_ROW_CLASS}
-            minWidthClassName={PRODUCTION_GRID_MIN_WIDTH}
-          >
-            {fields.map((field, index) => {
-              const product = productsById.get(lines[index]?.productId ?? '');
+                return (
+                  <ProductionLineItemRow
+                    key={field.id}
+                    index={index}
+                    control={control}
+                    register={register}
+                    setValue={setValue}
+                    errors={errors}
+                    productId={lines[index]?.productId ?? ''}
+                    unit={lines[index]?.unit ?? ''}
+                    selectedProduct={product ?? null}
+                    selectedProductIds={selectedProductIdsByIndex[index] ?? []}
+                    filterProduct={filterEligibleProduct}
+                    disabled={isFormDisabled}
+                    onRemove={() => remove(index)}
+                    onProductChange={(productId) => handleProductChange(index, productId)}
+                    onDuplicateProduct={handleDuplicateProduct}
+                    onAdvanceToNextLine={() => {
+                      const nextIndex = index + 1;
+                      const didAppend = nextIndex >= fields.length;
 
-              return (
-                <ProductionLineItemRow
-                  key={field.id}
-                  index={index}
-                  control={control}
-                  register={register}
-                  setValue={setValue}
-                  errors={errors}
-                  productId={lines[index]?.productId ?? ''}
-                  unit={lines[index]?.unit ?? ''}
-                  selectedProduct={product ?? null}
-                  selectedProductIds={selectedProductIdsByIndex[index] ?? []}
-                  filterProduct={filterEligibleProduct}
-                  disabled={isFormDisabled}
-                  onRemove={() => remove(index)}
-                  onProductChange={(productId) => handleProductChange(index, productId)}
-                  onDuplicateProduct={handleDuplicateProduct}
-                  onAdvanceToNextLine={() => {
-                    const nextIndex = index + 1;
-                    const didAppend = nextIndex >= fields.length;
-
-                    if (didAppend) {
-                      appendEmptyLine();
-                      window.requestAnimationFrame(() => {
+                      if (didAppend) {
+                        appendEmptyLine();
                         window.requestAnimationFrame(() => {
-                          focusProductionLineField(nextIndex, 'productId');
+                          window.requestAnimationFrame(() => {
+                            focusProductionLineField(nextIndex, 'productId');
+                          });
                         });
-                      });
-                      return;
-                    }
+                        return;
+                      }
 
-                    focusProductionLineField(nextIndex, 'productId');
-                  }}
-                />
-              );
-            })}
-          </LineItemsGrid>
-        )}
-      </div>
+                      focusProductionLineField(nextIndex, 'productId');
+                    }}
+                  />
+                );
+              })}
+            </LineItemsGrid>
+          )}
+        </CardContent>
+      </Card>
 
-      <ProductionMaterialPreview
-        rows={materialPreviewRows}
-        isLoading={isPreviewLoading}
-        hasValidLines={hasValidPreviewLines}
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>Ingredients needed</CardTitle>
+          <CardDescription>
+            How much of each ingredient this batch will use. Stock is updated only when you finish
+            production.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ProductionMaterialPreview
+            rows={materialPreviewRows}
+            isLoading={isPreviewLoading}
+            hasValidLines={hasValidPreviewLines}
+            comfortableTable
+            embedded
+          />
+        </CardContent>
+      </Card>
 
       <EntryFormStickyFooter
         summary={

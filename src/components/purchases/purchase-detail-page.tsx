@@ -5,12 +5,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, PackageCheck, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Info, PackageCheck, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { deletePurchaseAction, getPurchaseAction, receivePurchaseAction } from '@/actions/purchases';
 import { useAuth } from '@/hooks/use-auth';
 import { PaymentStatusBadge } from '@/components/purchases/payment-status-badge';
+import { PurchaseDetailSummary } from '@/components/purchases/purchase-detail-summary';
 import { PurchaseStatusBadge } from '@/components/purchases/purchase-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
@@ -32,12 +33,16 @@ import {
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { toastFormError } from '@/lib/utils/toast-form-error';
+import { formatMoney } from '@/lib/utils/money';
 import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type PurchaseDetailPageProps = {
   purchaseId: string;
 };
+
+const DETAIL_TABLE_HEAD_CLASS = 'normal-case text-sm font-medium tracking-normal';
+const DETAIL_TABLE_CELL_CLASS = 'py-4 text-base';
 
 function formatDateTime(date: Date): string {
   return date.toLocaleString('en-IN', {
@@ -183,6 +188,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
 
   const canModify = purchase.status === 'draft';
   const isBusy = isDeleting || isReceiving;
+  const headerSubtitle = `${formatDate(purchase.purchaseDate)} · ${purchase.supplierName} · ${formatMoney(purchase.totalAmount)}`;
 
   return (
     <TooltipProvider delay={300}>
@@ -196,16 +202,25 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
 
         <PageHeader
           title={
-            <TruncatedText
-              text={purchase.purchaseNumber}
-              maxWidthClassName="max-w-[min(100%,480px)]"
-              className="text-left font-heading text-2xl font-semibold tracking-tight"
-            />
+            <div className="flex flex-wrap items-center gap-3">
+              <TruncatedText
+                text={purchase.purchaseNumber}
+                maxWidthClassName="max-w-[min(100%,480px)]"
+                className="text-left font-heading text-2xl font-semibold tracking-tight"
+              />
+              <PurchaseStatusBadge status={purchase.status} />
+            </div>
           }
+          description={headerSubtitle}
         >
           {canModify ? (
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button onClick={() => setIsReceiveOpen(true)} disabled={isBusy}>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button
+                variant="success"
+                size="xl"
+                onClick={() => setIsReceiveOpen(true)}
+                disabled={isBusy}
+              >
                 <PackageCheck />
                 Receive Purchase
               </Button>
@@ -218,7 +233,12 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
                 <Pencil />
                 Edit
               </Button>
-              <Button variant="destructive" onClick={() => setIsDeleteOpen(true)} disabled={isBusy}>
+              <Button
+                variant="outline"
+                className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                onClick={() => setIsDeleteOpen(true)}
+                disabled={isBusy}
+              >
                 <Trash2 />
                 Delete
               </Button>
@@ -228,31 +248,43 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
 
         {canModify ? (
           <DraftActionBanner
-            title="Draft purchase — stock not updated yet"
-            description="When goods arrive, receive this purchase to add raw materials to inventory."
-            actionLabel="Receive Purchase"
-            onAction={() => setIsReceiveOpen(true)}
-            icon={PackageCheck}
-            disabled={isBusy}
+            title="Stock not received yet"
+            description="Review the line items below, then press Receive Purchase at the top to add materials to inventory."
+            icon={Info}
+            alertVariant="default"
+            showAction={false}
           />
         ) : null}
 
+        <PurchaseDetailSummary
+          purchaseDateLabel={formatDate(purchase.purchaseDate)}
+          supplierLabel={purchase.supplierName}
+          grandTotal={purchase.totalAmount}
+          lineItemCount={purchase.lineItemCount}
+          paymentStatus={purchase.paymentStatus}
+          isDraft={canModify}
+        />
+
         <Card>
           <CardHeader>
-            <CardTitle>Purchase Details</CardTitle>
+            <CardTitle>Purchase details</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-            <DetailField label="Purchase Date" value={formatDate(purchase.purchaseDate)} />
-            <DetailField label="Supplier Name" value={purchase.supplierName} />
-            <DetailField label="Invoice Number" value={purchase.invoiceNumber ?? '—'} />
+            <DetailField label="Purchase date" value={formatDate(purchase.purchaseDate)} />
+            <DetailField label="Supplier" value={purchase.supplierName} />
+            <DetailField label="Invoice number" value={purchase.invoiceNumber ?? '—'} />
             <DetailField
-              label="Payment Status"
+              label="Payment"
               value={<PaymentStatusBadge paymentStatus={purchase.paymentStatus} />}
             />
             <DetailField label="Status" value={<PurchaseStatusBadge status={purchase.status} />} />
             <DetailField
-              label="Grand Total"
-              value={<MoneyDisplay amount={purchase.totalAmount} className="font-semibold" />}
+              label="Grand total"
+              value={
+                <span className="text-base font-semibold tabular-nums">
+                  <MoneyDisplay amount={purchase.totalAmount} />
+                </span>
+              }
             />
             <DetailField
               label="Notes"
@@ -262,34 +294,45 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
               className="sm:col-span-2"
             />
             {purchase.receivedAt ? (
-              <DetailField label="Received At" value={formatDateTime(purchase.receivedAt)} />
+              <DetailField label="Received" value={formatDateTime(purchase.receivedAt)} />
             ) : null}
-            <DetailField label="Created At" value={formatDateTime(purchase.createdAt)} />
-            <DetailField label="Updated At" value={formatDateTime(purchase.updatedAt)} />
+            <DetailField label="Created" value={formatDateTime(purchase.createdAt)} />
+            <DetailField label="Updated" value={formatDateTime(purchase.updatedAt)} />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Line Items</CardTitle>
+            <CardTitle>Line items</CardTitle>
           </CardHeader>
           <CardContent>
-                          <Table>
+            <div className="overflow-x-auto rounded-lg border">
+              <Table className="text-base">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead className="min-w-[180px]">Raw Material</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Quantity</TableHead>
-                    <TableHead className="whitespace-nowrap">Unit</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Unit Cost</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Line Total</TableHead>
+                    <TableHead className={`w-12 ${DETAIL_TABLE_HEAD_CLASS}`}>#</TableHead>
+                    <TableHead className={`min-w-[180px] ${DETAIL_TABLE_HEAD_CLASS}`}>
+                      Raw material
+                    </TableHead>
+                    <TableHead className={`text-right whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                      Quantity
+                    </TableHead>
+                    <TableHead className={`whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                      Unit
+                    </TableHead>
+                    <TableHead className={`text-right whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                      Unit cost
+                    </TableHead>
+                    <TableHead className={`text-right whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                      Line total
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {purchase.lineItems.map((lineItem, index) => (
                     <TableRow key={lineItem.id}>
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell>
+                      <TableCell className={DETAIL_TABLE_CELL_CLASS}>{index + 1}</TableCell>
+                      <TableCell className={DETAIL_TABLE_CELL_CLASS}>
                         {lineItem.rawMaterialCode} - {lineItem.rawMaterialName}
                         {lineItem.packCount !== null &&
                         lineItem.packSize !== null &&
@@ -303,20 +346,21 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
                           </span>
                         ) : null}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className={`text-right tabular-nums ${DETAIL_TABLE_CELL_CLASS}`}>
                         {formatQuantity(lineItem.quantity)}
                       </TableCell>
-                      <TableCell>{lineItem.unit}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className={DETAIL_TABLE_CELL_CLASS}>{lineItem.unit}</TableCell>
+                      <TableCell className={`text-right ${DETAIL_TABLE_CELL_CLASS}`}>
                         <MoneyDisplay amount={lineItem.unitCost} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className={`text-right ${DETAIL_TABLE_CELL_CLASS}`}>
                         <MoneyDisplay amount={lineItem.lineTotal} />
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -350,6 +394,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
           title="Receive Purchase"
           description={`Receive "${purchase.purchaseNumber}"? Raw material stock will increase for ${purchase.lineItemCount} line${purchase.lineItemCount === 1 ? '' : 's'}. This cannot be undone.`}
           confirmLabel="Receive Purchase"
+          confirmVariant="success"
           loadingLabel="Receiving..."
           isLoading={isReceiving}
           onConfirm={handleReceive}
@@ -370,7 +415,7 @@ function DetailField({
 }) {
   return (
     <div className={className}>
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className="mt-1.5 text-sm">{value}</div>
     </div>
   );

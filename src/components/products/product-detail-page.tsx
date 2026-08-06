@@ -9,13 +9,12 @@ import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { deleteProductAction, getProductAction } from '@/actions/products';
+import { ProductDetailSummary } from '@/components/products/product-detail-summary';
 import { ProductFormDialog } from '@/components/products/product-form-dialog';
 import { useAuth } from '@/hooks/use-auth';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { MoneyDisplay } from '@/components/shared/money-display';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
-import { StatusBadge } from '@/components/shared/status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -88,6 +87,7 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
     return (
       <div className="space-y-4" aria-busy="true" aria-label="Loading product">
         <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-16 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -115,108 +115,107 @@ export function ProductDetailPage({ productId }: ProductDetailPageProps) {
   return (
     <TooltipProvider delay={300}>
       <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/products" />}>
-          <ArrowLeft />
-          Back to Products
-        </Button>
-      </div>
-
-      <PageHeader
-        title={
-          <TruncatedText
-            text={product.name}
-            maxWidthClassName="max-w-[min(100%,480px)]"
-            className="text-left font-heading text-2xl font-semibold tracking-tight"
-          />
-        }
-      >
-        <div className="flex shrink-0 gap-2">
-          <Button variant="outline" onClick={() => setIsEditOpen(true)}>
-            <Pencil />
-            Edit
-          </Button>
-          <Button variant="destructive" onClick={() => setIsDeleteOpen(true)} disabled={isDeleting}>
-            <Trash2 />
-            Delete
+        <div className="flex items-center gap-2">
+          <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/products" />}>
+            <ArrowLeft />
+            Back to Products
           </Button>
         </div>
-      </PageHeader>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Product Details</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <DetailField
-            label="Product Code"
-            value={
-              <TruncatedText
-                text={product.code}
-                maxWidthClassName="max-w-full"
-                className="font-mono"
-              />
-            }
-          />
-          <DetailField label="Category" value={product.category} />
-          <DetailField
-            label="Selling Price"
-            value={<MoneyDisplay amount={product.sellingPrice} />}
-          />
-          <DetailField
-            label="Current Stock"
-            value={
-              <span className="font-medium tabular-nums">
-                {product.currentStock.toLocaleString('en-IN', { maximumFractionDigits: 3 })}{' '}
-                {product.unit}
-              </span>
-            }
-          />
-          <DetailField label="Status" value={<StatusBadge isActive={product.isActive} />} />
-          <DetailField
-            label="Description"
-            value={
-              <span className="break-words whitespace-pre-wrap">
-                {product.description ?? '—'}
-              </span>
-            }
-            className="sm:col-span-2"
-          />
-          <DetailField label="Created At" value={formatDateTime(product.createdAt)} />
-          <DetailField label="Updated At" value={formatDateTime(product.updatedAt)} />
-        </CardContent>
-      </Card>
-
-      <ProductFormDialog
-        open={isEditOpen}
-        onOpenChange={(open) => {
-          setIsEditOpen(open);
-
-          if (!open) {
-            void refetch();
+        <PageHeader
+          title={
+            <TruncatedText
+              text={product.name}
+              maxWidthClassName="max-w-[min(100%,480px)]"
+              className="text-left font-heading text-2xl font-semibold tracking-tight"
+            />
           }
-        }}
-        isEditMode
-        product={product}
-      />
+        >
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" className="text-primary" onClick={() => setIsEditOpen(true)}>
+              <Pencil />
+              Edit
+            </Button>
+            <Button variant="ghost" onClick={() => setIsDeleteOpen(true)} disabled={isDeleting}>
+              <Trash2 />
+              Delete
+            </Button>
+          </div>
+        </PageHeader>
 
-      <ConfirmDialog
-        open={isDeleteOpen}
-        onOpenChange={(open) => {
-          if (isDeleting) {
-            return;
-          }
+        <ProductDetailSummary
+          sellingPrice={product.sellingPrice}
+          currentStock={product.currentStock}
+          unit={product.unit}
+          hasRecipe={Boolean(product.activeRecipeId)}
+          activeRecipeId={product.activeRecipeId}
+          isActive={product.isActive}
+        />
 
-          setIsDeleteOpen(open);
-        }}
-        title="Delete product?"
-        description={`This will soft-delete "${product.name}". It will no longer appear in active lists but historical data is preserved.`}
-        confirmLabel="Delete"
-        confirmVariant="destructive"
-        loadingLabel="Deleting..."
-        isLoading={isDeleting}
-        onConfirm={handleDelete}
-      />
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Details</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <DetailField
+              label="Product Code"
+              value={
+                <TruncatedText
+                  text={product.code}
+                  maxWidthClassName="max-w-full"
+                  className="font-mono"
+                />
+              }
+            />
+            <DetailField label="Category" value={product.category} />
+            <DetailField
+              label="Description"
+              value={
+                <span className="break-words whitespace-pre-wrap">
+                  {product.description ?? '—'}
+                </span>
+              }
+              className="sm:col-span-2"
+            />
+          </CardContent>
+        </Card>
+
+        <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+          <p>
+            Created {formatDateTime(product.createdAt)} · Updated {formatDateTime(product.updatedAt)}
+          </p>
+        </div>
+
+        <ProductFormDialog
+          open={isEditOpen}
+          onOpenChange={(open) => {
+            setIsEditOpen(open);
+
+            if (!open) {
+              void refetch();
+            }
+          }}
+          isEditMode
+          product={product}
+        />
+
+        <ConfirmDialog
+          open={isDeleteOpen}
+          onOpenChange={(open) => {
+            if (isDeleting) {
+              return;
+            }
+
+            setIsDeleteOpen(open);
+          }}
+          title="Delete product?"
+          description={`This will soft-delete "${product.name}". It will no longer appear in active lists but historical data is preserved.`}
+          confirmLabel="Delete"
+          confirmVariant="destructive"
+          loadingLabel="Deleting..."
+          isLoading={isDeleting}
+          onConfirm={handleDelete}
+        />
       </div>
     </TooltipProvider>
   );

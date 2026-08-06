@@ -6,6 +6,7 @@ import { CheckCircle2, Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'luci
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { SaleStatusBadge } from '@/components/sales/sale-status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,7 +103,7 @@ export function SaleTable({
               <TableHead className="hidden w-[70px] sm:table-cell">Lines</TableHead>
               <TableHead className="w-[120px]">Subtotal</TableHead>
               <TableHead className="w-[90px]">Status</TableHead>
-              <TableHead className="w-12 text-right">
+              <TableHead className="min-w-[140px] text-right">
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
@@ -149,45 +150,54 @@ export function SaleTable({
                       <SaleStatusBadge status={sale.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                          aria-label={`Actions for ${sale.saleNumber}`}
-                          disabled={disabled}
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem render={<Link href={`/sales/${sale.id}`} />}>
-                            <Eye />
-                            View Details
-                          </DropdownMenuItem>
-                          {isDraft ? (
-                            <>
-                              <DropdownMenuItem onClick={() => onComplete(sale)} disabled={disabled}>
-                                <CheckCircle2 />
-                                Complete Sale
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                render={<Link href={`/sales/${sale.id}/edit`} />}
-                                disabled={disabled}
-                              >
-                                <Pencil />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={() => onDelete(sale)}
-                                disabled={disabled}
-                              >
-                                <Trash2 />
-                                Delete
-                              </DropdownMenuItem>
-                            </>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex items-center justify-end gap-1">
+                        {isDraft ? (
+                          <Button
+                            variant="success"
+                            size="default"
+                            onClick={() => onComplete(sale)}
+                            disabled={disabled}
+                          >
+                            <CheckCircle2 />
+                            Complete
+                          </Button>
+                        ) : null}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            aria-label={`Actions for ${sale.saleNumber}`}
+                            disabled={disabled}
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem render={<Link href={`/sales/${sale.id}`} />}>
+                              <Eye />
+                              View Details
+                            </DropdownMenuItem>
+                            {isDraft ? (
+                              <>
+                                <DropdownMenuItem
+                                  render={<Link href={`/sales/${sale.id}/edit`} />}
+                                  disabled={disabled}
+                                >
+                                  <Pencil />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => onDelete(sale)}
+                                  disabled={disabled}
+                                >
+                                  <Trash2 />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

@@ -5,10 +5,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Info, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeSaleAction, deleteSaleAction, getSaleAction } from '@/actions/sales';
+import { SaleDetailSummary } from '@/components/sales/sale-detail-summary';
 import { SaleStatusBadge } from '@/components/sales/sale-status-badge';
 import { useAuth } from '@/hooks/use-auth';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -30,12 +31,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toastFormError } from '@/lib/utils/toast-form-error';
+import { formatMoney } from '@/lib/utils/money';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type SaleDetailPageProps = {
   saleId: string;
 };
+
+const DETAIL_TABLE_HEAD_CLASS = 'normal-case text-sm font-medium tracking-normal';
+const DETAIL_TABLE_CELL_CLASS = 'py-4 text-base';
 
 function formatDateTime(date: Date): string {
   return date.toLocaleString('en-IN', {
@@ -185,6 +190,8 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
 
   const canEdit = sale.status === 'draft';
   const isBusy = isDeleting || isCompleting;
+  const customerLabel = sale.customerNameSnapshot?.trim() || 'Walk-in';
+  const headerSubtitle = `${formatDate(sale.saleDate)} · ${customerLabel} · ${formatMoney(sale.subtotal)}`;
 
   return (
     <div className="space-y-6">
@@ -197,15 +204,28 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
 
       <PageHeader
         title={
-          <TruncatedText
-            text={sale.saleNumber}
-            maxWidthClassName="max-w-[min(100%,480px)]"
-            className="text-left font-heading text-2xl font-semibold tracking-tight"
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <TruncatedText
+              text={sale.saleNumber}
+              maxWidthClassName="max-w-[min(100%,480px)]"
+              className="text-left font-heading text-2xl font-semibold tracking-tight"
+            />
+            <SaleStatusBadge status={sale.status} />
+          </div>
         }
+        description={headerSubtitle}
       >
         {canEdit ? (
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              variant="success"
+              size="xl"
+              onClick={() => setIsCompleteOpen(true)}
+              disabled={isBusy}
+            >
+              <CheckCircle2 />
+              Complete Sale
+            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -215,7 +235,12 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
               <Pencil />
               Edit
             </Button>
-            <Button variant="destructive" onClick={() => setIsDeleteOpen(true)} disabled={isBusy}>
+            <Button
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+              onClick={() => setIsDeleteOpen(true)}
+              disabled={isBusy}
+            >
               <Trash2 />
               Delete
             </Button>
@@ -225,21 +250,28 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
 
       {canEdit ? (
         <DraftActionBanner
-          title="Draft sale — stock not updated yet"
-          description="Review the lines below, then complete this sale to deduct product stock."
-          actionLabel="Complete Sale"
-          onAction={() => setIsCompleteOpen(true)}
-          icon={CheckCircle2}
-          disabled={isBusy}
+          title="Stock not updated yet"
+          description="Review the lines below, then press Complete Sale at the top to deduct product stock."
+          icon={Info}
+          alertVariant="default"
+          showAction={false}
         />
       ) : null}
 
+      <SaleDetailSummary
+        saleDateLabel={formatDate(sale.saleDate)}
+        customerLabel={customerLabel}
+        subtotal={sale.subtotal}
+        productLineCount={sale.lineCount}
+        isDraft={canEdit}
+      />
+
       <Card>
         <CardHeader>
-          <CardTitle>Sale Details</CardTitle>
+          <CardTitle>Sale details</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-          <DetailField label="Sale Date" value={formatDate(sale.saleDate)} />
+          <DetailField label="Sale date" value={formatDate(sale.saleDate)} />
           <DetailField label="Status" value={<SaleStatusBadge status={sale.status} />} />
           <DetailField
             label="Customer"
@@ -250,15 +282,15 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
                   maxWidthClassName="max-w-full"
                 />
               ) : (
-                '—'
+                'Walk-in'
               )
             }
           />
-          <DetailField label="Product Lines" value={sale.lineCount} />
+          <DetailField label="Product lines" value={sale.lineCount} />
           <DetailField
             label="Subtotal"
             value={
-              <span className="font-medium tabular-nums">
+              <span className="text-base font-semibold tabular-nums">
                 <MoneyDisplay amount={sale.subtotal} />
               </span>
             }
@@ -270,51 +302,63 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
             }
             className="sm:col-span-2"
           />
-          <DetailField label="Created At" value={formatDateTime(sale.createdAt)} />
-          <DetailField label="Updated At" value={formatDateTime(sale.updatedAt)} />
+          <DetailField label="Created" value={formatDateTime(sale.createdAt)} />
+          <DetailField label="Updated" value={formatDateTime(sale.updatedAt)} />
           {sale.completedAt ? (
-            <DetailField label="Completed At" value={formatDateTime(sale.completedAt)} />
+            <DetailField label="Completed" value={formatDateTime(sale.completedAt)} />
           ) : null}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Product Lines</CardTitle>
+          <CardTitle>Product lines</CardTitle>
         </CardHeader>
         <CardContent>
-                      <Table>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table className="text-base">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead className="min-w-[180px]">Product</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Quantity</TableHead>
-                  <TableHead className="whitespace-nowrap">Unit</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Selling Price</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Line Total</TableHead>
+                  <TableHead className={`w-12 ${DETAIL_TABLE_HEAD_CLASS}`}>#</TableHead>
+                  <TableHead className={`min-w-[180px] ${DETAIL_TABLE_HEAD_CLASS}`}>
+                    Product
+                  </TableHead>
+                  <TableHead className={`text-right whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                    Quantity
+                  </TableHead>
+                  <TableHead className={`whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                    Unit
+                  </TableHead>
+                  <TableHead className={`text-right whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                    Price
+                  </TableHead>
+                  <TableHead className={`text-right whitespace-nowrap ${DETAIL_TABLE_HEAD_CLASS}`}>
+                    Line total
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sale.lines.map((line, index) => (
                   <TableRow key={line.id}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>
+                    <TableCell className={DETAIL_TABLE_CELL_CLASS}>{index + 1}</TableCell>
+                    <TableCell className={DETAIL_TABLE_CELL_CLASS}>
                       {line.productCodeSnapshot} - {line.productNameSnapshot}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className={`text-right tabular-nums ${DETAIL_TABLE_CELL_CLASS}`}>
                       {formatQuantity(line.quantity)}
                     </TableCell>
-                    <TableCell>{line.unit}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className={DETAIL_TABLE_CELL_CLASS}>{line.unit}</TableCell>
+                    <TableCell className={`text-right tabular-nums ${DETAIL_TABLE_CELL_CLASS}`}>
                       <MoneyDisplay amount={line.sellingPriceSnapshot} />
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className={`text-right tabular-nums ${DETAIL_TABLE_CELL_CLASS}`}>
                       <MoneyDisplay amount={line.lineTotal} />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -348,6 +392,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
         title="Complete Sale"
         description={`Complete "${sale.saleNumber}"? Product stock will be deducted for all ${sale.lineCount} line${sale.lineCount === 1 ? '' : 's'}. This cannot be undone.`}
         confirmLabel="Complete Sale"
+        confirmVariant="success"
         loadingLabel="Completing..."
         isLoading={isCompleting}
         onConfirm={handleComplete}
@@ -367,7 +412,7 @@ function DetailField({
 }) {
   return (
     <div className={className}>
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className="mt-1.5 text-sm">{value}</div>
     </div>
   );

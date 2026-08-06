@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { MoneyInput } from '@/components/shared/money-input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -138,138 +139,155 @@ export function ProductForm({
   return (
     <form
       id={formId}
-      className="space-y-5"
+      className="space-y-4"
       onSubmit={handleSubmit(onSubmit, handleInvalidSubmit)}
       noValidate
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="name">Product Name *</Label>
-          <Input
-            id="name"
-            placeholder="e.g. Sourdough Loaf"
-            aria-invalid={!!errors.name}
-            aria-describedby={errors.name ? 'name-error' : undefined}
-            disabled={isSubmitting}
-            {...register('name')}
-          />
-          {errors.name ? (
-            <p id="name-error" className="text-sm text-destructive" role="alert">
-              {errors.name.message}
-            </p>
-          ) : null}
-        </div>
+      <Card className="gap-0 border-border/60 shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Product Info</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="name">Product Name *</Label>
+            <Input
+              id="name"
+              placeholder="e.g. Sourdough Loaf"
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? 'name-error' : undefined}
+              disabled={isSubmitting}
+              {...register('name')}
+            />
+            {errors.name ? (
+              <p id="name-error" className="text-sm text-destructive" role="alert">
+                {errors.name.message}
+              </p>
+            ) : null}
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="code">Product Code</Label>
-          <Input
-            id="code"
-            placeholder="Auto-generated if blank"
-            aria-invalid={!!errors.code}
-            aria-describedby={errors.code ? 'code-error' : undefined}
-            disabled={isSubmitting}
-            {...register('code')}
-          />
-          {errors.code ? (
-            <p id="code-error" className="text-sm text-destructive" role="alert">
-              {errors.code.message}
-            </p>
-          ) : null}
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="code">Product Code</Label>
+            <Input
+              id="code"
+              placeholder="Auto-generated if blank"
+              aria-invalid={!!errors.code}
+              aria-describedby={errors.code ? 'code-error' : undefined}
+              disabled={isSubmitting}
+              {...register('code')}
+            />
+            {errors.code ? (
+              <p id="code-error" className="text-sm text-destructive" role="alert">
+                {errors.code.message}
+              </p>
+            ) : null}
+          </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="category">Category *</Label>
-          <Select
-            value={category}
-            onValueChange={(value) =>
-              setValue('category', value ?? DEFAULT_PRODUCT_CATEGORIES[0], {
-                shouldValidate: true,
-              })
-            }
-            disabled={isSubmitting}
-          >
-            <SelectTrigger
-              id="category"
-              className="w-full"
-              aria-invalid={!!errors.category}
-              aria-describedby={errors.category ? 'category-error' : undefined}
+          <div className="space-y-2">
+            <Label htmlFor="category">Category *</Label>
+            <Select
+              value={category}
+              onValueChange={(value) =>
+                setValue('category', value ?? DEFAULT_PRODUCT_CATEGORIES[0], {
+                  shouldValidate: true,
+                })
+              }
+              disabled={isSubmitting}
             >
-              <SelectValue placeholder="Select category" />
-            </SelectTrigger>
-            <SelectContent>
-              {DEFAULT_PRODUCT_CATEGORIES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {errors.category ? (
-            <p id="category-error" className="text-sm text-destructive" role="alert">
-              {errors.category.message}
-            </p>
-          ) : null}
-        </div>
+              <SelectTrigger
+                id="category"
+                className="w-full"
+                aria-invalid={!!errors.category}
+                aria-describedby={errors.category ? 'category-error' : undefined}
+              >
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {DEFAULT_PRODUCT_CATEGORIES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.category ? (
+              <p id="category-error" className="text-sm text-destructive" role="alert">
+                {errors.category.message}
+              </p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="space-y-2">
-          <Label htmlFor="sellingPrice">Selling Price *</Label>
-          <MoneyInput
-            id="sellingPrice"
-            value={sellingPrice}
-            onChange={(nextValue) =>
-              setValue('sellingPrice', nextValue, { shouldValidate: false, shouldDirty: true })
-            }
-            onBlur={() => {
-              void trigger('sellingPrice');
-            }}
-            disabled={isSubmitting}
-            aria-invalid={!!errors.sellingPrice}
-            aria-describedby={errors.sellingPrice ? 'sellingPrice-error' : undefined}
-          />
-          {errors.sellingPrice ? (
-            <p id="sellingPrice-error" className="text-sm text-destructive" role="alert">
-              {errors.sellingPrice.message}
-            </p>
-          ) : null}
-        </div>
-      </div>
+      <Card className="gap-0 border-border/60 shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Pricing</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="sellingPrice">Selling Price *</Label>
+            <MoneyInput
+              id="sellingPrice"
+              value={sellingPrice}
+              onChange={(nextValue) =>
+                setValue('sellingPrice', nextValue, { shouldValidate: false, shouldDirty: true })
+              }
+              onBlur={() => {
+                void trigger('sellingPrice');
+              }}
+              disabled={isSubmitting}
+              aria-invalid={!!errors.sellingPrice}
+              aria-describedby={errors.sellingPrice ? 'sellingPrice-error' : undefined}
+            />
+            {errors.sellingPrice ? (
+              <p id="sellingPrice-error" className="text-sm text-destructive" role="alert">
+                {errors.sellingPrice.message}
+              </p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea
-          id="description"
-          placeholder="Optional product description"
-          rows={3}
-          aria-invalid={!!errors.description}
-          aria-describedby={errors.description ? 'description-error' : undefined}
-          disabled={isSubmitting}
-          className="resize-none"
-          {...register('description')}
-        />
-        {errors.description ? (
-          <p id="description-error" className="text-sm text-destructive" role="alert">
-            {errors.description.message}
-          </p>
-        ) : null}
-      </div>
+      <Card className="gap-0 border-border/60 shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Details</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              placeholder="Optional product description"
+              rows={3}
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? 'description-error' : undefined}
+              disabled={isSubmitting}
+              className="resize-none"
+              {...register('description')}
+            />
+            {errors.description ? (
+              <p id="description-error" className="text-sm text-destructive" role="alert">
+                {errors.description.message}
+              </p>
+            ) : null}
+          </div>
 
-      <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
-        <div className="space-y-0.5">
-          <Label htmlFor="isActive">Status</Label>
-          <p className="text-sm text-muted-foreground">
-            {isActive ? 'Product is active and visible in lists' : 'Product is inactive'}
-          </p>
-        </div>
-        <Switch
-          id="isActive"
-          checked={isActive}
-          onCheckedChange={(checked) => setValue('isActive', checked, { shouldValidate: true })}
-          disabled={isSubmitting}
-          aria-label={isActive ? 'Product is active' : 'Product is inactive'}
-        />
-      </div>
+          <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+            <div className="space-y-0.5">
+              <Label htmlFor="isActive">Status</Label>
+              <p className="text-sm text-muted-foreground">
+                {isActive ? 'Product is active and visible in lists' : 'Product is inactive'}
+              </p>
+            </div>
+            <Switch
+              id="isActive"
+              checked={isActive}
+              onCheckedChange={(checked) => setValue('isActive', checked, { shouldValidate: true })}
+              disabled={isSubmitting}
+              aria-label={isActive ? 'Product is active' : 'Product is inactive'}
+            />
+          </div>
+        </CardContent>
+      </Card>
     </form>
   );
 }

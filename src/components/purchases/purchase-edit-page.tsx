@@ -14,7 +14,6 @@ import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
@@ -156,36 +155,29 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
         description={`Update draft purchase ${purchase.purchaseNumber}.`}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Purchase Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PurchaseForm
-            formId={FORM_ID}
-            purchase={purchase}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-            footerActions={
-              <>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link href={`/purchases/${purchaseId}`} />}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </>
-            }
-          />
-        </CardContent>
-      </Card>
+      <PurchaseForm
+        formId={FORM_ID}
+        purchase={purchase}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        serverFieldError={serverFieldError}
+        onServerFieldErrorHandled={() => setServerFieldError(null)}
+        footerActions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="ghost"
+              render={<Link href={`/purchases/${purchaseId}`} />}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form={FORM_ID} variant="success" size="xl" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

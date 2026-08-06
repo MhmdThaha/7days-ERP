@@ -12,7 +12,6 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
 import {
   mapPurchaseActionError,
@@ -177,7 +176,7 @@ export function PurchaseCreatePage() {
 
       <PageHeader
         title="Record Purchase"
-        description="Enter supplier details and line items. Save as draft to finish later, or save and receive to update inventory immediately."
+        description="Add supplier and materials, then receive to update stock."
       />
 
       {successState ? (
@@ -189,50 +188,45 @@ export function PurchaseCreatePage() {
         />
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Purchase Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PurchaseForm
-            key={formKey}
-            formId={FORM_ID}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-            footerActions={
-              <>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link href="/purchases" />}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  form={FORM_ID}
-                  variant="outline"
-                  disabled={isSubmitting}
-                  onClick={handleSaveDraftClick}
-                >
-                  {isSubmitting && submitMode === 'draft' ? 'Saving...' : 'Save Draft'}
-                </Button>
-                <Button
-                  type="submit"
-                  form={FORM_ID}
-                  disabled={isSubmitting}
-                  onClick={handleSaveAndReceiveClick}
-                >
-                  {isSubmitting && submitMode === 'complete' ? 'Receiving...' : 'Save & Receive'}
-                </Button>
-              </>
-            }
-          />
-        </CardContent>
-      </Card>
+      <PurchaseForm
+        key={formKey}
+        formId={FORM_ID}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        serverFieldError={serverFieldError}
+        onServerFieldErrorHandled={() => setServerFieldError(null)}
+        footerActions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="ghost"
+              render={<Link href="/purchases" />}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={handleSaveDraftClick}
+            >
+              {isSubmitting && submitMode === 'draft' ? 'Saving...' : 'Save Draft'}
+            </Button>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="success"
+              size="xl"
+              disabled={isSubmitting}
+              onClick={handleSaveAndReceiveClick}
+            >
+              {isSubmitting && submitMode === 'complete' ? 'Receiving...' : 'Save & Receive'}
+            </Button>
+          </>
+        }
+      />
 
       <ConfirmDialog
         open={confirmOpen}

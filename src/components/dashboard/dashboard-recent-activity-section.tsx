@@ -84,38 +84,17 @@ export function DashboardRecentActivitySection({ activity }: DashboardRecentActi
       items: activity.sales,
       emptyMessage: getEmptyMessage('Sales'),
     },
-    {
-      title: 'Latest Wastage',
-      shortTitle: 'Wastage',
-      items: activity.wastage,
-      emptyMessage: getEmptyMessage('Wastage'),
-    },
-    {
-      title: 'Latest Returns',
-      shortTitle: 'Returns',
-      items: activity.returns,
-      emptyMessage: getEmptyMessage('Returns'),
-    },
-    {
-      title: 'Latest Expenses',
-      shortTitle: 'Expenses',
-      items: activity.expenses,
-      emptyMessage: getEmptyMessage('Expenses'),
-    },
   ];
 
   return (
-    <section
-      aria-labelledby="dashboard-activity-heading"
-      className="section-stack xl:sticky xl:top-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1"
-    >
+    <section aria-labelledby="dashboard-activity-heading" className="section-stack">
       <SectionHeader
         title="Recent activity"
-        description="Latest records across your bakery."
+        description="Latest production and sales."
         headingId="dashboard-activity-heading"
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+      <div className="grid gap-3 sm:grid-cols-2">
         {groups.map((group) => (
           <Card key={group.title} size="sm" className="bg-card/80">
             <CardHeader className="pb-1">

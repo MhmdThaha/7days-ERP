@@ -1,0 +1,67 @@
+---
+description: Permanent BakeryOS decision framework — classify problems before proposing UI/UX fixes
+alwaysApply: true
+---
+
+# BakeryOS Decision Framework (Permanent)
+
+Before proposing ANY UI or UX improvement, first classify the problem.
+
+## Step 1: Identify Problem Category
+
+| Category | Examples |
+|----------|----------|
+| **Visual** | hierarchy, spacing, colors, typography, buttons, icons |
+| **Workflow** | too many clicks, confusing sequence, unnecessary navigation, duplicate work |
+| **Information Architecture** | wrong info shown first, missing summary, important info buried, technical info too early |
+| **Business** | process mismatch, bakery workflow mismatch, missing business capability |
+
+## Step 2: Match Solution to Category
+
+- Do **not** solve a **workflow** problem with colors
+- Do **not** solve an **information architecture** problem with typography
+- Do **not** solve a **business** problem with UI
+
+Always identify the real problem category first, then propose fixes in that category (or escalate business problems separately).
+
+## 80/20 Rule
+
+Recommend the **smallest change** that produces the **biggest usability improvement**.
+
+Avoid polishing low-impact details while high-impact problems remain.
+
+**Priority order:** HIGH IMPACT + LOW RISK → before → LOW IMPACT + LOW RISK
+
+## Measure Before Building
+
+Every proposal must estimate:
+
+- Expected usability improvement
+- Implementation complexity
+- Risk
+- Business value
+
+If complexity is high and usability improvement is small → **recommend not implementing**.
+
+## ERP First (Learn, Don't Copy)
+
+Compare workflow mentally against mature ERPs: SAP Business One, Oracle NetSuite, Odoo, Zoho Inventory, Microsoft Dynamics 365 Business Central.
+
+Do **not** copy their appearance. Learn from:
+
+- task flow
+- information hierarchy
+- decision flow
+- reduction of user mistakes
+
+## Default Stance
+
+Do not propose UI changes because they are modern.
+
+Every change must have a **measurable reason**.
+
+Every screen should save time, reduce mistakes, or reduce thinking.
+
+Otherwise → **recommend keeping the current design**.
+
+Works together with `bakeryos-ux-standards.mdc` — apply both before any UI/UX proposal.

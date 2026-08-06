@@ -13,6 +13,7 @@ import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-gr
 import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
 import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -215,7 +216,11 @@ export function RecipeForm({
     <form id={formId} onSubmit={handleSubmit(onSubmit, handleInvalidSubmit)} className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0 space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <Card className="gap-0 border-border/60 shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Product &amp; Recipe</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="productId">Product</Label>
           {isEditMode ? (
@@ -269,7 +274,14 @@ export function RecipeForm({
             <p className="text-sm text-destructive">{errors.recipeName.message}</p>
           ) : null}
         </div>
+            </CardContent>
+          </Card>
 
+          <Card className="gap-0 border-border/60 shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Batch Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="batchOutputQuantity">Makes</Label>
           <Input
@@ -325,8 +337,15 @@ export function RecipeForm({
             Active recipe
           </Label>
         </div>
+            </CardContent>
+          </Card>
 
-        <div className="space-y-2 sm:col-span-2">
+          <Card className="gap-0 border-border/60 shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+        <div className="space-y-2">
           <Label htmlFor="notes">Notes</Label>
           <Textarea
             id="notes"
@@ -339,27 +358,26 @@ export function RecipeForm({
             <p className="text-sm text-destructive">{errors.notes.message}</p>
           ) : null}
         </div>
-      </div>
+            </CardContent>
+          </Card>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="space-y-0.5">
-                <h2 className="text-base font-semibold">Ingredients</h2>
-                <p className="text-sm text-muted-foreground">
-                  Add raw materials and quantities for this recipe.
-                </p>
+          <Card className="gap-0 border-border/60 shadow-none">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-medium">Ingredients</CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddIngredient}
+                  disabled={isSubmitting}
+                >
+                  <Plus />
+                  Add Ingredient
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleAddIngredient}
-                disabled={isSubmitting}
-              >
-                <Plus />
-                Add Ingredient
-              </Button>
-            </div>
-
+            </CardHeader>
+            <CardContent className="space-y-3">
             {errors.ingredients?.message ? (
               <p className="text-sm text-destructive">{errors.ingredients.message}</p>
             ) : null}
@@ -416,7 +434,8 @@ export function RecipeForm({
                 ))}
               </LineItemsGrid>
             )}
-          </div>
+            </CardContent>
+          </Card>
 
           <RecipeOneRequires
             recipeName={recipeName ?? ''}
@@ -435,6 +454,7 @@ export function RecipeForm({
             <RecipeSummary
               ingredientCount={ingredientCount}
               totalWeight={totalWeight}
+              batchOutputQuantity={batchOutputQuantity}
               variant="sticky"
             />
           </div>
@@ -447,6 +467,7 @@ export function RecipeForm({
           <RecipeSummary
             ingredientCount={ingredientCount}
             totalWeight={totalWeight}
+            batchOutputQuantity={batchOutputQuantity}
             variant="compact"
           />
         }

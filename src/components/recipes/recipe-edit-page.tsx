@@ -180,7 +180,7 @@ export function RecipeEditPage({ recipeId }: RecipeEditPageProps) {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+                <Button type="submit" form={FORM_ID} variant="success" disabled={isSubmitting}>
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </Button>
               </>

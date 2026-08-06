@@ -52,7 +52,14 @@ export function RecipeChangedDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-col gap-2 px-4 pb-4 sm:flex-col sm:px-6 sm:pb-6">
-          <Button type="button" onClick={onUpdateDraft} disabled={isUpdating} className="w-full">
+          <Button
+            type="button"
+            variant="success"
+            size="lg"
+            onClick={onUpdateDraft}
+            disabled={isUpdating}
+            className="w-full"
+          >
             {isUpdating ? (
               <>
                 <Loader2 className="animate-spin" aria-hidden="true" />

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Info, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/actions/production';
 import { useAuth } from '@/hooks/use-auth';
 import { getRecipeAction } from '@/actions/recipes';
+import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
 import { ProductionStatusBadge } from '@/components/production/production-status-badge';
 import { RecipeChangedDialog } from '@/components/production/recipe-changed-dialog';
@@ -301,6 +302,8 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
   const isPreviewLoading = isCompleted
     ? isLoadingConsumedMaterials
     : isLoadingRecipes || isLoadingRawMaterials;
+  const ingredientShortageCount = materialPreviewRows.filter((row) => row.shortage > 0).length;
+  const headerSubtitle = `${formatDate(production.productionDate)} · ${formatQuantity(production.totalUnits)} units · ${production.lineCount} product${production.lineCount === 1 ? '' : 's'}`;
 
   return (
     <div className="space-y-6">
@@ -313,15 +316,28 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
       <PageHeader
         title={
-          <TruncatedText
-            text={production.productionNumber}
-            maxWidthClassName="max-w-[min(100%,480px)]"
-            className="text-left font-heading text-2xl font-semibold tracking-tight"
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <TruncatedText
+              text={production.productionNumber}
+              maxWidthClassName="max-w-[min(100%,480px)]"
+              className="text-left font-heading text-2xl font-semibold tracking-tight"
+            />
+            <ProductionStatusBadge status={production.status} />
+          </div>
         }
+        description={headerSubtitle}
       >
         {canEdit ? (
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              variant="success"
+              size="xl"
+              onClick={() => setIsCompleteOpen(true)}
+              disabled={isBusy}
+            >
+              <CheckCircle2 />
+              Finish Production
+            </Button>
             <Button
               nativeButton={false}
               variant="outline"
@@ -331,7 +347,12 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
               <Pencil />
               Edit
             </Button>
-            <Button variant="destructive" onClick={() => setIsDeleteOpen(true)} disabled={isBusy}>
+            <Button
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+              onClick={() => setIsDeleteOpen(true)}
+              disabled={isBusy}
+            >
               <Trash2 />
               Delete
             </Button>
@@ -341,27 +362,34 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
       {canEdit ? (
         <DraftActionBanner
-          title="Draft production — stock not updated yet"
-          description="Review material usage below, then complete to deduct ingredients and add finished goods."
-          actionLabel="Complete Production"
-          onAction={() => setIsCompleteOpen(true)}
-          icon={CheckCircle2}
-          disabled={isBusy}
+          title="Stock not updated yet"
+          description="Review the ingredients below, then press Finish Production at the top to update stock."
+          icon={Info}
+          alertVariant="default"
+          showAction={false}
         />
       ) : null}
+
+      <ProductionDetailSummary
+        productionDateLabel={formatDate(production.productionDate)}
+        totalUnitsLabel={formatQuantity(production.totalUnits)}
+        productLineCount={production.lineCount}
+        isDraft={isDraft}
+        isPreviewLoading={isDraft ? isPreviewLoading : false}
+        shortageCount={ingredientShortageCount}
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>Production Details</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-          <DetailField label="Production Date" value={formatDate(production.productionDate)} />
-          <DetailField label="Status" value={<ProductionStatusBadge status={production.status} />} />
+          <DetailField label="Production date" value={formatDate(production.productionDate)} />
           <DetailField
-            label="Total Units"
+            label="Total units"
             value={<span className="font-medium tabular-nums">{formatQuantity(production.totalUnits)}</span>}
           />
-          <DetailField label="Product Lines" value={production.lineCount} />
+          <DetailField label="Product lines" value={production.lineCount} />
           <DetailField
             label="Notes"
             value={
@@ -369,10 +397,10 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
             }
             className="sm:col-span-2"
           />
-          <DetailField label="Created At" value={formatDateTime(production.createdAt)} />
-          <DetailField label="Updated At" value={formatDateTime(production.updatedAt)} />
+          <DetailField label="Created" value={formatDateTime(production.createdAt)} />
+          <DetailField label="Updated" value={formatDateTime(production.updatedAt)} />
           {production.completedAt ? (
-            <DetailField label="Completed At" value={formatDateTime(production.completedAt)} />
+            <DetailField label="Finished" value={formatDateTime(production.completedAt)} />
           ) : null}
         </CardContent>
       </Card>
@@ -382,34 +410,42 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
           <CardTitle>Product Lines</CardTitle>
         </CardHeader>
         <CardContent>
-                      <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead className="min-w-[180px]">Product</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Quantity</TableHead>
-                  <TableHead className="whitespace-nowrap">Unit</TableHead>
-                  <TableHead className="hidden min-w-[160px] md:table-cell">Recipe</TableHead>
+          <Table className="text-base">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12 normal-case text-sm font-medium tracking-normal">#</TableHead>
+                <TableHead className="min-w-[180px] normal-case text-sm font-medium tracking-normal">
+                  Product
+                </TableHead>
+                <TableHead className="text-right whitespace-nowrap normal-case text-sm font-medium tracking-normal">
+                  Quantity
+                </TableHead>
+                <TableHead className="whitespace-nowrap normal-case text-sm font-medium tracking-normal">
+                  Unit
+                </TableHead>
+                <TableHead className="hidden min-w-[160px] normal-case text-sm font-medium tracking-normal md:table-cell">
+                  Recipe
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {production.lines.map((line, index) => (
+                <TableRow key={line.id}>
+                  <TableCell className="py-4">{index + 1}</TableCell>
+                  <TableCell className="py-4">
+                    {line.productCode} - {line.productName}
+                  </TableCell>
+                  <TableCell className="py-4 text-right tabular-nums">
+                    {formatQuantity(line.quantity)}
+                  </TableCell>
+                  <TableCell className="py-4">{line.unit}</TableCell>
+                  <TableCell className="hidden py-4 md:table-cell">
+                    {line.recipeCode} v{line.recipeVersion}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {production.lines.map((line, index) => (
-                  <TableRow key={line.id}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>
-                      {line.productCode} - {line.productName}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatQuantity(line.quantity)}
-                    </TableCell>
-                    <TableCell>{line.unit}</TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {line.recipeCode} v{line.recipeVersion}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
@@ -418,6 +454,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
         isLoading={isPreviewLoading}
         hasValidLines={production.lines.length > 0}
         mode={isCompleted ? 'completed' : 'draft'}
+        comfortableTable
       />
 
       {isDraft ? (
@@ -440,8 +477,8 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
           setIsDeleteOpen(open);
         }}
-        title="Delete production draft?"
-        description={`This will soft-delete "${production.productionNumber}". It will no longer appear in active lists but historical data is preserved.`}
+        title="Delete this draft?"
+        description={`Remove "${production.productionNumber}" from your list. Finished productions stay safe.`}
         confirmLabel="Delete"
         confirmVariant="destructive"
         loadingLabel="Deleting..."
@@ -458,10 +495,11 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
 
           setIsCompleteOpen(open);
         }}
-        title="Complete Production"
-        description={`Complete "${production.productionNumber}"? Raw materials will be deducted and ${formatQuantity(production.totalUnits)} units added to product stock. This cannot be undone.`}
-        confirmLabel="Complete Production"
-        loadingLabel="Completing..."
+        title="Finish Production"
+        description={`Finish "${production.productionNumber}"? Ingredients will be taken from stock and ${formatQuantity(production.totalUnits)} finished products will be added. This cannot be undone.`}
+        confirmLabel="Finish Production"
+        confirmVariant="success"
+        loadingLabel="Finishing..."
         isLoading={isCompleting}
         onConfirm={handleComplete}
       />
@@ -480,8 +518,8 @@ function DetailField({
 }) {
   return (
     <div className={className}>
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-      <div className="mt-1.5 text-sm">{value}</div>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <div className="mt-1.5 text-base">{value}</div>
     </div>
   );
 }

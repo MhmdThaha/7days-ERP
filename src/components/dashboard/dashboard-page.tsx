@@ -1,15 +1,15 @@
 'use client';
 
-import { DashboardAttentionSection } from '@/components/dashboard/dashboard-attention-section';
-import { DashboardHeroSection } from '@/components/dashboard/dashboard-hero-section';
+import { DashboardActionCenter } from '@/components/dashboard/dashboard-action-center';
+import { DashboardExecutiveHeader } from '@/components/dashboard/dashboard-executive-header';
+import { DashboardExecutiveInsightCard } from '@/components/dashboard/dashboard-executive-insight-card';
+import { DashboardKpiSection } from '@/components/dashboard/dashboard-kpi-section';
 import { DashboardQuickActions } from '@/components/dashboard/dashboard-quick-actions';
 import { DashboardRecentActivitySection } from '@/components/dashboard/dashboard-recent-activity-section';
 import { DashboardSkeleton } from '@/components/dashboard/dashboard-skeleton';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
-import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useDashboard } from '@/hooks/queries/use-dashboard';
-import { formatDisplayDate } from '@/lib/utils/date';
 import { isOrgConfigError } from '@/lib/utils/user-friendly-error';
 
 export function DashboardPage({
@@ -28,7 +28,9 @@ export function DashboardPage({
   if (error || !data) {
     return (
       <div className="page-stack">
-        <PageHeader title="Dashboard" />
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Dashboard</h1>
+        </div>
         {isOrgError ? (
           <Alert variant="destructive">
             <AlertTitle>Configuration required</AlertTitle>
@@ -57,31 +59,33 @@ export function DashboardPage({
     );
   }
 
-  const todayLabel = formatDisplayDate(data.summary.todayDate);
+  const pendingDraftTotal =
+    data.quickCounts.draftPurchases +
+    data.quickCounts.draftProduction +
+    data.quickCounts.draftSales +
+    data.quickCounts.draftExpenses;
 
   return (
     <div className="page-stack-loose">
-      <PageHeader
-        title="Dashboard"
-        description={`Today is ${todayLabel}. Here is how your bakery is doing.`}
+      <DashboardExecutiveHeader
+        todayDate={data.summary.todayDate}
+        lowStockCount={data.lowStockProducts.length}
+        pendingDraftTotal={pendingDraftTotal}
       />
 
-      <DashboardHeroSection summary={data.summary} />
+      <DashboardKpiSection summary={data.summary} counts={data.quickCounts} />
+
+      <DashboardActionCenter lowStockProducts={data.lowStockProducts} counts={data.quickCounts} />
 
       <DashboardQuickActions allowedModules={allowedQuickActionModules} />
 
-      <div className="grid gap-6 xl:grid-cols-5 xl:gap-8">
-        <div className="min-w-0 xl:col-span-3">
-          <DashboardAttentionSection
-            lowStockProducts={data.lowStockProducts}
-            counts={data.quickCounts}
-          />
-        </div>
+      <DashboardExecutiveInsightCard
+        summary={data.summary}
+        lowStockCount={data.lowStockProducts.length}
+        counts={data.quickCounts}
+      />
 
-        <div className="min-w-0 xl:col-span-2">
-          <DashboardRecentActivitySection activity={data.recentActivity} />
-        </div>
-      </div>
+      <DashboardRecentActivitySection activity={data.recentActivity} />
     </div>
   );
 }

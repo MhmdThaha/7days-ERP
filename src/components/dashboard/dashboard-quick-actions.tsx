@@ -54,21 +54,27 @@ export function DashboardQuickActions({ allowedModules }: DashboardQuickActionsP
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {visibleActions.map((action) => {
           const Icon = action.icon;
+          const isPrimary = action.module === 'sales';
 
           return (
             <Button
               key={action.label}
               nativeButton={false}
-              variant="outline"
-              size="lg"
+              variant={isPrimary ? 'success' : 'outline'}
+              size={isPrimary ? 'xl' : 'lg'}
               className={cn(
-                'h-auto min-h-24 flex-col gap-2.5 rounded-xl px-3 py-4 text-center text-sm font-semibold shadow-xs',
-                'hover:border-primary/30 hover:bg-primary/5',
+                'h-auto flex-col gap-2.5 rounded-xl px-3 py-4 text-center text-sm font-semibold shadow-xs',
+                isPrimary ? 'min-h-24' : 'min-h-24 hover:border-primary/30 hover:bg-primary/5',
               )}
               aria-label={action.label}
               render={<Link href={action.href} aria-label={action.label} />}
             >
-              <span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <span
+                className={cn(
+                  'flex size-11 items-center justify-center rounded-full',
+                  isPrimary ? 'bg-primary-foreground/15 text-primary-foreground' : 'bg-primary/10 text-primary',
+                )}
+              >
                 <Icon className="size-5" aria-hidden="true" />
               </span>
               {action.label}

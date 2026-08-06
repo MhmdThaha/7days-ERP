@@ -5,11 +5,11 @@ import { Eye, MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { StatusBadge } from '@/components/shared/status-badge';
 import { TruncatedText } from '@/components/shared/truncated-text';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,6 +30,7 @@ type RecipeTableProps = {
   isLoading?: boolean;
   isFetching?: boolean;
   disabled?: boolean;
+  onEdit: (recipeId: string) => void;
   onDelete: (recipe: RecipeListItem) => void;
 };
 
@@ -46,25 +47,25 @@ const TABLE_COLUMNS = [
 function RecipeTableSkeleton() {
   return (
     <Table>
-        <TableHeader>
-          <TableRow>
+      <TableHeader>
+        <TableRow>
+          {TABLE_COLUMNS.map((column) => (
+            <TableHead key={column}>{column}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <TableRow key={index}>
             {TABLE_COLUMNS.map((column) => (
-              <TableHead key={column}>{column}</TableHead>
+              <TableCell key={column}>
+                <Skeleton className="h-4 w-full max-w-[120px]" />
+              </TableCell>
             ))}
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}>
-              {TABLE_COLUMNS.map((column) => (
-                <TableCell key={column}>
-                  <Skeleton className="h-4 w-full max-w-[120px]" />
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -77,6 +78,7 @@ export function RecipeTable({
   isLoading,
   isFetching = false,
   disabled = false,
+  onEdit,
   onDelete,
 }: RecipeTableProps) {
   if (isLoading) {
@@ -101,7 +103,7 @@ export function RecipeTable({
               <TableHead className="hidden w-[100px] lg:table-cell">Ingredients</TableHead>
               <TableHead className="hidden w-[120px] sm:table-cell">Total Weight</TableHead>
               <TableHead className="w-[100px]">Status</TableHead>
-              <TableHead className="w-12 text-right">
+              <TableHead className="min-w-[140px] text-right">
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
@@ -127,50 +129,64 @@ export function RecipeTable({
                     />
                   </TableCell>
                   <TableCell>
-                    <TruncatedText text={recipe.recipeName} maxWidthClassName="max-w-[240px]" />
+                    <Link
+                      href={`/recipes/${recipe.id}`}
+                      className="font-medium hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <TruncatedText text={recipe.recipeName} maxWidthClassName="max-w-[240px]" />
+                    </Link>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <TruncatedText text={recipe.productName} maxWidthClassName="max-w-[180px]" />
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">{recipe.ingredientCount}</TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {formatWeight(recipe.totalWeight)}
+                  <TableCell className="hidden tabular-nums lg:table-cell">
+                    {recipe.ingredientCount}
                   </TableCell>
+                  <TableCell className="hidden sm:table-cell">{formatWeight(recipe.totalWeight)}</TableCell>
                   <TableCell>
                     <StatusBadge isActive={recipe.isActive} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                        aria-label={`Actions for ${recipe.recipeName}`}
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        nativeButton={false}
+                        variant="ghost"
+                        size="sm"
+                        render={<Link href={`/recipes/${recipe.id}`} />}
                         disabled={disabled}
                       >
-                        <MoreHorizontal className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem render={<Link href={`/recipes/${recipe.id}`} />}>
-                          <Eye />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          render={<Link href={`/recipes/${recipe.id}/edit`} />}
+                        <Eye />
+                        View
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(recipe.id)}
+                        disabled={disabled}
+                      >
+                        <Pencil />
+                        Edit
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          aria-label={`More actions for ${recipe.recipeName}`}
                           disabled={disabled}
                         >
-                          <Pencil />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => onDelete(recipe)}
-                          disabled={disabled}
-                        >
-                          <Trash2 />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => onDelete(recipe)}
+                            disabled={disabled}
+                          >
+                            <Trash2 />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
