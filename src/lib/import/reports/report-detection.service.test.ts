@@ -49,6 +49,8 @@ describe('detectReport — full profile return', () => {
     expect(result.profile).toBe(PRODUCT_IMPORT_REPORT);
     expect(result.profile.id).toBe('product-import');
     expect(result.profile.reportType).toBe('product-import');
+    expect(result.reportType).toBe('product-import');
+    expect(result.matchedColumns.some((column) => column.key === 'name')).toBe(true);
     expect(result.profile.recommendedImportMode).toBe('catalog-upsert');
     expect(result.profile.capabilities.supportsProductImport).toBe(true);
     expect(result.profile.capabilities.supportsInventory).toBe(true);
@@ -240,12 +242,125 @@ describe('detectReport — full profile return', () => {
       result.profile.id,
       result.profile.displayName,
       result.profile.reportType,
+      result.reportType,
       ...result.explanation,
     ]
       .join(' ')
       .toLowerCase();
 
-    expect(blob).not.toMatch(/mybillbook|vyapar|tally/);
+    expect(blob).not.toMatch(/mybillbook|vyapar|tally|busy|marg/);
+  });
+});
+
+describe('detectReport — vendor-shaped exports without vendor hardcoding', () => {
+  it('classifies invoice-summary exports with Contact Name and Remaining Amount', () => {
+    const result = detectReport(
+      [
+        'Invoice No',
+        'Invoice Date',
+        'Contact Name',
+        'Amount',
+        'Remaining Amount',
+        'Invoice Status',
+        'Payment Type',
+      ],
+      { entityType: 'sale' },
+    );
+
+    expect(result.reportType).toBe('sales-summary');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.4);
+    expect(result.matchedColumns.map((column) => column.key)).toEqual(
+      expect.arrayContaining(['saleNumber', 'saleDate', 'amount']),
+    );
+  });
+
+  it('classifies line-item exports with Party Name, Description, and Sales Qty.', () => {
+    const result = detectReport(
+      ['Date', 'Party Name', 'Invoice No.', 'Description', 'Sales Qty.', 'Rate'],
+      { entityType: 'sale' },
+    );
+
+    expect(result.reportType).toBe('sales-detail');
+    expect(result.matchedColumns.map((column) => column.key)).toEqual(
+      expect.arrayContaining(['saleDate', 'quantity', 'product']),
+    );
+    expect(result.matchedColumns.find((column) => column.header === 'Sales Qty.')?.similarity).toBe(1);
+  });
+
+  it('classifies voucher-style headers via universal aliases', () => {
+    const result = detectReport(
+      ['Voucher No', 'Voucher Date', 'Party Name', 'Item Name', 'Qty', 'Net Amount'],
+      { entityType: 'sale' },
+    );
+
+    expect(result.reportType).toBe('sales-detail');
+    expect(result.matchedColumns.map((column) => column.key)).toEqual(
+      expect.arrayContaining(['saleDate', 'quantity', 'product']),
+    );
+  });
+
+  it('reports missing sale date when only product and quantity are present', () => {
+    const result = detectReport(['Item Name', 'Qty Sold'], { entityType: 'sale' });
+
+    expect(result.reportType).toBe('unknown');
+    expect(result.missingColumns.some((column) => column.key === 'saleDate' && column.required)).toBe(
+      true,
+    );
+    expect(result.matchedColumns.map((column) => column.key)).toEqual(
+      expect.arrayContaining(['quantity', 'product']),
+    );
+  });
+
+  it('keeps extra columns as unmatched without breaking classification', () => {
+    const result = detectReport(
+      [
+        'Invoice No',
+        'Date',
+        'Party Name',
+        'Item Name',
+        'Qty',
+        'Rate',
+        'Phone No.',
+        'GSTIN',
+        'PO Number',
+      ],
+      { entityType: 'sale' },
+    );
+
+    expect(result.reportType).toBe('sales-detail');
+    expect(result.unmatchedHeaders.length).toBeGreaterThan(0);
+    expect(result.matchedColumns.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('classifies generic product + quantity aggregate exports for product entity', () => {
+    const result = detectReport(['Item Name', 'Qty Sold', 'Net Amount', 'Notes'], {
+      entityType: 'product',
+    });
+
+    expect(result.reportType).toBe('item-summary');
+    expect(result.matchedColumns.map((column) => column.key)).toEqual(
+      expect.arrayContaining(['name', 'quantity']),
+    );
+  });
+
+  it('returns unknown for unrecognized generic spreadsheets', () => {
+    const result = detectReport(['Column A', 'Column B', 'Foo', 'Bar'], { entityType: 'sale' });
+
+    expect(result.reportType).toBe('unknown');
+    expect(result.confidence).toBeLessThan(0.4);
+    expect(result.missingColumns.length).toBeGreaterThan(0);
+  });
+
+  it('exposes matchedColumns and missingColumns on the detection result', () => {
+    const result = detectReport(['Invoice No', 'Party Name', 'Remaining Amount'], {
+      entityType: 'sale',
+    });
+
+    expect(result.matchedColumns.every((column) => column.header && column.key)).toBe(true);
+    expect(result.missingColumns.some((column) => column.key === 'saleDate' && column.required)).toBe(
+      true,
+    );
+    expect(result.reportType).toBe('unknown');
   });
 });
 
@@ -257,6 +372,8 @@ describe('calculateDefaultConfidence', () => {
       matchedOptionalKeys: ['code', 'sellingPrice'],
       unmatchedFileHeaders: [] as string[],
       matchedFileHeaders: ['Product Name', 'Product Code', 'Selling Price'],
+      matchedColumns: [] as const,
+      missingColumns: [] as const,
       requiredTotal: 1,
       optionalTotal: PRODUCT_IMPORT_REPORT.optionalFields.length,
       fileHeaderTotal: 3,

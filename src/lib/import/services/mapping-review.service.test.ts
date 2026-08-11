@@ -31,7 +31,10 @@ function reportResult(
 ): ReportDetectionResult {
   return {
     profile,
+    reportType: profile.reportType,
     confidence,
+    matchedColumns: [],
+    missingColumns: [],
     matchedHeaders: [],
     missingHeaders: [],
     unmatchedHeaders: [],
@@ -97,7 +100,7 @@ describe('buildMappingReviewBundle', () => {
     expect(bundle.viewModel.ignoredHeaders).toEqual(expect.arrayContaining(['Description', 'Qty']));
     expect(
       bundle.viewModel.rows.some(
-        (row) => row.sourceHeader === 'Amount' && row.targetField === 'sellingPrice',
+        (row) => row.sourceHeader === 'Amount' && row.targetField === 'amount',
       ),
     ).toBe(true);
   });
@@ -154,7 +157,7 @@ describe('buildMappingReviewBundle', () => {
     });
 
     expect(bundle.viewModel.canSaveMapping).toBe(false);
-    expect(bundle.viewModel.reportDisplayName).toBe('Unknown');
+    expect(bundle.viewModel.reportDisplayName).toBe('Custom Spreadsheet');
   });
 });
 

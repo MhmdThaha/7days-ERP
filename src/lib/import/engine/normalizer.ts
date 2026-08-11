@@ -108,17 +108,26 @@ function normalizeString(raw: Exclude<RawCellValue, null>): NormalizeOutcome {
 // ---- number / money / percent ----------------------------------------------
 
 const CURRENCY_AND_GROUPING = /[₹$€£,\s]/g;
+const CURRENCY_SYMBOLS = /[₹$€£]/g;
+
+/** Leading numeric token with a separate alphabetic unit suffix, e.g. "58.0 PAC". */
+const NUMBER_WITH_UNIT_SUFFIX =
+  /^(-?\(?[\d,]+(?:\.\d+)?\)?)\s+([A-Za-z][A-Za-z0-9/-]*)\s*$/;
 
 function normalizeNumberLike(
   raw: Exclude<RawCellValue, null>,
   dataType: 'number' | 'money' | 'percent',
 ): NormalizeOutcome {
   if (typeof raw === 'number') {
-    return Number.isFinite(raw) ? { value: raw } : invalidNumber(raw);
+    return Number.isFinite(raw) ? { value: raw } : invalidNumber(raw, dataType);
   }
 
   if (typeof raw === 'boolean' || raw instanceof Date) {
-    return invalidNumber(raw);
+    return invalidNumber(raw, dataType);
+  }
+
+  if (dataType === 'number') {
+    return normalizeQuantityNumber(raw, dataType);
   }
 
   let text = raw.trim().replace(CURRENCY_AND_GROUPING, '');
@@ -134,27 +143,85 @@ function normalizeNumberLike(
   }
 
   if (text === '' || text === '-') {
-    return invalidNumber(raw);
+    return invalidNumber(raw, dataType);
   }
 
   const parsed = Number(text);
 
   if (!Number.isFinite(parsed)) {
-    return invalidNumber(raw);
+    return invalidNumber(raw, dataType);
   }
 
   return { value: parsed };
+}
 
-  function invalidNumber(value: RawCellValue): NormalizeOutcome {
-    return {
-      value: null,
-      warning: {
-        severity: 'warning',
-        code: ISSUE_CODES.INVALID_NUMBER,
-        message: `"${String(value)}" is not a valid ${dataType === 'number' ? 'number' : dataType} and was left empty.`,
-      },
-    };
+function normalizeQuantityNumber(
+  raw: string,
+  dataType: 'number' | 'money' | 'percent',
+): NormalizeOutcome {
+  const trimmed = raw.trim();
+  const withoutCurrency = trimmed.replace(CURRENCY_SYMBOLS, '');
+  const unitMatch = NUMBER_WITH_UNIT_SUFFIX.exec(withoutCurrency);
+
+  if (unitMatch) {
+    const parsed = parseNumericToken(unitMatch[1] ?? '');
+
+    if (parsed !== null) {
+      return { value: parsed };
+    }
   }
+
+  let text = trimmed.replace(CURRENCY_AND_GROUPING, '');
+
+  if (text.endsWith('%')) {
+    text = text.slice(0, -1);
+  }
+
+  if (text.startsWith('(') && text.endsWith(')')) {
+    text = `-${text.slice(1, -1)}`;
+  }
+
+  if (text === '' || text === '-') {
+    return invalidNumber(raw, dataType);
+  }
+
+  const parsed = Number(text);
+
+  if (!Number.isFinite(parsed)) {
+    return invalidNumber(raw, dataType);
+  }
+
+  return { value: parsed };
+}
+
+function parseNumericToken(token: string): number | null {
+  let text = token.replace(/,/g, '').replace(/\s/g, '');
+
+  if (text.startsWith('(') && text.endsWith(')')) {
+    text = `-${text.slice(1, -1)}`;
+  }
+
+  if (text === '' || text === '-') {
+    return null;
+  }
+
+  const parsed = Number(text);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function invalidNumber(
+  value: RawCellValue,
+  dataType: 'number' | 'money' | 'percent',
+): NormalizeOutcome {
+  return {
+    value: null,
+    warning: {
+      severity: 'warning',
+      code: ISSUE_CODES.INVALID_NUMBER,
+      message: `"${String(value)}" is not a valid ${dataType === 'number' ? 'number' : dataType} and was left empty.`,
+    },
+  };
 }
 
 // ---- boolean ----------------------------------------------------------------

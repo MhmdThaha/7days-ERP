@@ -62,7 +62,7 @@ describe('buildAutoMapping (profile-aware)', () => {
     expect(byHeader['Invoice No']).toBe('saleNumber');
     expect(byHeader['Invoice Date']).toBe('saleDate');
     expect(byHeader['Contact Name']).toBe('customerName');
-    expect(byHeader['Amount']).toBe('sellingPrice');
+    expect(byHeader['Amount']).toBe('amount');
 
     // Description → productName and Qty → quantity are ignored by profile hints.
     expect(result.ignoredHeaders).toEqual(expect.arrayContaining(['Description', 'Qty']));
@@ -267,7 +267,7 @@ describe('buildAutoMapping (profile-aware)', () => {
         mapped: expect.arrayContaining([
           'Invoice No→saleNumber',
           'Invoice Date→saleDate',
-          'Amount→sellingPrice',
+          'Amount→amount',
         ]),
         ignored: ['Description'],
         confidence: expect.any(Number),
@@ -283,5 +283,24 @@ describe('buildAutoMapping (profile-aware)', () => {
         confidence: expect.any(Number),
       },
     });
+  });
+
+  it('maps Sales Qty. via universal alias dictionary on unknown reports', () => {
+    const result = buildAutoMapping(
+      ['Party Name', 'Item Name', 'Item Code', 'Sales Qty.', 'Sales Amt.'],
+      SALE_IMPORT_COLUMNS,
+      { profile: UNKNOWN_REPORT },
+    );
+
+    expect(result.mapping.columnMappings).toEqual(
+      expect.arrayContaining([
+        { sourceHeader: 'Party Name', targetField: 'customerName' },
+        { sourceHeader: 'Item Name', targetField: 'productName' },
+        { sourceHeader: 'Item Code', targetField: 'productCode' },
+        { sourceHeader: 'Sales Qty.', targetField: 'quantity' },
+        { sourceHeader: 'Sales Amt.', targetField: 'amount' },
+      ]),
+    );
+    expect(result.unmappedHeaders).toEqual([]);
   });
 });

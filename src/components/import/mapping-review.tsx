@@ -27,9 +27,13 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ImportGuidancePanel } from '@/components/import/import-guidance';
-import type { ColumnDefinition } from '@/lib/import/engine/types';
+import type { ColumnDefinition, MappingConfig } from '@/lib/import/engine/types';
 import type { ImportGuidanceResult } from '@/lib/import/guidance/types';
 import type { MappingReviewViewModel } from '@/lib/import/mapping-review/types';
+import {
+  getSalesMappingMissingRequirements,
+  isSalesMappingReady,
+} from '@/lib/import/preparation/sales-mapping-requirements';
 import { cn } from '@/lib/utils';
 
 export type MappingReviewProps = {
@@ -46,6 +50,8 @@ export type MappingReviewProps = {
   onContinue: () => void;
   onStartOver: () => void;
   isBusy?: boolean;
+  /** When set, uses sales-specific mapping requirements (product + quantity). */
+  salesMapping?: MappingConfig | null;
 };
 
 /**
@@ -67,6 +73,7 @@ export function MappingReview({
   onContinue,
   onStartOver,
   isBusy = false,
+  salesMapping = null,
 }: MappingReviewProps) {
   const claimedFields = new Set(
     viewModel.rows
@@ -75,7 +82,19 @@ export function MappingReview({
   );
 
   const hasBlockingAmbiguity = viewModel.ambiguousHeaders.length > 0;
-  const hasMappedColumns = viewModel.mappedHeaders.length > 0;
+  const salesMissingRequirements =
+    salesMapping != null ? getSalesMappingMissingRequirements(salesMapping, columns) : [];
+  const missingRequiredFields =
+    salesMapping != null
+      ? salesMissingRequirements
+      : columns
+          .filter((column) => column.required)
+          .filter((column) => !claimedFields.has(column.field));
+  const hasRequiredFieldsMapped =
+    salesMapping != null
+      ? isSalesMappingReady(salesMapping, columns)
+      : missingRequiredFields.length === 0;
+  const canContinue = hasRequiredFieldsMapped && !hasBlockingAmbiguity;
 
   return (
     <div className="space-y-6">
@@ -152,6 +171,13 @@ export function MappingReview({
             ))}
           </ul>
 
+          {missingRequiredFields.length > 0 ? (
+            <SummaryList
+              title="Required fields still unmapped"
+              items={missingRequiredFields.map((column) => column.label)}
+            />
+          ) : null}
+
           {viewModel.unmappedHeaders.length > 0 ? (
             <SummaryList title="Unmapped headers" items={viewModel.unmappedHeaders} />
           ) : null}
@@ -167,9 +193,9 @@ export function MappingReview({
           <p className="text-sm text-muted-foreground">
             {hasBlockingAmbiguity
               ? 'Resolve ambiguous mappings before continuing.'
-              : hasMappedColumns
-                ? 'Continue to preview validated rows with this mapping.'
-                : 'Map at least one column to continue.'}
+              : !hasRequiredFieldsMapped
+                ? `Map required fields before continuing: ${missingRequiredFields.map((column) => column.label).join(', ')}.`
+                : 'Continue to preview validated rows with this mapping.'}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={onStartOver} disabled={isBusy}>
@@ -177,7 +203,7 @@ export function MappingReview({
             </Button>
             <Button
               onClick={onContinue}
-              disabled={isBusy || !hasMappedColumns || hasBlockingAmbiguity}
+              disabled={isBusy || !canContinue}
             >
               {isBusy ? <Loader2 className="animate-spin" /> : null}
               Continue to preview

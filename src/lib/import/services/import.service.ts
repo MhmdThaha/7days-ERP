@@ -27,7 +27,12 @@ import {
   parseImportFile,
   readImportWorkbook,
 } from '@/lib/import/engine/parser';
-import type { ImportResult, MappingConfig, ParsedFile } from '@/lib/import/engine/types';
+import type {
+  ColumnDefinition,
+  ImportResult,
+  MappingConfig,
+  ParsedFile,
+} from '@/lib/import/engine/types';
 import { ImportEngineError } from '@/lib/import/engine/types';
 import { validateRows } from '@/lib/import/engine/validator';
 import {
@@ -90,6 +95,33 @@ export type PreparedImportFile = {
   headerDetection: HeaderDetectionResult;
   reportDetection: ReportDetectionResult;
 };
+
+/**
+ * Placeholder report when no column mappings exist yet (Universal Import U1).
+ * Populates missingRequiredFields from entity columns so guidance can steer
+ * manual mapping without calling applyMapping on an empty config.
+ */
+export function emptyImportRunReport(
+  entityType: ImportEntityType,
+  parsed: Pick<ParsedFile, 'sheetName' | 'headers' | 'skippedEmptyRowCount'>,
+  columns: readonly ColumnDefinition[],
+): ImportRunReport {
+  return {
+    entityType,
+    sheetName: parsed.sheetName,
+    headers: parsed.headers,
+    skippedEmptyRowCount: parsed.skippedEmptyRowCount,
+    ignoredHeaders: [...parsed.headers],
+    missingSourceHeaders: [],
+    missingRequiredFields: columns
+      .filter((column) => column.required)
+      .map((column) => column.field),
+    result: {
+      rows: [],
+      summary: { totalRows: 0, validRows: 0, warningRows: 0, errorRows: 0 },
+    },
+  };
+}
 
 /**
  * Single-parse prepare step:

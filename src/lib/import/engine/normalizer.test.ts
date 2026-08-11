@@ -118,4 +118,30 @@ describe('normalizeRows', () => {
     expect(value).toBeNull();
     expect(warnings[0]?.code).toBe(ISSUE_CODES.INVALID_NUMBER);
   });
+
+  describe('quantity numbers with unit suffixes', () => {
+    it.each([
+      ['58.0 PAC', 58],
+      ['58 PCS', 58],
+      ['1,250 KG', 1250],
+      ['58.0', 58],
+      ['1 250', 1250],
+    ])('parses "%s" → %s', (raw, expected) => {
+      expect(normalizeOne(raw, 'number')).toEqual({ value: expected, warnings: [] });
+    });
+
+    it('rejects glued alphanumeric quantity text without a separate unit token', () => {
+      const { value, warnings } = normalizeOne('58abc', 'number');
+
+      expect(value).toBeNull();
+      expect(warnings[0]?.code).toBe(ISSUE_CODES.INVALID_NUMBER);
+    });
+
+    it('does not apply unit-suffix parsing to money fields', () => {
+      const { value, warnings } = normalizeOne('58.0 PAC', 'money');
+
+      expect(value).toBeNull();
+      expect(warnings[0]?.code).toBe(ISSUE_CODES.INVALID_NUMBER);
+    });
+  });
 });

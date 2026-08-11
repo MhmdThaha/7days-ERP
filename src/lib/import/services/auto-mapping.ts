@@ -12,7 +12,15 @@
 
 import type { ColumnDefinition, MappingConfig } from '@/lib/import/engine/types';
 import type { ReportDefinition, ReportMappingHints } from '@/lib/import/reports/types';
+import {
+  entityHasMoneyColumns,
+  isAmbiguousMoneyHeader,
+} from '@/lib/import/preparation/sales-money-mapping';
 import { normalizeHeaderLabel } from '@/lib/import/services/header-detection.service';
+import {
+  buildNormalizedUniversalAliasLookup,
+  resolveCanonicalFieldForColumns,
+} from '@/lib/import/services/header-alias-dictionary';
 
 export type FieldMatchCandidate = {
   targetField: string;
@@ -64,6 +72,8 @@ const REQUIRED_PRIORITY_STEP = 0.1;
 const REQUIRED_PRIORITY_BASE = 1;
 const ENTITY_REQUIRED_BONUS = 0.5;
 
+const universalAliasLookup = buildNormalizedUniversalAliasLookup(normalizeHeaderLabel);
+
 /**
  * Maps detected headers onto entity columns, optionally guided by a Report
  * Profile's mappingHints.
@@ -77,6 +87,7 @@ export function buildAutoMapping(
   const hints: ReportMappingHints = profile?.mappingHints ?? {};
   const ignoreFields = new Set(hints.ignoreFields ?? []);
   const columnsByField = new Map(columns.map((column) => [column.field, column]));
+  const columnFields = new Set(columns.map((column) => column.field));
 
   const boostIndex = buildBoostIndex(hints.synonymBoosts);
   const explanation: string[] = [
@@ -97,6 +108,24 @@ export function buildAutoMapping(
 
   // Deterministic: process headers in file order.
   for (const header of headers) {
+    if (
+      entityHasMoneyColumns(columnFields) &&
+      isAmbiguousMoneyHeader(header) &&
+      !ignoreFields.has('sellingPrice') &&
+      !ignoreFields.has('amount') &&
+      !claimedFields.has('sellingPrice') &&
+      !claimedFields.has('amount')
+    ) {
+      ambiguousMappings.push({
+        sourceHeader: header,
+        candidates: [
+          { targetField: 'sellingPrice', score: SCORE_SYNONYM },
+          { targetField: 'amount', score: SCORE_SYNONYM },
+        ],
+      });
+      continue;
+    }
+
     const allMatches = scoreHeaderAgainstColumns(header, columns, hints, boostIndex);
 
     const ignoredOnly = allMatches.filter((match) => ignoreFields.has(match.targetField));
@@ -213,10 +242,18 @@ function scoreHeaderAgainstColumns(
   boostIndex: Map<string, string>,
 ): FieldMatchCandidate[] {
   const normalizedHeader = normalizeHeaderLabel(header);
+  const columnFields = new Set(columns.map((column) => column.field));
   const matches: FieldMatchCandidate[] = [];
 
   for (const column of columns) {
-    const score = scoreHeaderForField(header, normalizedHeader, column, hints, boostIndex);
+    const score = scoreHeaderForField(
+      header,
+      normalizedHeader,
+      column,
+      hints,
+      boostIndex,
+      columnFields,
+    );
 
     if (score !== null) {
       matches.push({ targetField: column.field, score });
@@ -232,6 +269,7 @@ function scoreHeaderForField(
   column: ColumnDefinition,
   hints: ReportMappingHints,
   boostIndex: Map<string, string>,
+  columnFields: ReadonlySet<string>,
 ): number | null {
   let base: number | null = null;
 
@@ -242,6 +280,8 @@ function scoreHeaderForField(
   } else if (
     (column.synonyms ?? []).some((synonym) => normalizeHeaderLabel(synonym) === normalizedHeader)
   ) {
+    base = SCORE_SYNONYM;
+  } else if (matchesUniversalAlias(normalizedHeader, column.field, columnFields)) {
     base = SCORE_SYNONYM;
   }
 
@@ -277,6 +317,20 @@ function scoreHeaderForField(
   }
 
   return score;
+}
+
+function matchesUniversalAlias(
+  normalizedHeader: string,
+  targetField: string,
+  columnFields: ReadonlySet<string>,
+): boolean {
+  const canonical = universalAliasLookup.get(normalizedHeader);
+
+  if (!canonical) {
+    return false;
+  }
+
+  return resolveCanonicalFieldForColumns(canonical, columnFields) === targetField;
 }
 
 function buildBoostIndex(

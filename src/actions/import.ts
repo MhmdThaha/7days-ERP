@@ -17,23 +17,31 @@ import {
   type ImportConflictDetectionOutcome,
 } from '@/lib/import/services/import-entity-handlers';
 import {
+  emptyImportRunReport,
   prepareImportFile,
   runImportFromParsed,
   type ImportRunReport,
 } from '@/lib/import/services/import.service';
 import { buildMappingReviewBundle } from '@/lib/import/services/mapping-review.service';
+import { buildImportReview } from '@/lib/import/pipeline/analysis-pipeline';
+import { loadProductCatalogForReview } from '@/lib/import/integration/product-catalog-for-review';
 import { buildImportGuidance } from '@/lib/import/services/import-guidance.service';
 import {
   buildImportDiagnostics,
   createImportDiagnosticsTimer,
-  serializeImportDiagnostics,
 } from '@/lib/import/services/import-diagnostics.service';
 import { applySavedMapping } from '@/lib/import/services/saved-mapping.service';
 import { listSheetNames } from '@/lib/import/services/workbook.service';
 import { getFirestore } from '@/lib/repositories/base.repository';
 import { importSavedMappingRepository } from '@/lib/repositories/import-saved-mapping.repository';
 import type { ActionResult } from '@/lib/utils/action-result';
-import type { ImportAnalysis, ImportAutoMappingSnapshot } from '@/types/import';
+import type { ImportAnalysis, ImportAutoMappingSnapshot, ImportReviewBuildResult, SalesImportCommitOutcome } from '@/types/import';
+import {
+  commitSalesImportPipeline,
+} from '@/lib/import/integration/commit-sales-import';
+import type { SalesImportResolutionInput } from '@/lib/import/integration/sales-import-resolutions';
+import { ImportPreparationError } from '@/lib/import/preparation/sales-import-preparation.types';
+import type { SalesImportPreparationContext } from '@/lib/import/preparation/sales-import-preparation.types';
 
 /**
  * Server actions for the import wizard. Thin orchestration only: file
@@ -91,6 +99,10 @@ async function wrapImportAction<T>(fn: () => Promise<T>): Promise<ActionResult<T
     return { success: true, data: await fn() };
   } catch (error) {
     if (error instanceof DomainError || error instanceof ImportEngineError) {
+      return { success: false, error: error.message, code: error.code };
+    }
+
+    if (error instanceof ImportPreparationError) {
       return { success: false, error: error.message, code: error.code };
     }
 
@@ -165,33 +177,9 @@ export async function analyzeImportAction(
     });
     timer.markStageEnd('saved-mapping');
 
-    if (resolved.mapping.columnMappings.length === 0) {
-      const failureDiagnostics = buildImportDiagnostics({
-        entityType,
-        fileName,
-        sheetName,
-        startedAt: timer.startedAt,
-        completedAt: timer.now(),
-        stageTimings: timer.getStageTimings(),
-        headerDetection,
-        reportDetection,
-        autoMapping,
-        resolved,
-        failure: {
-          code: 'VALIDATION_ERROR',
-          message: `None of the columns in this file were recognized as ${definition.label} fields. Check that the file contains a recognizable header row.`,
-          stage: 'saved-mapping',
-        },
-      });
-      console.info('[import-diagnostics:failure]', serializeImportDiagnostics(failureDiagnostics));
+    const hasInitialMapping = resolved.mapping.columnMappings.length > 0;
 
-      throw new DomainError(
-        'VALIDATION_ERROR',
-        `None of the columns in this file were recognized as ${definition.label} fields. Check that the file contains a recognizable header row.`,
-      );
-    }
-
-    if (savedMapping) {
+    if (savedMapping && hasInitialMapping) {
       await importSavedMappingRepository.touchLastUsed(
         orgId,
         entityType,
@@ -200,7 +188,9 @@ export async function analyzeImportAction(
     }
 
     timer.markStageStart('validation');
-    const report = runImportFromParsed(parsed, entityType, resolved.mapping);
+    const report = hasInitialMapping
+      ? runImportFromParsed(parsed, entityType, resolved.mapping)
+      : emptyImportRunReport(entityType, parsed, definition.columns);
     timer.markStageEnd('validation');
 
     const mappingReview = buildMappingReviewBundle({
@@ -242,7 +232,7 @@ export async function analyzeImportAction(
       sheetName: report.sheetName,
       report,
       mapping: resolved.mapping,
-      unmappedHeaders: resolved.newMappingsNeeded,
+      unmappedHeaders: hasInitialMapping ? resolved.newMappingsNeeded : [...parsed.headers],
       mappingReview,
       autoMappingSnapshot: toAutoMappingSnapshot(autoMapping),
       guidance,
@@ -354,6 +344,144 @@ export async function revalidateImportMappingAction(
       autoMappingSnapshot: toAutoMappingSnapshot(autoMapping),
       guidance,
       diagnostics,
+    };
+  });
+}
+
+/**
+ * Builds the Phase 7/8 import review view model for sales imports after mapping.
+ * Runs header/report detection and buildImportReview once — no import execution.
+ */
+export async function buildImportReviewAction(
+  entityType: ImportEntityType,
+  formData: FormData,
+  mapping: MappingConfig,
+  sheetName?: string,
+  preparation: SalesImportPreparationContext = {},
+): Promise<ActionResult<ImportReviewBuildResult>> {
+  return wrapImportAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'import');
+
+    if (entityType !== 'sale') {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'The import review flow is only available for sales imports.',
+      );
+    }
+
+    const definition = getImportDefinition(entityType);
+
+    if (!definition) {
+      throw new DomainError('VALIDATION_ERROR', `Unknown import type "${entityType}".`);
+    }
+
+    if (mapping.columnMappings.length === 0) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `None of the columns in this file were mapped to ${definition.label} fields.`,
+      );
+    }
+
+    const { bytes, fileName } = await readUpload(formData);
+    const { parsed, headerDetection, reportDetection } = prepareImportFile(bytes, entityType, {
+      fileName,
+      sheetName,
+    });
+
+    const { catalogItems, stockByProductId } = await loadProductCatalogForReview(orgId);
+
+    const productCatalog = catalogItems.map(({ category: _category, ...entry }) => entry);
+
+    const { viewModel, pipelineErrors } = buildImportReview({
+      fileName,
+      entityType,
+      parsed,
+      headerDetection,
+      reportDetection,
+      mapping,
+      productCatalog,
+      stockByProductId: new Map(Object.entries(stockByProductId)),
+      preparation,
+    });
+
+    return {
+      fileName,
+      sheetName: parsed.sheetName,
+      mapping,
+      viewModel,
+      catalogItems,
+      stockByProductId,
+      pipelineErrors,
+      preparationSummary: viewModel.overview.preparationSummary,
+      preparationContext: preparation,
+    };
+  });
+}
+
+/**
+ * Commits a reviewed sales import: server-side re-parse, duplicate check,
+ * draft sale creation (Phase 10A), and inventory finalization (Phase 10B).
+ */
+export async function commitSalesImportAction(
+  formData: FormData,
+  mapping: MappingConfig,
+  resolutions: readonly SalesImportResolutionInput[],
+  options: {
+    sheetName?: string;
+    acknowledgeDuplicateRisk?: boolean;
+    saveMapping?: boolean;
+    reportType?: string;
+    preparation?: SalesImportPreparationContext;
+  } = {},
+): Promise<ActionResult<SalesImportCommitOutcome>> {
+  return wrapImportAction(async () => {
+    const { orgId, userId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'import');
+
+    if (mapping.columnMappings.length === 0) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'None of the columns in this file were mapped to sale fields.',
+      );
+    }
+
+    const { bytes, fileName } = await readUpload(formData);
+    const startedAt = Date.now();
+
+    const result = await commitSalesImportPipeline({
+      orgId,
+      userId,
+      bytes,
+      fileName,
+      sheetName: options.sheetName,
+      mapping,
+      resolutions,
+      acknowledgeDuplicateRisk: options.acknowledgeDuplicateRisk,
+      preparation: options.preparation ?? {},
+    });
+
+    if (
+      options.saveMapping &&
+      options.reportType &&
+      options.reportType !== 'unknown' &&
+      (result.status === 'success' || result.status === 'partial')
+    ) {
+      await importSavedMappingRepository.save(orgId, userId, {
+        entity: 'sale',
+        reportType: options.reportType,
+        mappings: mapping.columnMappings,
+        approvedFrom: 'manual',
+      });
+    }
+
+    return {
+      status: result.status,
+      duplicateResult: result.duplicateResult,
+      execution: result.execution,
+      finalization: result.finalization,
+      durationMs: Date.now() - startedAt,
+      fileName: result.fileName,
     };
   });
 }

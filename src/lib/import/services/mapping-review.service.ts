@@ -329,6 +329,9 @@ function buildRowViewModel(input: {
   };
 }
 
+/** Friendly label when report detection returns the Unknown profile (Phase U1). */
+export const CUSTOM_SPREADSHEET_DISPLAY_NAME = 'Custom Spreadsheet';
+
 function buildViewModelFromReport(input: {
   rows: readonly MappingReviewRowViewModel[];
   reportDetection: ReportDetectionResult;
@@ -337,7 +340,10 @@ function buildViewModelFromReport(input: {
   const reportType = input.reportDetection.profile.reportType;
 
   return {
-    reportDisplayName: input.reportDetection.profile.displayName,
+    reportDisplayName:
+      reportType === 'unknown'
+        ? CUSTOM_SPREADSHEET_DISPLAY_NAME
+        : input.reportDetection.profile.displayName,
     reportConfidence: input.reportDetection.confidence,
     mappingConfidence: clamp01(input.mappingConfidence),
     rows: input.rows,

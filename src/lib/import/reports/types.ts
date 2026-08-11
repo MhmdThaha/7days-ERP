@@ -122,9 +122,28 @@ export type ReportCoverage = {
   matchedOptionalKeys: readonly string[];
   unmatchedFileHeaders: readonly string[];
   matchedFileHeaders: readonly string[];
+  /** Field slots matched with their source header and similarity score. */
+  matchedColumns: readonly ReportMatchedColumn[];
+  /** Required or optional slots with no matching file header. */
+  missingColumns: readonly ReportMissingColumn[];
   requiredTotal: number;
   optionalTotal: number;
   fileHeaderTotal: number;
+};
+
+export type ReportMatchedColumn = {
+  key: string;
+  label: string;
+  header: string;
+  required: boolean;
+  /** Normalized header similarity score in [0, 1]. */
+  similarity: number;
+};
+
+export type ReportMissingColumn = {
+  key: string;
+  label: string;
+  required: boolean;
 };
 
 /**
@@ -172,7 +191,13 @@ export type ReportDetectionResult = {
    * Auto Mapping, Validation, UI, and Diagnostics in later phases.
    */
   profile: ReportDefinition;
+  /** Structural report class from the winning profile. */
+  reportType: ReportType;
   confidence: number;
+  /** Required and optional field slots matched in the file. */
+  matchedColumns: readonly ReportMatchedColumn[];
+  /** Required and optional field slots not found in the file. */
+  missingColumns: readonly ReportMissingColumn[];
   /** File headers that matched at least one required/optional slot. */
   matchedHeaders: readonly string[];
   /** Required slot labels that were not found in the file. */

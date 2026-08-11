@@ -4,7 +4,7 @@ import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-f
 
 import {
   LineItemReorderActionsCell,
-  LineItemUnitCell,
+  LineItemUnitSelect,
 } from '@/components/shared/line-items-grid/line-item-cells';
 import {
   LineItemGridCell,
@@ -13,6 +13,10 @@ import {
 import { RawMaterialPickerCombobox } from '@/components/shared/raw-material-picker-combobox';
 import { Input } from '@/components/ui/input';
 import type { RecipeFormValues } from '@/lib/domain/schemas/recipe.schema';
+import {
+  convertQuantity,
+  listCompatibleUnits,
+} from '@/lib/domain/units/uom-conversion';
 import { rememberRawMaterial } from '@/lib/utils/form-recent-values';
 import { focusRecipeIngredientField } from '@/lib/utils/recipe-form-errors';
 import { RECIPE_GRID_ROW_CLASS } from '@/lib/ui/line-items-grid-config';
@@ -24,6 +28,7 @@ type RecipeIngredientRowProps = {
   errors: FieldErrors<RecipeFormValues>;
   rawMaterialId: string;
   unit: string;
+  quantity: number;
   selectedRawMaterialIds: string[];
   disabled?: boolean;
   canMoveUp: boolean;
@@ -42,6 +47,7 @@ export function RecipeIngredientRow({
   errors,
   rawMaterialId,
   unit,
+  quantity,
   selectedRawMaterialIds,
   disabled = false,
   canMoveUp,
@@ -53,6 +59,26 @@ export function RecipeIngredientRow({
   onAdvanceToNextLine,
 }: RecipeIngredientRowProps) {
   const ingredientErrors = errors.ingredients?.[index];
+  const unitOptions = listCompatibleUnits(unit);
+
+  function handleUnitChange(nextUnit: string) {
+    if (nextUnit === unit) {
+      return;
+    }
+
+    const currentQty = Number(quantity);
+
+    if (Number.isFinite(currentQty) && currentQty > 0) {
+      try {
+        const converted = convertQuantity(currentQty, unit, nextUnit);
+        setValue(`ingredients.${index}.quantity`, converted, { shouldValidate: true });
+      } catch {
+        // Keep numeric value if conversion is unavailable.
+      }
+    }
+
+    setValue(`ingredients.${index}.unit`, nextUnit, { shouldValidate: true });
+  }
 
   return (
     <LineItemsGridRow
@@ -107,7 +133,13 @@ export function RecipeIngredientRow({
       </LineItemGridCell>
 
       <LineItemGridCell label="Unit">
-        <LineItemUnitCell id={`ingredient-${index}-unit`} unit={unit} />
+        <LineItemUnitSelect
+          id={`ingredient-${index}-unit`}
+          value={unit}
+          options={unitOptions}
+          disabled={disabled || !unit}
+          onValueChange={handleUnitChange}
+        />
       </LineItemGridCell>
 
       <LineItemReorderActionsCell

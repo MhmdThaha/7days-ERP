@@ -3,6 +3,7 @@ import 'server-only';
 import { RECIPE_CODE_PREFIX } from '@/lib/domain/constants/recipe';
 import { DomainError } from '@/lib/domain/errors';
 import { sumQuantitiesAsKg } from '@/lib/domain/units/mass-conversion';
+import { convertToCanonicalQuantity } from '@/lib/domain/units/uom-conversion';
 import { productRepository } from '@/lib/repositories/product.repository';
 import { rawMaterialRepository } from '@/lib/repositories/raw-material.repository';
 import { recipeRepository } from '@/lib/repositories/recipe.repository';
@@ -74,11 +75,18 @@ async function resolveIngredients(
       throw new DomainError('VALIDATION_ERROR', `Raw material "${rawMaterial.name}" is inactive`);
     }
 
+    const entryUnit = ingredient.unit || rawMaterial.unit;
+    const canonicalQuantity = convertToCanonicalQuantity(
+      ingredient.quantity,
+      entryUnit,
+      rawMaterial.unit,
+    );
+
     resolved.push({
       rawMaterialId: rawMaterial.id,
       rawMaterialName: rawMaterial.name,
-      quantity: ingredient.quantity,
-      unit: ingredient.unit || rawMaterial.unit,
+      quantity: canonicalQuantity,
+      unit: rawMaterial.unit,
     });
   }
 

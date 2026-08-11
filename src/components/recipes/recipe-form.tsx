@@ -404,6 +404,7 @@ export function RecipeForm({
                     errors={errors}
                     rawMaterialId={ingredients[index]?.rawMaterialId ?? ''}
                     unit={ingredients[index]?.unit ?? ''}
+                    quantity={ingredients[index]?.quantity ?? 0}
                     selectedRawMaterialIds={selectedRawMaterialIds}
                     disabled={isSubmitting}
                     canMoveUp={index > 0}

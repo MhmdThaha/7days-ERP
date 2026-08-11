@@ -109,6 +109,44 @@ export function LineItemUnitCell({ unit, id }: LineItemUnitCellProps) {
   );
 }
 
+type LineItemUnitSelectProps = {
+  id: string;
+  value: string;
+  options: readonly string[];
+  disabled?: boolean;
+  onValueChange: (unit: string) => void;
+};
+
+/** Dropdown for weight/volume-compatible units; falls back to read-only when no options. */
+export function LineItemUnitSelect({
+  id,
+  value,
+  options,
+  disabled = false,
+  onValueChange,
+}: LineItemUnitSelectProps) {
+  if (options.length === 0) {
+    return <LineItemUnitCell id={id} unit={value} />;
+  }
+
+  return (
+    <select
+      id={id}
+      value={value}
+      disabled={disabled}
+      aria-label="Unit"
+      className="flex h-8 w-full min-w-[4.5rem] rounded-md border border-input bg-transparent px-2 text-sm tabular-nums shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+      onChange={(event) => onValueChange(event.target.value)}
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 type LineItemTotalCellProps = {
   id: string;
   children: React.ReactNode;

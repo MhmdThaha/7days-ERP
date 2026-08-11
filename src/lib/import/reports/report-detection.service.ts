@@ -11,6 +11,11 @@
 import { normalizeHeaderLabel } from '@/lib/import/services/header-detection.service';
 import { BUILTIN_REPORT_DEFINITIONS } from '@/lib/import/reports/definitions';
 import {
+  buildExpandedAliasSet,
+  REPORT_HEADER_SIMILARITY_THRESHOLD,
+  scoreHeaderSimilarity,
+} from '@/lib/import/reports/report-field-aliases';
+import {
   UNKNOWN_REPORT,
   type ReportCandidateScore,
   type ReportConfidenceWeights,
@@ -19,6 +24,8 @@ import {
   type ReportDetectionResult,
   type ReportEntitySupport,
   type ReportFieldRequirement,
+  type ReportMatchedColumn,
+  type ReportMissingColumn,
 } from '@/lib/import/reports/types';
 
 const DEFAULT_WEIGHTS: Required<ReportConfidenceWeights> = {
@@ -53,10 +60,12 @@ export function detectReport(
     (definition) => definition.supportedEntity === options.entityType,
   );
 
-  const normalizedFile = headers.map((header) => ({
-    original: header,
-    normalized: normalizeHeaderLabel(header),
-  }));
+  const normalizedFile = headers
+    .map((header) => ({
+      original: header,
+      normalized: normalizeHeaderLabel(header),
+    }))
+    .filter((header) => header.normalized.length > 0);
 
   const candidates: ReportCandidateScore[] = definitions.map((definition) => {
     const coverage = buildCoverage(definition, normalizedFile);
@@ -117,43 +126,55 @@ function buildCoverage(
   const missingRequiredKeys: string[] = [];
   const matchedOptionalKeys: string[] = [];
   const matchedFileHeaders: string[] = [];
+  const matchedColumns: ReportMatchedColumn[] = [];
+  const missingColumns: ReportMissingColumn[] = [];
   const claimedNormalized = new Set<string>();
 
   const tryMatch = (
     requirement: ReportFieldRequirement,
+    required: boolean,
     onMatch: () => void,
     onMiss?: () => void,
   ): void => {
-    const aliasSet = new Set(requirement.aliases.map(normalizeHeaderLabel));
-    const hit = fileHeaders.find(
-      (header) =>
-        !claimedNormalized.has(header.normalized) && aliasSet.has(header.normalized),
-    );
+    const hit = findBestRequirementMatch(requirement, fileHeaders, claimedNormalized);
 
     if (hit) {
-      claimedNormalized.add(hit.normalized);
-      matchedFileHeaders.push(hit.original);
+      claimedNormalized.add(hit.header.normalized);
+      matchedFileHeaders.push(hit.header.original);
+      matchedColumns.push({
+        key: requirement.key,
+        label: requirement.label,
+        header: hit.header.original,
+        required,
+        similarity: hit.similarity,
+      });
       onMatch();
       return;
     }
 
+    missingColumns.push({
+      key: requirement.key,
+      label: requirement.label,
+      required,
+    });
     onMiss?.();
   };
 
   for (const requirement of definition.requiredFields) {
     tryMatch(
       requirement,
+      true,
       () => matchedRequiredKeys.push(requirement.key),
       () => missingRequiredKeys.push(requirement.key),
     );
   }
 
   for (const requirement of definition.optionalFields) {
-    tryMatch(requirement, () => matchedOptionalKeys.push(requirement.key));
+    tryMatch(requirement, false, () => matchedOptionalKeys.push(requirement.key));
   }
 
   const unmatchedFileHeaders = fileHeaders
-    .filter((header) => !claimedNormalized.has(header.normalized))
+    .filter((header) => header.normalized && !claimedNormalized.has(header.normalized))
     .map((header) => header.original);
 
   return {
@@ -162,10 +183,48 @@ function buildCoverage(
     matchedOptionalKeys,
     unmatchedFileHeaders,
     matchedFileHeaders,
+    matchedColumns,
+    missingColumns,
     requiredTotal: definition.requiredFields.length,
     optionalTotal: definition.optionalFields.length,
-    fileHeaderTotal: fileHeaders.length,
+    fileHeaderTotal: fileHeaders.filter((header) => header.normalized).length,
   };
+}
+
+type HeaderMatch = {
+  header: NormalizedHeader;
+  similarity: number;
+};
+
+function findBestRequirementMatch(
+  requirement: ReportFieldRequirement,
+  fileHeaders: readonly NormalizedHeader[],
+  claimedNormalized: ReadonlySet<string>,
+): HeaderMatch | null {
+  const aliasSet = buildExpandedAliasSet(requirement);
+  let best: HeaderMatch | null = null;
+
+  for (const header of fileHeaders) {
+    if (!header.normalized || claimedNormalized.has(header.normalized)) {
+      continue;
+    }
+
+    if (aliasSet.has(header.normalized)) {
+      return { header, similarity: 1 };
+    }
+
+    for (const alias of aliasSet) {
+      const similarity = scoreHeaderSimilarity(header.normalized, alias);
+
+      if (similarity >= REPORT_HEADER_SIMILARITY_THRESHOLD) {
+        if (!best || similarity > best.similarity) {
+          best = { header, similarity };
+        }
+      }
+    }
+  }
+
+  return best;
 }
 
 /**
@@ -237,7 +296,10 @@ function buildMatchResult(
 
   return {
     profile: definition,
+    reportType: definition.reportType,
     confidence: score.confidence,
+    matchedColumns: score.coverage.matchedColumns,
+    missingColumns: score.coverage.missingColumns,
     matchedHeaders: score.coverage.matchedFileHeaders,
     missingHeaders,
     unmatchedHeaders: score.coverage.unmatchedFileHeaders,
@@ -264,7 +326,10 @@ function buildUnknownResult(
 
   return {
     profile: UNKNOWN_REPORT,
+    reportType: UNKNOWN_REPORT.reportType,
     confidence: best?.confidence ?? 0,
+    matchedColumns: best?.coverage.matchedColumns ?? [],
+    missingColumns: best?.coverage.missingColumns ?? [],
     matchedHeaders: best?.coverage.matchedFileHeaders ?? [],
     missingHeaders: [],
     unmatchedHeaders: headers,

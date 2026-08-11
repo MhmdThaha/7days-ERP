@@ -6,7 +6,9 @@ import { toast } from 'sonner';
 
 import {
   analyzeImportAction,
+  buildImportReviewAction,
   commitImportWithResolutionAction,
+  commitSalesImportAction,
   detectImportConflictsAction,
   getImportSheetsAction,
   revalidateImportMappingAction,
@@ -18,12 +20,30 @@ import { ImportLoadingStep } from '@/components/import/import-loading-step';
 import { ImportPreview } from '@/components/import/import-preview';
 import { ImportResult } from '@/components/import/import-result';
 import { MappingReview } from '@/components/import/mapping-review';
+import { SaleDatePreparationDialog } from '@/components/import/sale-date-preparation-dialog';
+import { SalesImportDuplicateStep } from '@/components/import/sales-import-duplicate-step';
+import { SalesImportResult } from '@/components/import/sales-import-result';
+import {
+  extractSalesImportResolutions,
+  SalesImportReviewStep,
+} from '@/components/import/sales-import-review-step';
 import { SheetSelectionStep } from '@/components/import/sheet-selection-step';
 import { getImportDefinition, type ImportEntityType } from '@/lib/import/definitions';
 import { getImportUiCopy } from '@/lib/import/import-ui-copy';
+import {
+  planSkipDuplicates,
+  type DuplicateImportResult,
+} from '@/lib/import/duplicate';
 import type { MappingReviewBaseline, MappingReviewBundle, MappingReviewEditState } from '@/lib/import/mapping-review/types';
 import type { ImportResolutionStrategy } from '@/lib/import/services/conflict-resolution.service';
 import type { ImportConflictDetectionOutcome } from '@/lib/import/services/import-entity-outcomes';
+import type { ImportReviewViewModelWithResolution } from '@/lib/import/resolution';
+import {
+  collectImportedRowNumbers,
+  countRemainingUnresolvedSales,
+  buildRemainingSalesImportReview,
+  mergeResolutionsWithImportedSkips,
+} from '@/lib/import/review/remaining-sales-import-review';
 import {
   changeMappedTargetField,
   createEditStateFromRows,
@@ -34,16 +54,18 @@ import {
   resolveAmbiguousMapping,
   restoreAutoSuggestion,
 } from '@/lib/import/services/mapping-review.service';
+import { mappingIncludesSaleDate } from '@/lib/import/preparation/sales-mapping-requirements';
+import type { SalesImportPreparationContext } from '@/lib/import/preparation/sales-import-preparation.types';
 import {
   applySaveMappingToggleGuidance,
 } from '@/lib/import/services/import-guidance.service';
 import { cn } from '@/lib/utils';
-import type { ImportAnalysis, ImportAutoMappingSnapshot } from '@/types/import';
+import type { ImportAnalysis, ImportAutoMappingSnapshot, ImportReviewBuildResult, SalesImportCommitOutcome } from '@/types/import';
 
 /** React Query keys that go stale after a successful import of this entity. */
 const QUERY_KEYS_BY_ENTITY: Partial<Record<ImportEntityType, readonly string[]>> = {
   product: ['products'],
-  sale: ['sales', 'products'],
+  sale: ['sales', 'products', 'dashboard', 'daily-summary-dashboard'],
 };
 
 type WizardStep =
@@ -53,6 +75,7 @@ type WizardStep =
   | 'mapping'
   | 'revalidating'
   | 'preview'
+  | 'duplicate-review'
   | 'checking-conflicts'
   | 'conflicts'
   | 'committing'
@@ -99,9 +122,27 @@ export function ImportWizard({
   const [saveMappingEnabled, setSaveMappingEnabled] = useState(false);
   const [conflicts, setConflicts] = useState<ImportConflictDetectionOutcome | null>(null);
   const [commitOutcome, setCommitOutcome] = useState<CommitImportOutcome | null>(null);
+  const [salesReview, setSalesReview] = useState<ImportReviewBuildResult | null>(null);
+  const [pendingSalesReview, setPendingSalesReview] =
+    useState<ImportReviewViewModelWithResolution | null>(null);
+  const [duplicateReview, setDuplicateReview] = useState<DuplicateImportResult | null>(null);
+  const [salesCommitOutcome, setSalesCommitOutcome] = useState<SalesImportCommitOutcome | null>(null);
+  const [importedSalesRowNumbers, setImportedSalesRowNumbers] = useState<number[]>([]);
   const [isBusy, setIsBusy] = useState(false);
   const [isCheckingConflicts, setIsCheckingConflicts] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
+  const [saleDateDialogOpen, setSaleDateDialogOpen] = useState(false);
+  const [pendingSalesMapping, setPendingSalesMapping] = useState<ImportAnalysis['mapping'] | null>(
+    null,
+  );
+
+  const activeSalesMapping = useMemo(() => {
+    if (entityType !== 'sale' || !mappingEditState) {
+      return null;
+    }
+
+    return mappingReviewStateToConfig(mappingEditState);
+  }, [entityType, mappingEditState]);
 
   const mappingViewModel = useMemo(() => {
     if (!mappingEditState || !mappingBundle) {
@@ -136,6 +177,13 @@ export function ImportWizard({
     setSaveMappingEnabled(false);
     setConflicts(null);
     setCommitOutcome(null);
+    setSalesReview(null);
+    setPendingSalesReview(null);
+    setDuplicateReview(null);
+    setSalesCommitOutcome(null);
+    setImportedSalesRowNumbers([]);
+    setSaleDateDialogOpen(false);
+    setPendingSalesMapping(null);
   }
 
   function toFormData(selected: File): FormData {
@@ -236,12 +284,71 @@ export function ImportWizard({
     setStep('mapping');
   }
 
+  async function runSalesImportReview(
+    mapping: ImportAnalysis['mapping'],
+    preparation: SalesImportPreparationContext,
+  ) {
+    if (!file) {
+      return;
+    }
+
+    setStep('revalidating');
+    setIsBusy(true);
+
+    try {
+      const result = await buildImportReviewAction(
+        'sale',
+        toFormData(file),
+        mapping,
+        selectedSheet ?? undefined,
+        preparation,
+      );
+
+      if (!result.success) {
+        toast.error(result.error);
+        setStep('mapping');
+        return;
+      }
+
+      setSalesReview(result.data);
+      setPendingSalesReview(null);
+      setDuplicateReview(null);
+      setSalesCommitOutcome(null);
+
+      if (analysis) {
+        setAnalysis({
+          ...analysis,
+          mapping: result.data.mapping,
+          fileName: result.data.fileName,
+          sheetName: result.data.sheetName,
+        });
+      }
+
+      setStep('preview');
+    } finally {
+      setIsBusy(false);
+      setPendingSalesMapping(null);
+    }
+  }
+
   async function handleMappingContinue() {
     if (!file || !mappingEditState || !mappingBundle || isBusy) {
       return;
     }
 
     const mapping = mappingReviewStateToConfig(mappingEditState);
+
+    if (entityType === 'sale') {
+      if (!mappingIncludesSaleDate(mapping)) {
+        setPendingSalesMapping(mapping);
+        setSaleDateDialogOpen(true);
+        return;
+      }
+
+      await runSalesImportReview(mapping, {});
+      return;
+    }
+
     setStep('revalidating');
     setIsBusy(true);
 
@@ -265,6 +372,108 @@ export function ImportWizard({
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function runSalesImportCommit(
+    viewModel: ImportReviewViewModelWithResolution,
+    acknowledgeDuplicateRisk = false,
+  ) {
+    if (!file || !salesReview || isCommitting) {
+      return;
+    }
+
+    setIsCommitting(true);
+    setStep('committing');
+    setPendingSalesReview(viewModel);
+
+    try {
+      const result = await commitSalesImportAction(
+        toFormData(file),
+        salesReview.mapping,
+        mergeResolutionsWithImportedSkips(
+          extractSalesImportResolutions(viewModel),
+          importedSalesRowNumbers,
+        ),
+        {
+          sheetName: selectedSheet ?? undefined,
+          acknowledgeDuplicateRisk,
+          saveMapping: saveMappingEnabled,
+          reportType: salesReview.viewModel.overview.detectedReportType,
+          preparation: salesReview.preparationContext ?? {},
+        },
+      );
+
+      if (!result.success) {
+        toast.error(result.error);
+        setStep(acknowledgeDuplicateRisk ? 'duplicate-review' : 'preview');
+        return;
+      }
+
+      if (result.data.status === 'duplicate_review') {
+        setDuplicateReview(result.data.duplicateResult);
+        setStep('duplicate-review');
+        return;
+      }
+
+      if (result.data.status === 'blocked') {
+        toast.error(
+          result.data.duplicateResult?.duplicateReasons[0] ??
+            'This import looks like a duplicate of a previous import.',
+        );
+        setStep('preview');
+        return;
+      }
+
+      const staleKeys = QUERY_KEYS_BY_ENTITY.sale ?? [];
+      await Promise.all(
+        staleKeys.map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+      );
+
+      setSalesCommitOutcome(result.data);
+      setDuplicateReview(null);
+
+      const newlyImported = collectImportedRowNumbers(result.data.execution?.rowResults ?? []);
+      setImportedSalesRowNumbers((current) => [...new Set([...current, ...newlyImported])]);
+      setStep('result');
+    } finally {
+      setIsCommitting(false);
+    }
+  }
+
+  function handleSalesImport(viewModel: ImportReviewViewModelWithResolution) {
+    void runSalesImportCommit(viewModel, false);
+  }
+
+  function handleSalesImportDespiteDuplicate() {
+    if (!pendingSalesReview) {
+      return;
+    }
+
+    void runSalesImportCommit(pendingSalesReview, true);
+  }
+
+  function handleReviewRemainingSales() {
+    if (!pendingSalesReview || !salesReview) {
+      return;
+    }
+
+    const remaining = buildRemainingSalesImportReview(
+      pendingSalesReview,
+      importedSalesRowNumbers,
+    );
+
+    if (remaining.rows.length === 0) {
+      toast.message('No sales left to review.');
+      return;
+    }
+
+    setSalesReview({
+      ...salesReview,
+      viewModel: remaining,
+    });
+    setPendingSalesReview(remaining);
+    setSalesCommitOutcome(null);
+    setStep('preview');
   }
 
   async function handleImport() {
@@ -419,7 +628,9 @@ export function ImportWizard({
               : step === 'committing'
                 ? uiCopy.committingTitle
                 : step === 'revalidating'
-                  ? 'Applying your mapping…'
+                  ? entityType === 'sale'
+                    ? 'Building import review…'
+                    : 'Applying your mapping…'
                   : 'Checking your file…'
           }
           description={
@@ -438,6 +649,7 @@ export function ImportWizard({
           columns={columns}
           guidance={mappingGuidance}
           saveMappingEnabled={saveMappingEnabled}
+          salesMapping={entityType === 'sale' ? activeSalesMapping : null}
           onSaveMappingEnabledChange={setSaveMappingEnabled}
           onChangeTarget={(sourceHeader, targetField) => {
             applyMappingEdit((state, bundle) => {
@@ -507,7 +719,39 @@ export function ImportWizard({
         />
       ) : null}
 
-      {step === 'preview' && analysis ? (
+      {step === 'preview' && entityType === 'sale' && salesReview ? (
+        <SalesImportReviewStep
+          key={`sales-review-${salesReview.viewModel.rows.map((row) => row.rowNumber).join('-')}`}
+          initialViewModel={salesReview.viewModel}
+          catalogItems={salesReview.catalogItems}
+          stockByProductId={salesReview.stockByProductId}
+          onImport={handleSalesImport}
+          onBack={() => setStep('mapping')}
+          onStartOver={reset}
+          isImporting={isCommitting}
+        />
+      ) : null}
+
+      {step === 'duplicate-review' && duplicateReview ? (
+        <SalesImportDuplicateStep
+          duplicateResult={duplicateReview}
+          newSalesCount={
+            pendingSalesReview
+              ? planSkipDuplicates(pendingSalesReview.rows, duplicateReview).newSalesCount
+              : 0
+          }
+          duplicateSalesCount={
+            pendingSalesReview
+              ? planSkipDuplicates(pendingSalesReview.rows, duplicateReview).duplicateSalesCount
+              : duplicateReview.matchedRows
+          }
+          onCancel={() => setStep('preview')}
+          onImportAnyway={handleSalesImportDespiteDuplicate}
+          isBusy={isCommitting}
+        />
+      ) : null}
+
+      {step === 'preview' && entityType !== 'sale' && analysis ? (
         <ImportPreview
           analysis={analysis}
           entityType={entityType}
@@ -531,7 +775,21 @@ export function ImportWizard({
         />
       ) : null}
 
-      {step === 'result' && commitOutcome && analysis ? (
+      {step === 'result' && entityType === 'sale' && salesCommitOutcome ? (
+        <SalesImportResult
+          outcome={salesCommitOutcome}
+          returnHref={returnHref}
+          returnLabel={returnLabel}
+          onImportAnother={reset}
+          remainingUnresolvedCount={countRemainingUnresolvedSales(
+            pendingSalesReview,
+            importedSalesRowNumbers,
+          )}
+          onReviewRemaining={handleReviewRemainingSales}
+        />
+      ) : null}
+
+      {step === 'result' && entityType !== 'sale' && commitOutcome && analysis ? (
         <ImportResult
           entityType={entityType}
           outcome={commitOutcome}
@@ -543,6 +801,23 @@ export function ImportWizard({
           onImportAnother={reset}
         />
       ) : null}
+
+      <SaleDatePreparationDialog
+        open={saleDateDialogOpen}
+        onOpenChange={setSaleDateDialogOpen}
+        isBusy={isBusy}
+        onBack={() => {
+          setSaleDateDialogOpen(false);
+          setPendingSalesMapping(null);
+        }}
+        onConfirm={(bulkSaleDate) => {
+          setSaleDateDialogOpen(false);
+
+          if (pendingSalesMapping) {
+            void runSalesImportReview(pendingSalesMapping, { bulkSaleDate });
+          }
+        }}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { MoreHorizontal, Pencil, SearchX, Trash2 } from 'lucide-react';
 
 import { LowStockBadge } from '@/components/shared/low-stock-badge';
@@ -28,6 +29,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  convertQuantity,
+  listCompatibleUnits,
+} from '@/lib/domain/units/uom-conversion';
 import { AVERAGE_COST_HELP_TEXT } from '@/lib/domain/constants/inventory';
 import { cn } from '@/lib/utils';
 import type { RawMaterialListItem } from '@/types/raw-material';
@@ -86,8 +91,48 @@ function RawMaterialTableSkeleton() {
   );
 }
 
-function formatStock(quantity: number, unit: string): string {
-  return `${quantity} ${unit}`;
+function formatQuantity(value: number): string {
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 6 });
+}
+
+function StockQuantityCell({ quantity, unit }: { quantity: number; unit: string }) {
+  const options = listCompatibleUnits(unit);
+  const [displayUnit, setDisplayUnit] = useState(unit);
+
+  useEffect(() => {
+    setDisplayUnit(unit);
+  }, [unit]);
+
+  if (options.length === 0) {
+    return (
+      <span>
+        {formatQuantity(quantity)} {unit}
+      </span>
+    );
+  }
+
+  const displayQuantity =
+    displayUnit.trim().toLowerCase() === unit.trim().toLowerCase()
+      ? quantity
+      : convertQuantity(quantity, unit, displayUnit);
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="tabular-nums">{formatQuantity(displayQuantity)}</span>
+      <select
+        aria-label="Display unit"
+        className="h-7 max-w-[4.5rem] rounded-md border border-input bg-transparent px-1 text-xs"
+        value={displayUnit}
+        onChange={(event) => setDisplayUnit(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
 }
 
 function InventoryColumnHeader({
@@ -221,8 +266,11 @@ export function RawMaterialTable({
                     />
                   </TableCell>
                   <TableCell className="hidden text-sm sm:table-cell">{rawMaterial.unit}</TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums">
-                    {formatStock(rawMaterial.currentStock, rawMaterial.unit)}
+                  <TableCell className="whitespace-nowrap">
+                    <StockQuantityCell
+                      quantity={rawMaterial.currentStock}
+                      unit={rawMaterial.unit}
+                    />
                   </TableCell>
                   <TableCell className="hidden whitespace-nowrap sm:table-cell">
                     <AverageCostCell amount={rawMaterial.averageCost} />

@@ -30,7 +30,10 @@ function reportDetection(
 ): ReportDetectionResult {
   return {
     profile,
+    reportType: profile.reportType,
     confidence,
+    matchedColumns: [],
+    missingColumns: [],
     matchedHeaders: [],
     missingHeaders: [],
     unmatchedHeaders: [],
@@ -166,6 +169,8 @@ describe('buildImportGuidance', () => {
               matchedOptionalKeys: [],
               unmatchedFileHeaders: headers,
               matchedFileHeaders: [],
+              matchedColumns: [],
+              missingColumns: [],
               requiredTotal: 2,
               optionalTotal: 4,
               fileHeaderTotal: 2,
@@ -180,10 +185,10 @@ describe('buildImportGuidance', () => {
 
     const unknown = guidance.items.find((item) => item.code === 'UNKNOWN_REPORT');
     expect(unknown).toBeDefined();
-    expect(unknown?.severity).toBe('warning');
-    expect(unknown?.message).toMatch(/below the threshold/i);
-    expect(unknown?.message).toMatch(/Expected columns were not found/i);
-    expect(unknown?.recommendation).toMatch(/Review column mappings manually/i);
+    expect(unknown?.severity).toBe('info');
+    expect(unknown?.title).toBe('Custom spreadsheet');
+    expect(unknown?.message).toMatch(/does not match a known export format/i);
+    expect(unknown?.recommendation).toMatch(/required field/i);
   });
 
   it('4. Ambiguous mappings produce actionable guidance', () => {

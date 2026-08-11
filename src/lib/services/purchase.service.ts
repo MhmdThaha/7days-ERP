@@ -7,6 +7,7 @@ import {
 } from '@/lib/domain/calculations/purchase-pricing';
 import { PURCHASE_NUMBER_PREFIX } from '@/lib/domain/constants/purchase';
 import { DomainError } from '@/lib/domain/errors';
+import { convertToCanonicalQuantity } from '@/lib/domain/units/uom-conversion';
 import { rawMaterialRepository } from '@/lib/repositories/raw-material.repository';
 import {
   generateLineItemId,
@@ -62,17 +63,24 @@ async function resolveLineItems(
       throw new DomainError('VALIDATION_ERROR', `Raw material "${rawMaterial.name}" is inactive`);
     }
 
+    const entryUnit = lineItem.unit || rawMaterial.unit;
+    const canonicalPackSize = convertToCanonicalQuantity(
+      lineItem.packSize,
+      entryUnit,
+      rawMaterial.unit,
+    );
+
     resolved.push({
       id: lineItem.id ?? generateLineItemId(),
       rawMaterialId: rawMaterial.id,
       rawMaterialCode: rawMaterial.code,
       rawMaterialName: rawMaterial.name,
-      quantity: derivePurchaseQuantity(lineItem.packCount, lineItem.packSize),
-      unit: lineItem.unit || rawMaterial.unit,
-      unitCost: derivePurchaseUnitCost(lineItem.packPrice, lineItem.packSize),
+      quantity: derivePurchaseQuantity(lineItem.packCount, canonicalPackSize),
+      unit: rawMaterial.unit,
+      unitCost: derivePurchaseUnitCost(lineItem.packPrice, canonicalPackSize),
       lineTotal: calculatePurchaseLineTotal(lineItem.packCount, lineItem.packPrice),
       packCount: lineItem.packCount,
-      packSize: lineItem.packSize,
+      packSize: canonicalPackSize,
       packPrice: lineItem.packPrice,
     });
   }

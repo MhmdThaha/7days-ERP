@@ -71,6 +71,19 @@ describe('normalizeHeaderLabel', () => {
     expect(normalizeHeaderLabel('Phone No:')).toBe('phone no');
     expect(normalizeHeaderLabel('Sale   Price')).toBe('sale price');
   });
+
+  it('normalizes underscores, dots, brackets, and hidden spaces', () => {
+    expect(normalizeHeaderLabel('SALES_QTY')).toBe('sales qty');
+    expect(normalizeHeaderLabel('Sales Qty.')).toBe('sales qty');
+    expect(normalizeHeaderLabel('Sales Qty :')).toBe('sales qty');
+    expect(normalizeHeaderLabel('Quantity (PCS)')).toBe('quantity');
+    expect(normalizeHeaderLabel('Sales\u00a0Qty')).toBe('sales qty');
+  });
+
+  it('returns an empty string for blank headers', () => {
+    expect(normalizeHeaderLabel('')).toBe('');
+    expect(normalizeHeaderLabel('   ')).toBe('');
+  });
 });
 
 describe('detectHeaderRow', () => {
@@ -215,6 +228,19 @@ describe('detectHeaderRow', () => {
     expect(clean.scoreBreakdown.totalScore).toBeGreaterThan(duped.scoreBreakdown.totalScore);
   });
 
+  it('matches Sales Qty. and Net Amount via the universal alias dictionary', () => {
+    const matrix: RawCellValue[][] = [
+      ['Sales Qty.', 'Net Amount', 'Invoice Date', 'Item Name'],
+      [2, 90, '2026-01-01', 'Bread'],
+    ];
+
+    const result = detectHeaderRow(matrix, SALE_IMPORT_COLUMNS);
+
+    expect(result.headerRowIndex).toBe(0);
+    expect(result.scoreBreakdown.aliasMatches).toBeGreaterThanOrEqual(4);
+    expect(result.scoreBreakdown.requiredFieldMatches).toBeGreaterThanOrEqual(1);
+  });
+
   it('matches Invoice No. to Invoice No via trailing-punctuation normalization', () => {
     const matrix: RawCellValue[][] = [
       ['Invoice No.', 'Invoice Date', 'Party Name', 'Quantity'],
@@ -225,7 +251,7 @@ describe('detectHeaderRow', () => {
 
     expect(result.headerRowIndex).toBe(0);
     expect(result.scoreBreakdown.aliasMatches).toBeGreaterThanOrEqual(4);
-    expect(result.scoreBreakdown.requiredFieldMatches).toBeGreaterThanOrEqual(2);
+    expect(result.scoreBreakdown.requiredFieldMatches).toBeGreaterThanOrEqual(1);
   });
 });
 

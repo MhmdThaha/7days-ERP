@@ -177,7 +177,7 @@ describe('MappingReview', () => {
     expect(screen.getByText('This file was detected as a Product Import.')).toBeDefined();
   });
 
-  it('allows continue when no ambiguous headers remain', () => {
+  it('allows continue when required fields are mapped and no ambiguous headers remain', () => {
     renderMappingReview({
       viewModel: {
         ...viewModel,
@@ -188,6 +188,41 @@ describe('MappingReview', () => {
 
     expect(screen.getByRole('button', { name: /continue to preview/i }).hasAttribute('disabled')).toBe(
       false,
+    );
+  });
+
+  it('blocks continue until required fields are mapped', () => {
+    renderMappingReview({
+      viewModel: {
+        ...viewModel,
+        ambiguousHeaders: [],
+        mappedHeaders: ['Product Code'],
+        rows: [
+          {
+            sourceHeader: 'Product Code',
+            status: 'mapped',
+            targetField: 'code',
+            targetFieldLabel: 'Product Code',
+            mappingSource: 'manual',
+            autoSuggestion: null,
+            ambiguousCandidates: [],
+          },
+          {
+            sourceHeader: 'Product Name',
+            status: 'unmapped',
+            targetField: null,
+            targetFieldLabel: null,
+            mappingSource: null,
+            autoSuggestion: { targetField: 'name', label: 'Product Name', score: 90 },
+            ambiguousCandidates: [],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText(/required fields still unmapped/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /continue to preview/i }).hasAttribute('disabled')).toBe(
+      true,
     );
   });
 });

@@ -32,7 +32,10 @@ function reportDetection(
 ): ReportDetectionResult {
   return {
     profile,
+    reportType: profile.reportType,
     confidence,
+    matchedColumns: [],
+    missingColumns: [],
     matchedHeaders: ['Product Name', 'Selling Price'],
     missingHeaders: [],
     unmatchedHeaders: [],
@@ -48,6 +51,8 @@ function reportDetection(
           matchedOptionalKeys: [],
           unmatchedFileHeaders: [],
           matchedFileHeaders: ['Product Name'],
+          matchedColumns: [],
+          missingColumns: [],
           requiredTotal: profile.requiredFields.length,
           optionalTotal: profile.optionalFields.length,
           fileHeaderTotal: 2,

@@ -190,35 +190,14 @@ function buildUnknownReportGuidance(
     return [];
   }
 
-  const topCandidate = reportDetection.candidates[0];
-  const confidenceLabel = formatPercent(reportDetection.confidence);
-  const missingLabels =
-    topCandidate?.coverage.missingRequiredKeys.map((key) => key) ?? reportDetection.missingHeaders;
-
-  const reasons: string[] = [
-    `Detection confidence is ${confidenceLabel}, below the threshold needed for a confident match.`,
-  ];
-
-  if (missingLabels.length > 0) {
-    reasons.push(
-      `Expected columns were not found: ${formatList(missingLabels)}.`,
-    );
-  }
-
-  if (reportDetection.unmatchedHeaders.length > 0) {
-    reasons.push(
-      `${reportDetection.unmatchedHeaders.length} column${reportDetection.unmatchedHeaders.length === 1 ? '' : 's'} did not match any known report structure.`,
-    );
-  }
-
   return [
     {
       code: 'UNKNOWN_REPORT',
-      severity: 'warning',
-      title: 'Report type could not be determined',
-      message: reasons.join(' '),
-      recommendation:
-        'Review column mappings manually, or export a file that includes the expected headers for this import type.',
+      severity: 'info',
+      title: 'Custom spreadsheet',
+      message:
+        'This file does not match a known export format. Map your file columns to BakeryOS fields below.',
+      recommendation: 'Match each required field to a column in your file before continuing.',
       relatedFields: reportDetection.unmatchedHeaders,
     },
   ];

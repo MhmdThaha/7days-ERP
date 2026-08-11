@@ -10,7 +10,8 @@ import {
   saleImportDefinition,
 } from '@/lib/import/definitions/sale.definition';
 import { getImportDefinition } from '@/lib/import/definitions';
-import { ISSUE_CODES, type MappingConfig } from '@/lib/import/engine/types';
+import type { MappingConfig } from '@/lib/import/engine/types';
+import { prepareSalesImport } from '@/lib/import/preparation/sales-import-preparation.service';
 import { runImport } from '@/lib/import/services/import.service';
 
 function csvBytes(text: string): Uint8Array {
@@ -57,6 +58,41 @@ describe('saleImportDefinition', () => {
     expect(report.result.rows[0]?.values.sellingPrice).toBe(45);
   });
 
+  it('maps Net Amount to line total field and preparation derives unit price', () => {
+    const report = runImport({
+      data: csvBytes('Product Name,Quantity,Net Amount\nBread,100,4500\n'),
+      fileName: 'sales.csv',
+      entityType: 'sale',
+      mapping: {
+        columnMappings: [
+          { sourceHeader: 'Product Name', targetField: 'productName' },
+          { sourceHeader: 'Quantity', targetField: 'quantity' },
+          { sourceHeader: 'Net Amount', targetField: 'amount' },
+        ],
+      },
+    });
+
+    expect(report.result.rows[0]?.values.amount).toBe(4500);
+
+    const prepared = prepareSalesImport({
+      rows: report.result.rows.map((entry) => ({
+        ...entry,
+        originalValues: {},
+      })),
+      mapping: {
+        columnMappings: [
+          { sourceHeader: 'Product Name', targetField: 'productName' },
+          { sourceHeader: 'Quantity', targetField: 'quantity' },
+          { sourceHeader: 'Net Amount', targetField: 'amount' },
+        ],
+      },
+      context: { bulkSaleDate: '2026-08-08' },
+    });
+
+    expect(prepared.rows[0]?.values['amount']).toBe(4500);
+    expect(prepared.rows[0]?.values['sellingPrice']).toBe(45);
+  });
+
   it('requires product name or product code on each row', () => {
     const report = runImport({
       data: csvBytes('Sale Date,Quantity\n2026-03-15,2\n'),
@@ -96,7 +132,7 @@ describe('saleImportDefinition', () => {
     expect(report.result.rows[0]?.values.productCode).toBe('BRD-001');
   });
 
-  it('flags missing required sale date', () => {
+  it('does not treat sale date as a required mapped column at engine level', () => {
     const report = runImport({
       data: csvBytes('Product Name,Quantity\nMilk Bread,1\n'),
       fileName: 'sales.csv',
@@ -109,11 +145,6 @@ describe('saleImportDefinition', () => {
       },
     });
 
-    expect(report.missingRequiredFields).toContain('saleDate');
-    expect(report.result.rows[0]?.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: ISSUE_CODES.REQUIRED_FIELD_MISSING, field: 'saleDate' }),
-      ]),
-    );
+    expect(report.missingRequiredFields).not.toContain('saleDate');
   });
 });

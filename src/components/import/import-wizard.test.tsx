@@ -10,14 +10,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionResult } from '@/lib/utils/action-result';
 import type { ConflictDetectionResult } from '@/lib/import/services/conflict.service';
 import type { ImportAnalysis } from '@/types/import';
-import type { SaleConflictDetectionResult } from '@/lib/import/services/sale-conflict.service';
 
 vi.mock('@/actions/import', () => ({
   getImportSheetsAction: vi.fn(),
   analyzeImportAction: vi.fn(),
   revalidateImportMappingAction: vi.fn(),
+  buildImportReviewAction: vi.fn(),
   detectImportConflictsAction: vi.fn(),
   commitImportWithResolutionAction: vi.fn(),
+  commitSalesImportAction: vi.fn(),
 }));
 
 vi.mock('@/hooks/use-auth', () => ({
@@ -30,13 +31,25 @@ vi.mock('@/hooks/use-auth', () => ({
 
 import {
   analyzeImportAction,
+  buildImportReviewAction,
   commitImportWithResolutionAction,
+  commitSalesImportAction,
   detectImportConflictsAction,
   getImportSheetsAction,
   revalidateImportMappingAction,
 } from '@/actions/import';
 import { ImportWizard } from '@/components/import/import-wizard';
 import { PRODUCT_IMPORT_REPORT, SALES_DETAIL_REPORT } from '@/lib/import/reports';
+import type { ImportReviewBuildResult } from '@/types/import';
+import {
+  AUTO_IMPORT_RECOMMENDATION,
+  CONFIDENCE_LEVEL,
+} from '@/lib/import/services/confidence-engine.service';
+import {
+  CONFLICT_ENGINE_STATUS,
+  IMPORT_CONFLICT_CODE,
+} from '@/lib/import/services/conflict-engine.service';
+import { PRODUCT_MATCH_STATUS } from '@/lib/import/services/product-matching.service';
 
 afterEach(cleanup);
 
@@ -242,23 +255,156 @@ const saleAnalysis = withMappingReview(
   },
 );
 
-const noSaleConflicts: SaleConflictDetectionResult = {
-  exactDuplicateSales: [],
-  conflictingDuplicateSales: [],
-  existingSales: [],
-  cleanGroups: [],
-  conflictingGroups: [],
-  summary: {
-    totalChecked: 2,
-    exactDuplicateGroupCount: 0,
-    exactDuplicateSaleCount: 0,
-    conflictingDuplicateGroupCount: 0,
-    conflictingDuplicateSaleCount: 0,
-    existingSaleCount: 0,
-    cleanGroupCount: 2,
-    conflictingGroupCount: 0,
-    lineErrorGroupCount: 0,
-    groupIssueGroupCount: 0,
+const saleReviewBuild: ImportReviewBuildResult = {
+  fileName: 'sales.xlsx',
+  sheetName: 'Sales',
+  mapping: saleAnalysis.mapping,
+  catalogItems: [
+    {
+      id: 'prod-bread',
+      name: 'Milk Bread',
+      code: 'BRD-001',
+      unit: 'pcs',
+      isActive: true,
+      deletedAt: null,
+      category: 'Breads',
+    },
+    {
+      id: 'prod-puff',
+      name: 'Veg Puff',
+      code: 'VP-001',
+      unit: 'pcs',
+      isActive: true,
+      deletedAt: null,
+      category: 'Snacks',
+    },
+  ],
+  stockByProductId: {
+    'prod-bread': 12,
+    'prod-puff': 4,
+  },
+  pipelineErrors: [],
+  preparationContext: {},
+  viewModel: {
+    overview: {
+      fileName: 'sales.xlsx',
+      detectedReportName: 'Sales Detail',
+      detectedReportType: 'sales-detail',
+      reportConfidence: 0.86,
+      headerRowIndex: 0,
+      totalRows: 2,
+      readyRows: 2,
+      warningRows: 0,
+      errorRows: 0,
+      averageConfidence: 88,
+      autoImportEligibleRows: 0,
+      blockedRows: 0,
+    },
+    reportSummary: {
+      matchedColumns: [
+        { key: 'saleDate', label: 'Sale Date', header: 'Sale Date' },
+        { key: 'productName', label: 'Product Name', header: 'Product Name' },
+        { key: 'quantity', label: 'Quantity', header: 'Qty' },
+      ],
+      missingRequiredColumns: [],
+      extraColumns: [],
+      unknownHeaders: [],
+      detectionReasons: ['Classified as Sales Detail.'],
+    },
+    rows: [
+      {
+        rowNumber: 2,
+        originalValues: {
+          saleDate: '2026-03-01',
+          productName: 'Milk Bread',
+          quantity: '2',
+        },
+        normalizedValues: {
+          saleDate: '2026-03-01',
+          productName: 'Milk Bread',
+          quantity: 2,
+        },
+        reportDetectionResult: {
+          profile: SALES_DETAIL_REPORT,
+          reportType: 'sales-detail',
+          confidence: 0.86,
+          matchedColumns: [],
+          missingColumns: [],
+          matchedHeaders: [],
+          missingHeaders: [],
+          unmatchedHeaders: [],
+          explanation: [],
+          candidates: [],
+        },
+        productMatchResult: {
+          status: PRODUCT_MATCH_STATUS.MATCHED,
+          matchedProductId: 'prod-bread',
+          matchedProductName: 'Milk Bread',
+          confidence: 98,
+          reason: 'Exact Name Match',
+        },
+        conflictEngineResult: {
+          status: CONFLICT_ENGINE_STATUS.READY,
+          conflicts: [],
+          warnings: [],
+          blockingReason: null,
+          recommendedAction: null,
+          confidencePenalty: 0,
+        },
+        confidenceResult: {
+          confidenceScore: 88,
+          confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+          confidenceReasons: ['Exact product name match'],
+          autoImportRecommendation: AUTO_IMPORT_RECOMMENDATION.PREVIEW_FIRST,
+        },
+      },
+      {
+        rowNumber: 3,
+        originalValues: {
+          saleDate: '2026-03-02',
+          productName: 'Veg Puff',
+          quantity: '1',
+        },
+        normalizedValues: {
+          saleDate: '2026-03-02',
+          productName: 'Veg Puff',
+          quantity: 1,
+        },
+        reportDetectionResult: {
+          profile: SALES_DETAIL_REPORT,
+          reportType: 'sales-detail',
+          confidence: 0.86,
+          matchedColumns: [],
+          missingColumns: [],
+          matchedHeaders: [],
+          missingHeaders: [],
+          unmatchedHeaders: [],
+          explanation: [],
+          candidates: [],
+        },
+        productMatchResult: {
+          status: PRODUCT_MATCH_STATUS.MATCHED,
+          matchedProductId: 'prod-puff',
+          matchedProductName: 'Veg Puff',
+          confidence: 98,
+          reason: 'Exact Name Match',
+        },
+        conflictEngineResult: {
+          status: CONFLICT_ENGINE_STATUS.READY,
+          conflicts: [],
+          warnings: [],
+          blockingReason: null,
+          recommendedAction: null,
+          confidencePenalty: 0,
+        },
+        confidenceResult: {
+          confidenceScore: 88,
+          confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+          confidenceReasons: ['Exact product name match'],
+          autoImportRecommendation: AUTO_IMPORT_RECOMMENDATION.PREVIEW_FIRST,
+        },
+      },
+    ],
   },
 };
 
@@ -345,7 +491,7 @@ async function goToSalePreview(container: HTMLElement) {
     data: { sheetNames: ['Sales'] },
   });
   vi.mocked(analyzeImportAction).mockResolvedValue({ success: true, data: saleAnalysis });
-  vi.mocked(revalidateImportMappingAction).mockResolvedValue({ success: true, data: saleAnalysis });
+  vi.mocked(buildImportReviewAction).mockResolvedValue({ success: true, data: saleReviewBuild });
 
   const input = container.querySelector('input[type="file"]');
   const file = new File(['Sale Date,Product Name,Qty\n2026-03-01,Milk Bread,2\n'], 'sales.xlsx');
@@ -356,15 +502,17 @@ async function goToSalePreview(container: HTMLElement) {
   await screen.findByText('Column mapping');
   fireEvent.click(screen.getByRole('button', { name: /continue to preview/i }));
 
-  return screen.findByRole('button', { name: /import 2 sales/i });
+  return screen.findByRole('button', { name: /import \d+ sales/i });
 }
 
 beforeEach(() => {
   vi.mocked(getImportSheetsAction).mockReset();
   vi.mocked(analyzeImportAction).mockReset();
   vi.mocked(revalidateImportMappingAction).mockReset();
+  vi.mocked(buildImportReviewAction).mockReset();
   vi.mocked(detectImportConflictsAction).mockReset();
   vi.mocked(commitImportWithResolutionAction).mockReset();
+  vi.mocked(commitSalesImportAction).mockReset();
 });
 
 describe('ImportWizard mapping review flow', () => {
@@ -646,64 +794,87 @@ describe('ImportWizard conflict review flow', () => {
   });
 });
 
-describe('ImportWizard sale conflict review flow', () => {
-  it('runs conflict detection and shows sale-specific conflict review actions', async () => {
+describe('ImportWizard sale review flow', () => {
+  it('builds import review after mapping and shows the new review screen', async () => {
     const { container } = renderSaleWizard();
-    const importButton = await goToSalePreview(container);
+    const continueButton = await goToSalePreview(container);
 
-    vi.mocked(detectImportConflictsAction).mockResolvedValue({
-      success: true,
-      data: noSaleConflicts,
-    });
-
-    fireEvent.click(importButton);
-
-    expect(await screen.findByText('No conflicts detected')).toBeDefined();
-    expect(screen.getByRole('button', { name: /import sales/i })).toBeDefined();
-    expect(screen.queryByRole('button', { name: /update existing/i })).toBeNull();
+    expect(screen.getByText('Import Review')).toBeDefined();
+    expect(screen.getByText(/sales found/i)).toBeDefined();
+    expect(vi.mocked(buildImportReviewAction)).toHaveBeenCalledWith(
+      'sale',
+      expect.any(FormData),
+      saleAnalysis.mapping,
+      undefined,
+      {},
+    );
+    expect(vi.mocked(revalidateImportMappingAction)).not.toHaveBeenCalled();
+    expect(continueButton).toBeDefined();
   });
 
-  it('commits sales with new-only strategy and shows the result screen', async () => {
+  it('imports sales after review and shows the result screen', async () => {
     const { container } = renderSaleWizard();
     const importButton = await goToSalePreview(container);
 
-    vi.mocked(detectImportConflictsAction).mockResolvedValue({
-      success: true,
-      data: noSaleConflicts,
-    });
-    vi.mocked(commitImportWithResolutionAction).mockResolvedValue({
+    vi.mocked(commitSalesImportAction).mockResolvedValue({
       success: true,
       data: {
-        strategy: 'new-only',
-        durationMs: 600,
-        result: {
-          importedCount: 2,
-          skippedCount: 0,
-          failedCount: 0,
-          saleIds: ['sale-1', 'sale-2'],
-          saleNumbers: ['INV-1', 'INV-2'],
-          groupResults: [],
-          commitErrors: [],
+        status: 'success',
+        duplicateResult: null,
+        execution: {
+          importId: 'imp-1',
+          imported: 1,
+          skipped: 0,
+          failed: 0,
+          status: 'IMPORTED',
+          saleIds: ['sale-1'],
+          rowResults: [{ rowNumber: 2, status: 'imported', saleId: 'sale-1' }],
+          startedAt: '2026-03-15T10:00:00.000Z',
+          completedAt: '2026-03-15T10:00:01.000Z',
+          durationMs: 1000,
+          warnings: [],
+          errors: [],
         },
+        finalization: {
+          status: 'COMPLETED',
+          completedSales: 1,
+          failedSales: 0,
+          completedSaleIds: ['sale-1'],
+          outcomes: [{ saleId: 'sale-1', status: 'completed' }],
+          warnings: [],
+          errors: [],
+          startedAt: '2026-03-15T10:00:01.000Z',
+          completedAt: '2026-03-15T10:00:02.000Z',
+          durationMs: 1000,
+        },
+        durationMs: 1500,
+        fileName: 'sales.xlsx',
       },
     });
 
     fireEvent.click(importButton);
-    await screen.findByText('No conflicts detected');
-
-    fireEvent.click(screen.getByRole('button', { name: /import sales/i }));
 
     expect(await screen.findByText('Import complete')).toBeDefined();
-    expect(screen.getByText(/inventory was updated/i)).toBeDefined();
-    expect(vi.mocked(commitImportWithResolutionAction)).toHaveBeenCalledWith(
-      saleAnalysis.report,
-      noSaleConflicts,
-      'new-only',
-      {
-        saveMapping: false,
-        mapping: saleAnalysis.mapping,
+    expect(vi.mocked(commitSalesImportAction)).toHaveBeenCalledWith(
+      expect.any(FormData),
+      saleAnalysis.mapping,
+      [],
+      expect.objectContaining({
+        acknowledgeDuplicateRisk: false,
         reportType: 'sales-detail',
-      },
+        preparation: {},
+      }),
     );
+    expect(vi.mocked(detectImportConflictsAction)).not.toHaveBeenCalled();
+    expect(vi.mocked(commitImportWithResolutionAction)).not.toHaveBeenCalled();
+  });
+
+  it('returns to mapping from the sales review screen', async () => {
+    const { container } = renderSaleWizard();
+    await goToSalePreview(container);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to mapping' }));
+
+    expect(await screen.findByText('Column mapping')).toBeDefined();
   });
 });

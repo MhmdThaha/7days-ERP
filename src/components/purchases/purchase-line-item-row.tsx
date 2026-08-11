@@ -5,7 +5,7 @@ import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-f
 import {
   LineItemDeleteCell,
   LineItemTotalCell,
-  LineItemUnitCell,
+  LineItemUnitSelect,
 } from '@/components/shared/line-items-grid/line-item-cells';
 import {
   LineItemGridCell,
@@ -17,6 +17,10 @@ import { RawMaterialPickerCombobox } from '@/components/shared/raw-material-pick
 import { Input } from '@/components/ui/input';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
+import {
+  convertQuantity,
+  listCompatibleUnits,
+} from '@/lib/domain/units/uom-conversion';
 import { rememberRawMaterial } from '@/lib/utils/form-recent-values';
 import { handleEnterAsTab } from '@/lib/utils/line-item-keyboard';
 import { focusPurchaseLineItemField } from '@/lib/utils/purchase-form-errors';
@@ -114,6 +118,27 @@ export function PurchaseLineItemRow({
     focusPurchaseLineItemField(index, 'packSize');
   }
 
+  function handleUnitChange(nextUnit: string) {
+    if (nextUnit === unit) {
+      return;
+    }
+
+    const currentSize = Number(packSize);
+
+    if (Number.isFinite(currentSize) && currentSize > 0) {
+      try {
+        const converted = convertQuantity(currentSize, unit, nextUnit);
+        setValue(`lineItems.${index}.packSize`, converted, { shouldValidate: true });
+      } catch {
+        // Keep numeric value if conversion is unavailable; unit still updates for entry.
+      }
+    }
+
+    setValue(`lineItems.${index}.unit`, nextUnit, { shouldValidate: true });
+  }
+
+  const unitOptions = listCompatibleUnits(unit);
+
   return (
     <LineItemsGridRow
       rowClassName={PURCHASE_GRID_ROW_CLASS}
@@ -182,7 +207,13 @@ export function PurchaseLineItemRow({
       </LineItemGridCell>
 
       <LineItemGridCell label="Unit">
-        <LineItemUnitCell id={`line-item-${index}-unit`} unit={unit} />
+        <LineItemUnitSelect
+          id={`line-item-${index}-unit`}
+          value={unit}
+          options={unitOptions}
+          disabled={disabled || !unit}
+          onValueChange={handleUnitChange}
+        />
       </LineItemGridCell>
 
       <LineItemGridCell

@@ -54,13 +54,15 @@ export const SALE_IMPORT_COLUMNS: readonly ColumnDefinition[] = [
       'Sale No',
       'Sale #',
       'Voucher No',
+      'Ref No',
+      'Reference Number',
     ],
   },
   {
     field: 'saleDate',
     label: 'Sale Date',
     dataType: 'date',
-    required: true,
+    required: false,
     synonyms: ['Date', 'Invoice Date', 'Bill Date', 'Sales Date', 'Transaction Date'],
   },
   {
@@ -93,10 +95,34 @@ export const SALE_IMPORT_COLUMNS: readonly ColumnDefinition[] = [
   },
   {
     field: 'sellingPrice',
-    label: 'Selling Price',
+    label: 'Unit selling price',
     dataType: 'money',
     required: false,
-    synonyms: ['Rate', 'Price', 'Sale Price', 'Unit Price', 'MRP', 'Amount', 'Sales Price'],
+    synonyms: [
+      'Rate',
+      'Selling Price',
+      'Sale Price',
+      'Unit Price',
+      'MRP',
+      'Selling Rate',
+      'Price / Unit',
+    ],
+  },
+  {
+    field: 'amount',
+    label: 'Line total (amount)',
+    dataType: 'money',
+    required: false,
+    synonyms: [
+      'Net Amount',
+      'Sales Amount',
+      'Sales Amt',
+      'Sales Amt.',
+      'Line Total',
+      'Total Amount',
+      'Sale Value',
+      'Gross Amount',
+    ],
   },
   {
     field: 'notes',
@@ -200,12 +226,28 @@ function validateSellingPrice(value: NormalizedValue): readonly ValidationIssue[
   return [];
 }
 
+function validateAmount(value: NormalizedValue): readonly ValidationIssue[] {
+  if (typeof value === 'number' && value < 0) {
+    return [
+      issue(
+        'error',
+        SALE_ISSUE_CODES.NEGATIVE_SELLING_PRICE,
+        'Line total cannot be negative.',
+        'amount',
+      ),
+    ];
+  }
+
+  return [];
+}
+
 export const SALE_VALIDATION_OPTIONS: ValidationOptions = {
   fieldValidators: {
     customerName: validateCustomerName,
     notes: validateNotes,
     quantity: validateQuantity,
     sellingPrice: validateSellingPrice,
+    amount: validateAmount,
   },
   rowValidators: [validateProductReference],
 };

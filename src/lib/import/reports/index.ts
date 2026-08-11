@@ -33,6 +33,8 @@ export {
   type ReportEntitySupport,
   type ReportFieldRequirement,
   type ReportHeaderRequirement,
+  type ReportMatchedColumn,
+  type ReportMissingColumn,
   type ReportMappingHints,
   type ReportProfile,
   type ReportType,

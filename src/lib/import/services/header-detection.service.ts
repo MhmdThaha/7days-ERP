@@ -10,6 +10,7 @@
 
 import { buildHeaders, isEmptyRow } from '@/lib/import/engine/parser';
 import type { ColumnDefinition, RawCellValue } from '@/lib/import/engine/types';
+import { mergeUniversalAliasesIntoIndex } from '@/lib/import/services/header-alias-dictionary';
 
 /** How many leading matrix rows to consider as header candidates. */
 export const HEADER_SCAN_ROW_LIMIT = 30;
@@ -137,14 +138,19 @@ type ScoredCandidate = {
 
 /**
  * Normalize a header cell for alias comparison:
- * trim, lowercase, collapse whitespace, strip trailing punctuation.
+ * trim, lowercase, collapse whitespace, strip bracketed suffixes,
+ * normalize underscores/dots/punctuation.
  */
 export function normalizeHeaderLabel(value: string): string {
   return value
+    .replace(/\u00a0/g, ' ')
     .trim()
     .toLowerCase()
+    .replace(/[[({][^)\]}]*[\])}]/g, ' ')
+    .replace(/[._]+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/[.:]+$/g, '');
+    .trim();
 }
 
 function buildAliasIndex(columns: readonly ColumnDefinition[]): AliasIndex {
@@ -156,11 +162,13 @@ function buildAliasIndex(columns: readonly ColumnDefinition[]): AliasIndex {
     for (const candidate of candidates) {
       const key = normalizeHeaderLabel(candidate);
 
-      if (!index.has(key)) {
+      if (key && !index.has(key)) {
         index.set(key, { field: column.field, required: column.required });
       }
     }
   }
+
+  mergeUniversalAliasesIntoIndex(index, columns, normalizeHeaderLabel);
 
   return index;
 }

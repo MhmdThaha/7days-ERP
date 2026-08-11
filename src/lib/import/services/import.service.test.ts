@@ -12,7 +12,7 @@ import * as XLSX from 'xlsx';
 import { PRODUCT_IMPORT_COLUMNS, PRODUCT_ISSUE_CODES } from '@/lib/import/definitions/product.definition';
 import { ISSUE_CODES, type MappingConfig } from '@/lib/import/engine/types';
 import { detectProductImportConflicts } from '@/lib/import/services/conflict.service';
-import { runImport } from '@/lib/import/services/import.service';
+import { emptyImportRunReport, runImport } from '@/lib/import/services/import.service';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -448,5 +448,21 @@ describe('runImport (integration)', () => {
       sellingPrice: 45,
       openingStock: 120,
     });
+  });
+
+  it('emptyImportRunReport lists all required fields when no mappings exist yet', () => {
+    const report = emptyImportRunReport(
+      'product',
+      {
+        sheetName: 'Sheet1',
+        headers: ['Foo', 'Bar'],
+        skippedEmptyRowCount: 0,
+      },
+      PRODUCT_IMPORT_COLUMNS,
+    );
+
+    expect(report.missingRequiredFields).toEqual(['name']);
+    expect(report.result.summary.totalRows).toBe(0);
+    expect(report.ignoredHeaders).toEqual(['Foo', 'Bar']);
   });
 });
