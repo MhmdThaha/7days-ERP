@@ -24,7 +24,7 @@ import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMon
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
-import type { SaleListItem, SaleStatusFilter } from '@/types/sale';
+import type { SaleListItem, SaleListPagePosition, SalePageCursor, SaleStatusFilter } from '@/types/sale';
 
 function getSaleListSummary(status: SaleStatusFilter, total: number): string {
   if (status === 'draft') {
@@ -49,12 +49,24 @@ export function SalesPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
-  const resetPage = useCallback(() => setPage(1), []);
+  const [position, setPosition] = useState<SaleListPagePosition>('first');
+  const [cursor, setCursor] = useState<SalePageCursor | null>(null);
+  const [pageEdgeCursors, setPageEdgeCursors] = useState<{
+    start: SalePageCursor | null;
+    end: SalePageCursor | null;
+  }>({ start: null, end: null });
+
+  const resetPagination = useCallback(() => {
+    setPage(1);
+    setPosition('first');
+    setCursor(null);
+  }, []);
+
   const [status, setStatus] = useStatusFilterFromSearchParams(
     searchParams,
     ['all', 'draft', 'completed'],
     'all',
-    resetPage,
+    resetPagination,
   );
   const [deletingSale, setDeletingSale] = useState<SaleListItem | null>(null);
   const [completingSale, setCompletingSale] = useState<SaleListItem | null>(null);
@@ -64,18 +76,31 @@ export function SalesPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1);
+      resetPagination();
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, resetPagination]);
 
   const { data, isLoading, isFetching, error, refetch, isRefetching } = useSales({
     search: debouncedSearch,
     status,
     page,
     pageSize: SALE_PAGE_SIZE,
+    position,
+    cursor,
   });
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    setPageEdgeCursors({
+      start: data.startCursor,
+      end: data.endCursor,
+    });
+  }, [data]);
 
   const isSearching = search !== debouncedSearch;
   const hasActiveFilters = Boolean(debouncedSearch.trim()) || status !== 'all';
@@ -83,12 +108,63 @@ export function SalesPage() {
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
   const isBusy = isDeleting || isCompleting;
+  const hasSearch = Boolean(debouncedSearch.trim());
 
   function clearFilters() {
     setSearch('');
     setDebouncedSearch('');
     setStatus('all');
-    setPage(1);
+    resetPagination();
+  }
+
+  function handlePageChange(newPage: number) {
+    if (hasSearch) {
+      setPage(newPage);
+      setPosition('first');
+      setCursor(null);
+      return;
+    }
+
+    const totalPages = data?.totalPages ?? 1;
+
+    if (newPage <= 1) {
+      setPage(1);
+      setPosition('first');
+      setCursor(null);
+      return;
+    }
+
+    if (newPage >= totalPages) {
+      if (newPage === page + 1 && pageEdgeCursors.end) {
+        setPage(newPage);
+        setPosition('next');
+        setCursor(pageEdgeCursors.end);
+        return;
+      }
+
+      setPage(totalPages);
+      setPosition('last');
+      setCursor(null);
+      return;
+    }
+
+    if (newPage === page + 1) {
+      setPage(newPage);
+      setPosition('next');
+      setCursor(pageEdgeCursors.end);
+      return;
+    }
+
+    if (newPage === page - 1) {
+      setPage(newPage);
+      setPosition('prev');
+      setCursor(pageEdgeCursors.start);
+      return;
+    }
+
+    setPage(newPage);
+    setPosition('first');
+    setCursor(null);
   }
 
   async function handleDelete() {
@@ -110,7 +186,21 @@ export function SalesPage() {
       setDeletingSale(null);
 
       if (data?.items.length === 1 && page > 1) {
-        setPage((currentPage) => currentPage - 1);
+        if (page - 1 <= 1) {
+          setPage(1);
+          setPosition('first');
+          setCursor(null);
+        } else {
+          setPage(page - 1);
+          setPosition('prev');
+          setCursor(pageEdgeCursors.start);
+        }
+      } else if (page <= 1) {
+        setPosition('first');
+        setCursor(null);
+      } else if (page >= (data?.totalPages ?? 1)) {
+        setPosition('last');
+        setCursor(null);
       }
 
       await Promise.all([
@@ -198,7 +288,7 @@ export function SalesPage() {
         onSearchChange={setSearch}
         onStatusChange={(value) => {
           setStatus(value);
-          setPage(1);
+          resetPagination();
         }}
       />
 
@@ -259,7 +349,7 @@ export function SalesPage() {
               pageSize={data.pageSize}
               entityName="sales"
               disabled={isFetching || isBusy}
-              onPageChange={setPage}
+              onPageChange={handlePageChange}
             />
           ) : null}
         </>

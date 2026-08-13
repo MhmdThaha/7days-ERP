@@ -2,6 +2,7 @@
 
 import {
   createSaleSchema,
+  saleListPageParamsSchema,
   saleListParamsSchema,
   updateSaleSchema,
 } from '@/lib/domain/schemas/sale.schema';
@@ -13,6 +14,8 @@ import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
   CreateSaleInput,
   Sale,
+  SaleListPageParams,
+  SaleListPageResult,
   SaleListParams,
   SaleListResult,
   UpdateSaleInput,
@@ -26,6 +29,18 @@ export async function listSalesAction(
     assertCan(role, 'read', 'sales');
     const validated = saleListParamsSchema.parse(params);
     return saleService.list(orgId, validated);
+  });
+}
+
+/** Sales page only — paginated when search is empty; legacy substring list when search is set. */
+export async function listSalesPageAction(
+  params: SaleListPageParams,
+): Promise<ActionResult<SaleListPageResult>> {
+  return wrapAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'sales');
+    const validated = saleListPageParamsSchema.parse(params);
+    return saleService.listPage(orgId, validated);
   });
 }
 

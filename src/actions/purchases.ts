@@ -2,6 +2,7 @@
 
 import {
   createPurchaseSchema,
+  purchaseListPageParamsSchema,
   purchaseListParamsSchema,
   updatePurchaseSchema,
 } from '@/lib/domain/schemas/purchase.schema';
@@ -13,6 +14,8 @@ import { wrapAction, type ActionResult } from '@/lib/utils/action-result';
 import type {
   CreatePurchaseInput,
   Purchase,
+  PurchaseListPageParams,
+  PurchaseListPageResult,
   PurchaseListParams,
   PurchaseListResult,
   UpdatePurchaseInput,
@@ -26,6 +29,18 @@ export async function listPurchasesAction(
     assertCan(role, 'read', 'purchase');
     const validated = purchaseListParamsSchema.parse(params);
     return purchaseService.list(orgId, validated);
+  });
+}
+
+/** Purchases page only — paginated when search is empty; legacy substring list when search is set. */
+export async function listPurchasesPageAction(
+  params: PurchaseListPageParams,
+): Promise<ActionResult<PurchaseListPageResult>> {
+  return wrapAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'purchase');
+    const validated = purchaseListPageParamsSchema.parse(params);
+    return purchaseService.listPage(orgId, validated);
   });
 }
 

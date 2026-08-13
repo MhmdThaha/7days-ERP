@@ -3,6 +3,7 @@ import 'server-only';
 import {
   aggregateExpensesByCategory,
   aggregateOperationalTotals,
+  aggregateProductCogsRanks,
   aggregateProductRankings,
   aggregateWastageByReason,
   buildDailyAnalytics,
@@ -120,6 +121,16 @@ export const monthlyReportRepository = {
 
     const completedSales = fullMonthSales.filter((sale): sale is Sale => sale !== null);
     const completedWastage = fullMonthWastage.filter((entry): entry is Wastage => entry !== null);
+
+    // Product-level COGS must use stored per-line `cogs`/`quantity` (no recalculation).
+    // We fetch completed sales date-scoped to avoid loading the entire lifetime collection.
+    const completedSalesForCogs: Sale[] = [];
+    for (const date of getDaysInMonth(monthKey)) {
+      const daySales = await saleRepository.listCompletedByDateWithLines(orgId, date);
+      completedSalesForCogs.push(...daySales);
+    }
+
+    const productCogsRanks = aggregateProductCogsRanks(completedSalesForCogs);
 
     const profitSummary = aggregateDailySummaries(dailySummaries);
     const previousProfitSummary = aggregateDailySummaries(previousDailySummaries);
@@ -241,6 +252,7 @@ export const monthlyReportRepository = {
       topRevenueProducts,
       topWastageProducts,
       topExpenseCategories,
+      productCogsRanks,
       transactions,
     };
   },

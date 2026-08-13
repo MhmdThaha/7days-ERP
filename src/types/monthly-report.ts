@@ -47,6 +47,17 @@ export type MonthlyReportProductRank = {
   wastageCost: number;
 };
 
+export type MonthlyReportProductCogsRank = {
+  productId: string;
+  productName: string;
+  productCode: string;
+  quantitySold: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  averageCogsPerUnit: number;
+};
+
 export type MonthlyReportComparisonMetric = {
   current: number;
   previous: number;
@@ -109,5 +120,6 @@ export type MonthlyReportData = {
   topRevenueProducts: MonthlyReportProductRank[];
   topWastageProducts: MonthlyReportProductRank[];
   topExpenseCategories: MonthlyReportBreakdownItem[];
+  productCogsRanks: MonthlyReportProductCogsRank[];
   transactions: DailyReportTransaction[];
 };

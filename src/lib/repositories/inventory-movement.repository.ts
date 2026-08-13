@@ -68,10 +68,13 @@ export const inventoryMovementRepository = {
     date: string,
     movementType: MovementType,
   ): Promise<number> {
-    const movements = await this.listByDate(orgId, date);
+    const snapshot = await getInventoryMovementsCollection(orgId)
+      .where('movementDate', '==', date)
+      .where('movementType', '==', movementType)
+      .get();
 
-    return movements
-      .filter((movement) => movement.movementType === movementType)
+    return snapshot.docs
+      .map((doc) => toMovement(doc.id, doc.data() as InventoryMovementDocument))
       .reduce((sum, movement) => sum + movement.totalCost, 0);
   },
 

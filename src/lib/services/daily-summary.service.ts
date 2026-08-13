@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { DAILY_SUMMARY_FETCH_PAGE_SIZE } from '@/lib/domain/constants/daily-summary';
 import {
   buildDailySummaryMetrics,
   resolveCostTotal,
@@ -15,10 +14,6 @@ import { wastageRepository } from '@/lib/repositories/wastage.repository';
 import { getDaysInMonth } from '@/lib/utils/month';
 import type { DailySummary, DailySummaryExpensesByCategory } from '@/types/daily-summary';
 import type { ExpenseCategory } from '@/types/expense';
-
-function isCompletedOnDate(recordDate: string, status: string, date: string): boolean {
-  return recordDate === date && status === 'completed';
-}
 
 export const dailySummaryService = {
   async getOrRecalculate(orgId: string, date: string): Promise<DailySummary> {
@@ -56,35 +51,25 @@ export const dailySummaryService = {
   },
 
   async recalculate(orgId: string, date: string): Promise<DailySummary> {
-    const listParams = { page: 1, pageSize: DAILY_SUMMARY_FETCH_PAGE_SIZE };
-
     const [
-      salesResult,
-      expensesResult,
-      productionResult,
-      wastageResult,
-      purchasesResult,
+      daySales,
+      dayExpenses,
+      dayProduction,
+      dayWastage,
+      dayPurchases,
       saleOutCogsFromMovements,
       productionCostFromMovements,
       wastageCostFromMovements,
     ] = await Promise.all([
-      saleRepository.list(orgId, { ...listParams, status: 'completed' }),
-      expenseRepository.list(orgId, { ...listParams, status: 'completed' }),
-      productionRepository.list(orgId, { ...listParams, status: 'completed' }),
-      wastageRepository.list(orgId, listParams),
-      purchaseRepository.list(orgId, { ...listParams, status: 'received' }),
+      saleRepository.listCompletedByDate(orgId, date),
+      expenseRepository.listCompletedByDate(orgId, date),
+      productionRepository.listCompletedByDate(orgId, date),
+      wastageRepository.listCompletedByDate(orgId, date),
+      purchaseRepository.listReceivedByDate(orgId, date),
       inventoryMovementRepository.sumTotalCostByMovementType(orgId, date, 'SALE_OUT'),
       inventoryMovementRepository.sumTotalCostByMovementType(orgId, date, 'PRODUCTION_FINISHED_IN'),
       inventoryMovementRepository.sumTotalCostByMovementType(orgId, date, 'WASTAGE_OUT'),
     ]);
-
-    const daySales = salesResult.items.filter((sale) => sale.saleDate === date);
-    const dayExpenses = expensesResult.items.filter((expense) => expense.expenseDate === date);
-    const dayProduction = productionResult.items.filter((entry) => entry.productionDate === date);
-    const dayWastage = wastageResult.items.filter((entry) =>
-      isCompletedOnDate(entry.wastageDate, entry.status, date),
-    );
-    const dayPurchases = purchasesResult.items.filter((purchase) => purchase.purchaseDate === date);
 
     const totalSalesRevenue = daySales.reduce((sum, sale) => sum + sale.subtotal, 0);
     const totalSalesDiscount = 0;

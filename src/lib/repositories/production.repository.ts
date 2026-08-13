@@ -212,6 +212,18 @@ export const productionRepository = {
     };
   },
 
+  async listCompletedByDate(orgId: string, date: string): Promise<ProductionListItem[]> {
+    const snapshot = await getOrgCollection(orgId, 'production')
+      .where('deletedAt', '==', null)
+      .where('status', '==', 'completed')
+      .where('productionDate', '==', date)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => toProduction(doc.id, doc.data() as ProductionDocument))
+      .map(toListItem);
+  },
+
   async getById(orgId: string, productionId: string): Promise<Production | null> {
     const doc = await getOrgCollection(orgId, 'production').doc(productionId).get();
 

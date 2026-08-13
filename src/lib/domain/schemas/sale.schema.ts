@@ -93,3 +93,17 @@ export const saleListParamsSchema = z.object({
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().max(100).default(25),
 });
+
+export const salePageCursorSchema = z.object({
+  saleDate: z.string().min(1),
+  saleNumber: z.string().min(1),
+});
+
+export const saleListPageParamsSchema = z.object({
+  search: z.string().trim().optional(),
+  status: z.enum(['all', 'draft', 'completed']).optional(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().max(100).default(25),
+  position: z.enum(['first', 'next', 'prev', 'last']).default('first'),
+  cursor: salePageCursorSchema.nullable().optional(),
+});

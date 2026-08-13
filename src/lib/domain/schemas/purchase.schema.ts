@@ -104,3 +104,17 @@ export const purchaseListParamsSchema = z.object({
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().max(100).default(25),
 });
+
+export const purchasePageCursorSchema = z.object({
+  purchaseDate: z.string().min(1),
+  purchaseNumber: z.string().min(1),
+});
+
+export const purchaseListPageParamsSchema = z.object({
+  search: z.string().trim().optional(),
+  status: z.enum(['all', 'draft', 'received']).optional(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().max(100).default(25),
+  position: z.enum(['first', 'next', 'prev', 'last']).default('first'),
+  cursor: purchasePageCursorSchema.nullable().optional(),
+});

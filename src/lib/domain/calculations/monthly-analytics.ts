@@ -11,6 +11,7 @@ import type {
   MonthlyReportExecutiveKpis,
   MonthlyReportInsight,
   MonthlyReportProductRank,
+  MonthlyReportProductCogsRank,
   MonthlyReportProfitSummary,
   MonthlyReportSummary,
 } from '@/types/monthly-report';
@@ -208,6 +209,87 @@ export function aggregateProductRankings(sales: Sale[], wastageEntries: Wastage[
       .sort((a, b) => b.wastageCost - a.wastageCost)
       .slice(0, TOP_RANK_LIMIT),
   };
+}
+
+type ProductCogsAccumulator = {
+  productId: string;
+  productName: string;
+  productCode: string;
+  quantitySold: number;
+  revenue: number;
+  cogs: number;
+};
+
+function upsertProductCogsAccumulator(
+  map: Map<string, ProductCogsAccumulator>,
+  productId: string,
+  productName: string,
+  productCode: string,
+  quantityDelta: number,
+  revenueDelta: number,
+  cogsDelta: number,
+): void {
+  const existing = map.get(productId);
+
+  if (existing) {
+    existing.quantitySold += quantityDelta;
+    existing.revenue += revenueDelta;
+    existing.cogs += cogsDelta;
+    return;
+  }
+
+  map.set(productId, {
+    productId,
+    productName,
+    productCode,
+    quantitySold: quantityDelta,
+    revenue: revenueDelta,
+    cogs: cogsDelta,
+  });
+}
+
+function toProductCogsRank(entry: ProductCogsAccumulator) {
+  const grossProfit = entry.revenue - entry.cogs;
+  const averageCogsPerUnit = entry.quantitySold > 0 ? entry.cogs / entry.quantitySold : 0;
+
+  return {
+    productId: entry.productId,
+    productName: entry.productName,
+    productCode: entry.productCode,
+    quantitySold: entry.quantitySold,
+    revenue: entry.revenue,
+    cogs: entry.cogs,
+    grossProfit,
+    averageCogsPerUnit,
+  } satisfies MonthlyReportProductCogsRank;
+}
+
+/**
+ * Aggregates product-level COGS using ONLY the already-stored completed
+ * sale line fields (`line.quantity`, `line.lineTotal`, `line.cogs`).
+ *
+ * Does NOT recalculate historical cost from today's product averageCost/recipe.
+ */
+export function aggregateProductCogsRanks(sales: Sale[]): MonthlyReportProductCogsRank[] {
+  const salesByProduct = new Map<string, ProductCogsAccumulator>();
+
+  for (const sale of sales) {
+    for (const line of sale.lines) {
+      upsertProductCogsAccumulator(
+        salesByProduct,
+        line.productId,
+        line.productNameSnapshot,
+        line.productCodeSnapshot,
+        line.quantity,
+        line.lineTotal,
+        line.cogs,
+      );
+    }
+  }
+
+  return Array.from(salesByProduct.values())
+    .map(toProductCogsRank)
+    .sort((a, b) => b.cogs - a.cogs);
 }
 
 export function calculateInventoryValue(

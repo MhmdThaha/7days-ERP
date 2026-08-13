@@ -20,6 +20,7 @@ import { ReportExecutiveKpiCard } from '@/components/reports/report-executive-kp
 import { reportExecutiveKpiGridClass } from '@/components/reports/report-kpi-value';
 import { ReportExecutiveVerdict } from '@/components/reports/report-executive-verdict';
 import { MonthlyReportAnalyticsSection } from '@/components/reports/monthly-report-analytics-section';
+import { MonthlyReportProductCogsSection } from '@/components/reports/monthly-report-product-cogs-section';
 import { MonthlyReportFinancialDetailsSection } from '@/components/reports/monthly-report-financial-details-section';
 import { MonthlyReportSkeleton } from '@/components/reports/monthly-report-skeleton';
 import { ReportProfitFlowSection } from '@/components/reports/report-profit-flow-section';
@@ -233,6 +234,8 @@ export function MonthlyReportPage() {
         expenseBreakdown={data.expenseBreakdown}
         topRevenueProducts={data.topRevenueProducts}
       />
+
+      <MonthlyReportProductCogsSection productCogsRanks={data.productCogsRanks} />
 
       <ReportActionCenter
         items={mapActionableInsights(data.insights)}

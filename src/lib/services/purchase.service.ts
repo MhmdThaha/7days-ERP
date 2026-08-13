@@ -5,7 +5,6 @@ import {
   derivePurchaseQuantity,
   derivePurchaseUnitCost,
 } from '@/lib/domain/calculations/purchase-pricing';
-import { PURCHASE_NUMBER_PREFIX } from '@/lib/domain/constants/purchase';
 import { DomainError } from '@/lib/domain/errors';
 import { convertToCanonicalQuantity } from '@/lib/domain/units/uom-conversion';
 import { rawMaterialRepository } from '@/lib/repositories/raw-material.repository';
@@ -19,31 +18,15 @@ import type {
   Purchase,
   PurchaseLineItem,
   PurchaseLineItemInput,
+  PurchaseListPageParams,
+  PurchaseListPageResult,
   PurchaseListParams,
   PurchaseListResult,
   UpdatePurchaseInput,
 } from '@/types/purchase';
 
-function formatGeneratedNumber(sequence: number): string {
-  return `${PURCHASE_NUMBER_PREFIX}-${String(sequence).padStart(3, '0')}`;
-}
-
-
 function calculateTotalAmount(lineItems: PurchaseLineItem[]): number {
   return lineItems.reduce((sum, lineItem) => sum + lineItem.lineTotal, 0);
-}
-
-async function resolvePurchaseNumber(orgId: string): Promise<string> {
-  const highest = await purchaseRepository.getHighestPurchaseNumber(orgId);
-  let next = highest + 1;
-  let generated = formatGeneratedNumber(next);
-
-  while (await purchaseRepository.findByPurchaseNumber(orgId, generated)) {
-    next += 1;
-    generated = formatGeneratedNumber(next);
-  }
-
-  return generated;
 }
 
 async function resolveLineItems(
@@ -99,6 +82,44 @@ export const purchaseService = {
     return purchaseRepository.list(orgId, params);
   },
 
+  /**
+   * Purchases page retrieval: empty search → Firestore listPage; non-empty search → legacy list()
+   * substring semantics (unchanged).
+   */
+  async listPage(orgId: string, params: PurchaseListPageParams): Promise<PurchaseListPageResult> {
+    const search = params.search?.trim() ?? '';
+
+    if (search) {
+      const result = await purchaseRepository.list(orgId, {
+        search,
+        status: params.status,
+        page: params.page ?? 1,
+        pageSize: params.pageSize,
+      });
+
+      const first = result.items[0];
+      const last = result.items[result.items.length - 1];
+
+      return {
+        ...result,
+        startCursor: first
+          ? { purchaseDate: first.purchaseDate, purchaseNumber: first.purchaseNumber }
+          : null,
+        endCursor: last
+          ? { purchaseDate: last.purchaseDate, purchaseNumber: last.purchaseNumber }
+          : null,
+      };
+    }
+
+    return purchaseRepository.listPage(orgId, {
+      status: params.status,
+      pageSize: params.pageSize,
+      page: params.page,
+      position: params.position,
+      cursor: params.cursor,
+    });
+  },
+
   async getById(orgId: string, purchaseId: string): Promise<Purchase> {
     const purchase = await purchaseRepository.getById(orgId, purchaseId);
 
@@ -110,7 +131,6 @@ export const purchaseService = {
   },
 
   async create(orgId: string, input: CreatePurchaseInput, userId: string): Promise<Purchase> {
-    const purchaseNumber = await resolvePurchaseNumber(orgId);
     const lineItems = await resolveLineItems(orgId, input.lineItems);
     const totalAmount = calculateTotalAmount(lineItems);
 
@@ -118,7 +138,6 @@ export const purchaseService = {
       orgId,
       {
         ...input,
-        purchaseNumber,
         lineItems,
         totalAmount,
       },
@@ -173,6 +192,11 @@ export const purchaseService = {
   },
 
   async receive(orgId: string, purchaseId: string, userId: string): Promise<Purchase> {
+    const receiveStartedAt = performance.now();
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[TEMP-PERF][Save&Receive]', { stage: 'service.receive start', purchaseId });
+    }
+
     const purchase = await purchaseRepository.getById(orgId, purchaseId);
 
     if (!purchase) {
@@ -187,8 +211,25 @@ export const purchaseService = {
       throw new DomainError('VALIDATION_ERROR', 'Purchase must have at least one line item');
     }
 
+    const txnStartedAt = performance.now();
     const received = await purchaseRepository.receive(orgId, purchaseId, userId);
+    const txnMs = Math.round(performance.now() - txnStartedAt);
+
+    const summaryStartedAt = performance.now();
     await dailySummaryService.recalculate(orgId, received.purchaseDate);
+    const summaryMs = Math.round(performance.now() - summaryStartedAt);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[TEMP-PERF][Save&Receive]', {
+        stage: 'service.receive return',
+        purchaseId,
+        getByIdAndGuardsMs: Math.round(txnStartedAt - receiveStartedAt),
+        receiveTxnMs: txnMs,
+        dailySummaryMs: summaryMs,
+        serviceReceiveTotalMs: Math.round(performance.now() - receiveStartedAt),
+      });
+    }
+
     return received;
   },
 };

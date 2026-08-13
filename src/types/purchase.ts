@@ -75,6 +75,31 @@ export type PurchaseListResult = {
   totalPages: number;
 };
 
+export type PurchasePageCursor = {
+  purchaseDate: string;
+  purchaseNumber: string;
+};
+
+export type PurchaseListPagePosition = 'first' | 'next' | 'prev' | 'last';
+
+/**
+ * Purchases page params. Empty search → Firestore listPage.
+ * Non-empty search → legacy list() substring path (listPage ignores search).
+ */
+export type PurchaseListPageParams = {
+  search?: string;
+  status?: PurchaseStatusFilter;
+  page?: number;
+  pageSize?: number;
+  position: PurchaseListPagePosition;
+  cursor?: PurchasePageCursor | null;
+};
+
+export type PurchaseListPageResult = PurchaseListResult & {
+  startCursor: PurchasePageCursor | null;
+  endCursor: PurchasePageCursor | null;
+};
+
 export type PurchaseLineItemInput = {
   id?: string;
   rawMaterialId: string;

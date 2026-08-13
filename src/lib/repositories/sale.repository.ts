@@ -2,7 +2,7 @@ import 'server-only';
 
 import { randomUUID } from 'crypto';
 
-import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
+import { Timestamp, type DocumentReference, type Query, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 import { DomainError } from '@/lib/domain/errors';
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
@@ -17,8 +17,11 @@ import type {
   Sale,
   SaleLineItem,
   SaleListItem,
+  SaleListPageParams,
+  SaleListPageResult,
   SaleListParams,
   SaleListResult,
+  SalePageCursor,
   SaleStatus,
   SaleStatusFilter,
 } from '@/types/sale';
@@ -142,6 +145,27 @@ function matchesStatus(sale: SaleListItem, status: SaleStatusFilter | undefined)
   return sale.status === status;
 }
 
+function toPageCursor(sale: SaleListItem): SalePageCursor {
+  return {
+    saleDate: sale.saleDate,
+    saleNumber: sale.saleNumber,
+  };
+}
+
+function buildSalesListBaseQuery(orgId: string, status: SaleStatusFilter | undefined): Query {
+  let query: Query = getOrgCollection(orgId, 'sales').where('deletedAt', '==', null);
+
+  if (status && status !== 'all') {
+    query = query.where('status', '==', status);
+  }
+
+  return query;
+}
+
+function mapSaleDocsToListItems(docs: QueryDocumentSnapshot[]): SaleListItem[] {
+  return docs.map((doc) => toListItem(toSale(doc.id, doc.data() as SaleDocument)));
+}
+
 function assertDraftSaleInTransaction(saleData: SaleDocument): void {
   if (saleData.deletedAt) {
     throw new DomainError('NOT_FOUND', 'Sale not found');
@@ -189,6 +213,118 @@ export const saleRepository = {
       pageSize,
       totalPages,
     };
+  },
+
+  /**
+   * Firestore-native pagination for the Sales page (empty search).
+   * Does not change {@link saleRepository.list} — reports/dashboard keep using list().
+   */
+  async listPage(orgId: string, params: SaleListPageParams): Promise<SaleListPageResult> {
+    const pageSize = params.pageSize ?? 25;
+    const status = params.status ?? 'all';
+    const position = params.position;
+    const baseQuery = buildSalesListBaseQuery(orgId, status);
+
+    const totalSnapshot = await baseQuery.count().get();
+    const total = totalSnapshot.data().count;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    if (total === 0) {
+      return {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+        startCursor: null,
+        endCursor: null,
+      };
+    }
+
+    if ((position === 'next' || position === 'prev') && !params.cursor) {
+      throw new DomainError('VALIDATION_ERROR', 'Pagination cursor is required');
+    }
+
+    let items: SaleListItem[];
+
+    if (position === 'first') {
+      const snapshot = await baseQuery
+        .orderBy('saleDate', 'desc')
+        .orderBy('saleNumber', 'desc')
+        .limit(pageSize)
+        .get();
+      items = mapSaleDocsToListItems(snapshot.docs);
+    } else if (position === 'next') {
+      const cursor = params.cursor!;
+      const snapshot = await baseQuery
+        .orderBy('saleDate', 'desc')
+        .orderBy('saleNumber', 'desc')
+        .startAfter(cursor.saleDate, cursor.saleNumber)
+        .limit(pageSize)
+        .get();
+      items = mapSaleDocsToListItems(snapshot.docs);
+    } else if (position === 'prev') {
+      const cursor = params.cursor!;
+      const snapshot = await baseQuery
+        .orderBy('saleDate', 'asc')
+        .orderBy('saleNumber', 'asc')
+        .startAfter(cursor.saleDate, cursor.saleNumber)
+        .limit(pageSize)
+        .get();
+      items = mapSaleDocsToListItems(snapshot.docs).reverse();
+    } else {
+      const lastPageSize = total % pageSize === 0 ? pageSize : total % pageSize;
+      const snapshot = await baseQuery
+        .orderBy('saleDate', 'asc')
+        .orderBy('saleNumber', 'asc')
+        .limit(lastPageSize)
+        .get();
+      items = mapSaleDocsToListItems(snapshot.docs).reverse();
+    }
+
+    const page =
+      position === 'first' ? 1 : position === 'last' ? totalPages : Math.min(params.page ?? 1, totalPages);
+
+    const first = items[0];
+    const last = items[items.length - 1];
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      startCursor: first ? toPageCursor(first) : null,
+      endCursor: last ? toPageCursor(last) : null,
+    };
+  },
+
+  async listCompletedByDate(orgId: string, date: string): Promise<SaleListItem[]> {
+    const snapshot = await getOrgCollection(orgId, 'sales')
+      .where('deletedAt', '==', null)
+      .where('status', '==', 'completed')
+      .where('saleDate', '==', date)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => toSale(doc.id, doc.data() as SaleDocument))
+      .map(toListItem);
+  },
+
+  /**
+   * Fetches fully-resolved completed sales including their `lines[]`,
+   * so reports can aggregate stored per-line COGS.
+   *
+   * NOTE: Does NOT recalculate historical COGS; it uses stored `line.cogs`.
+   */
+  async listCompletedByDateWithLines(orgId: string, date: string): Promise<Sale[]> {
+    const snapshot = await getOrgCollection(orgId, 'sales')
+      .where('deletedAt', '==', null)
+      .where('status', '==', 'completed')
+      .where('saleDate', '==', date)
+      .get();
+
+    return snapshot.docs.map((doc) => toSale(doc.id, doc.data() as SaleDocument));
   },
 
   async getById(orgId: string, saleId: string): Promise<Sale | null> {

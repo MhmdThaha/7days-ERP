@@ -68,6 +68,38 @@ export type SaleListResult = {
   totalPages: number;
 };
 
+/** Cursor for Firestore saleDate DESC + saleNumber DESC pagination. */
+export type SalePageCursor = {
+  saleDate: string;
+  saleNumber: string;
+};
+
+export type SaleListPagePosition = 'first' | 'next' | 'prev' | 'last';
+
+/**
+ * Sales-page pagination params. When `search` is non-empty, callers should use
+ * the legacy list path (substring search); listPage ignores search.
+ */
+export type SaleListPageParams = {
+  status?: SaleStatusFilter;
+  pageSize?: number;
+  /** UI page number echoed in the result (1-based). */
+  page?: number;
+  position: SaleListPagePosition;
+  /** Required for `next` / `prev`. */
+  cursor?: SalePageCursor | null;
+  /**
+   * When set (non-empty), Sales UI uses legacy substring search via list().
+   * Not applied inside saleRepository.listPage.
+   */
+  search?: string;
+};
+
+export type SaleListPageResult = SaleListResult & {
+  startCursor: SalePageCursor | null;
+  endCursor: SalePageCursor | null;
+};
+
 export type SaleLineItemInput = {
   id?: string;
   productId: string;

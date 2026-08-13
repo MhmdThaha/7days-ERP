@@ -24,7 +24,12 @@ import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
-import type { PurchaseListItem, PurchaseStatusFilter } from '@/types/purchase';
+import type {
+  PurchaseListItem,
+  PurchaseListPagePosition,
+  PurchasePageCursor,
+  PurchaseStatusFilter,
+} from '@/types/purchase';
 
 function getPurchaseListSummary(status: PurchaseStatusFilter, total: number): string {
   if (status === 'draft') {
@@ -49,12 +54,24 @@ export function PurchasesPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
-  const resetPage = useCallback(() => setPage(1), []);
+  const [position, setPosition] = useState<PurchaseListPagePosition>('first');
+  const [cursor, setCursor] = useState<PurchasePageCursor | null>(null);
+  const [pageEdgeCursors, setPageEdgeCursors] = useState<{
+    start: PurchasePageCursor | null;
+    end: PurchasePageCursor | null;
+  }>({ start: null, end: null });
+
+  const resetPagination = useCallback(() => {
+    setPage(1);
+    setPosition('first');
+    setCursor(null);
+  }, []);
+
   const [status, setStatus] = useStatusFilterFromSearchParams(
     searchParams,
     ['all', 'draft', 'received'],
     'all',
-    resetPage,
+    resetPagination,
   );
   const [deletingPurchase, setDeletingPurchase] = useState<PurchaseListItem | null>(null);
   const [receivingPurchase, setReceivingPurchase] = useState<PurchaseListItem | null>(null);
@@ -64,18 +81,31 @@ export function PurchasesPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1);
+      resetPagination();
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, resetPagination]);
 
   const { data, isLoading, isFetching, error, refetch, isRefetching } = usePurchases({
     search: debouncedSearch,
     status,
     page,
     pageSize: PURCHASE_PAGE_SIZE,
+    position,
+    cursor,
   });
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    setPageEdgeCursors({
+      start: data.startCursor,
+      end: data.endCursor,
+    });
+  }, [data]);
 
   const isSearching = search !== debouncedSearch;
   const hasActiveFilters = Boolean(debouncedSearch.trim()) || status !== 'all';
@@ -83,12 +113,63 @@ export function PurchasesPage() {
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
   const isBusy = isDeleting || isReceiving;
+  const hasSearch = Boolean(debouncedSearch.trim());
 
   function clearFilters() {
     setSearch('');
     setDebouncedSearch('');
     setStatus('all');
-    setPage(1);
+    resetPagination();
+  }
+
+  function handlePageChange(newPage: number) {
+    if (hasSearch) {
+      setPage(newPage);
+      setPosition('first');
+      setCursor(null);
+      return;
+    }
+
+    const totalPages = data?.totalPages ?? 1;
+
+    if (newPage <= 1) {
+      setPage(1);
+      setPosition('first');
+      setCursor(null);
+      return;
+    }
+
+    if (newPage >= totalPages) {
+      if (newPage === page + 1 && pageEdgeCursors.end) {
+        setPage(newPage);
+        setPosition('next');
+        setCursor(pageEdgeCursors.end);
+        return;
+      }
+
+      setPage(totalPages);
+      setPosition('last');
+      setCursor(null);
+      return;
+    }
+
+    if (newPage === page + 1) {
+      setPage(newPage);
+      setPosition('next');
+      setCursor(pageEdgeCursors.end);
+      return;
+    }
+
+    if (newPage === page - 1) {
+      setPage(newPage);
+      setPosition('prev');
+      setCursor(pageEdgeCursors.start);
+      return;
+    }
+
+    setPage(newPage);
+    setPosition('first');
+    setCursor(null);
   }
 
   async function invalidateAfterMutation(purchaseId?: string) {
@@ -124,7 +205,21 @@ export function PurchasesPage() {
       setDeletingPurchase(null);
 
       if (data?.items.length === 1 && page > 1) {
-        setPage((currentPage) => currentPage - 1);
+        if (page - 1 <= 1) {
+          setPage(1);
+          setPosition('first');
+          setCursor(null);
+        } else {
+          setPage(page - 1);
+          setPosition('prev');
+          setCursor(pageEdgeCursors.start);
+        }
+      } else if (page <= 1) {
+        setPosition('first');
+        setCursor(null);
+      } else if (page >= (data?.totalPages ?? 1)) {
+        setPosition('last');
+        setCursor(null);
       }
 
       await invalidateAfterMutation();
@@ -194,7 +289,7 @@ export function PurchasesPage() {
         onSearchChange={setSearch}
         onStatusChange={(value) => {
           setStatus(value);
-          setPage(1);
+          resetPagination();
         }}
       />
 
@@ -255,7 +350,7 @@ export function PurchasesPage() {
               pageSize={data.pageSize}
               entityName="purchases"
               disabled={isFetching || isBusy}
-              onPageChange={setPage}
+              onPageChange={handlePageChange}
             />
           ) : null}
         </>

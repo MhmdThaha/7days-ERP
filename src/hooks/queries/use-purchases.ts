@@ -2,22 +2,24 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
-import { listPurchasesAction } from '@/actions/purchases';
+import { listPurchasesPageAction } from '@/actions/purchases';
 import { useAuth } from '@/hooks/use-auth';
 import { PURCHASE_PAGE_SIZE } from '@/lib/domain/constants/purchase';
-import type { PurchaseListParams } from '@/types/purchase';
+import type { PurchaseListPageParams, PurchaseListPageResult } from '@/types/purchase';
 
-export function usePurchases(params: PurchaseListParams) {
+export function usePurchases(params: PurchaseListPageParams) {
   const { user, isAuthenticated } = useAuth();
 
-  return useQuery({
+  return useQuery<PurchaseListPageResult>({
     queryKey: ['purchases', user?.uid, params],
     queryFn: async () => {
-      const result = await listPurchasesAction({
+      const result = await listPurchasesPageAction({
         search: params.search,
         status: params.status,
         page: params.page ?? 1,
         pageSize: params.pageSize ?? PURCHASE_PAGE_SIZE,
+        position: params.position ?? 'first',
+        cursor: params.cursor,
       });
 
       if (!result.success) {

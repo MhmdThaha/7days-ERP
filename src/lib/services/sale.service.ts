@@ -10,6 +10,8 @@ import type {
   Sale,
   SaleLineItem,
   SaleLineItemInput,
+  SaleListPageParams,
+  SaleListPageResult,
   SaleListParams,
   SaleListResult,
   UpdateSaleInput,
@@ -80,6 +82,42 @@ function assertDraftSale(sale: Sale): void {
 export const saleService = {
   async list(orgId: string, params: SaleListParams): Promise<SaleListResult> {
     return saleRepository.list(orgId, params);
+  },
+
+  /**
+   * Sales page retrieval: empty search → Firestore listPage; non-empty search → legacy list()
+   * substring semantics (unchanged).
+   */
+  async listPage(orgId: string, params: SaleListPageParams): Promise<SaleListPageResult> {
+    const search = params.search?.trim() ?? '';
+
+    if (search) {
+      const result = await saleRepository.list(orgId, {
+        search,
+        status: params.status,
+        page: params.page ?? 1,
+        pageSize: params.pageSize,
+      });
+
+      const first = result.items[0];
+      const last = result.items[result.items.length - 1];
+
+      return {
+        ...result,
+        startCursor: first
+          ? { saleDate: first.saleDate, saleNumber: first.saleNumber }
+          : null,
+        endCursor: last ? { saleDate: last.saleDate, saleNumber: last.saleNumber } : null,
+      };
+    }
+
+    return saleRepository.listPage(orgId, {
+      status: params.status,
+      pageSize: params.pageSize,
+      page: params.page,
+      position: params.position,
+      cursor: params.cursor,
+    });
   },
 
   async getById(orgId: string, saleId: string): Promise<Sale> {

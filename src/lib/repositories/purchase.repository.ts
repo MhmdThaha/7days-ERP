@@ -2,21 +2,28 @@ import 'server-only';
 
 import { randomUUID } from 'crypto';
 
-import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
+import { Timestamp, type DocumentReference, type Query, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
 import { buildAuditFields, getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
 import { reserveUniqueNumberInTransaction } from '@/lib/repositories/unique-number.repository';
 import { inventoryRepository } from '@/lib/repositories/inventory.repository';
 import { calculateNewWac } from '@/lib/domain/calculations/wac';
+import {
+  findNextFreePurchaseSequence,
+  parsePurchaseNumberSequence,
+} from '@/lib/domain/purchase-number';
 import { DomainError } from '@/lib/domain/errors';
 import type {
   PaymentStatus,
   Purchase,
   PurchaseLineItem,
   PurchaseListItem,
+  PurchaseListPageParams,
+  PurchaseListPageResult,
   PurchaseListParams,
   PurchaseListResult,
+  PurchasePageCursor,
   PurchaseStatus,
   PurchaseStatusFilter,
 } from '@/types/purchase';
@@ -153,6 +160,27 @@ function matchesStatus(purchase: PurchaseListItem, status: PurchaseStatusFilter 
   return purchase.status === status;
 }
 
+function toPageCursor(purchase: PurchaseListItem): PurchasePageCursor {
+  return {
+    purchaseDate: purchase.purchaseDate,
+    purchaseNumber: purchase.purchaseNumber,
+  };
+}
+
+function buildPurchasesListBaseQuery(orgId: string, status: PurchaseStatusFilter | undefined): Query {
+  let query: Query = getOrgCollection(orgId, 'purchases').where('deletedAt', '==', null);
+
+  if (status && status !== 'all') {
+    query = query.where('status', '==', status);
+  }
+
+  return query;
+}
+
+function mapPurchaseDocsToListItems(docs: QueryDocumentSnapshot[]): PurchaseListItem[] {
+  return docs.map((doc) => toListItem(toPurchase(doc.id, doc.data() as PurchaseDocument)));
+}
+
 function assertDraftPurchaseInTransaction(purchaseData: PurchaseDocument): void {
   if (purchaseData.deletedAt) {
     throw new DomainError('NOT_FOUND', 'Purchase not found');
@@ -202,6 +230,103 @@ export const purchaseRepository = {
     };
   },
 
+  /**
+   * Firestore-native pagination for the Purchases page (empty search).
+   * Does not change {@link purchaseRepository.list} — search keeps using list().
+   * Ordering matches list(): purchaseDate DESC, purchaseNumber DESC.
+   */
+  async listPage(orgId: string, params: PurchaseListPageParams): Promise<PurchaseListPageResult> {
+    const pageSize = params.pageSize ?? 25;
+    const status = params.status ?? 'all';
+    const position = params.position;
+    const baseQuery = buildPurchasesListBaseQuery(orgId, status);
+
+    const totalSnapshot = await baseQuery.count().get();
+    const total = totalSnapshot.data().count;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    if (total === 0) {
+      return {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+        startCursor: null,
+        endCursor: null,
+      };
+    }
+
+    if ((position === 'next' || position === 'prev') && !params.cursor) {
+      throw new DomainError('VALIDATION_ERROR', 'Pagination cursor is required');
+    }
+
+    let items: PurchaseListItem[];
+
+    if (position === 'first') {
+      const snapshot = await baseQuery
+        .orderBy('purchaseDate', 'desc')
+        .orderBy('purchaseNumber', 'desc')
+        .limit(pageSize)
+        .get();
+      items = mapPurchaseDocsToListItems(snapshot.docs);
+    } else if (position === 'next') {
+      const cursor = params.cursor!;
+      const snapshot = await baseQuery
+        .orderBy('purchaseDate', 'desc')
+        .orderBy('purchaseNumber', 'desc')
+        .startAfter(cursor.purchaseDate, cursor.purchaseNumber)
+        .limit(pageSize)
+        .get();
+      items = mapPurchaseDocsToListItems(snapshot.docs);
+    } else if (position === 'prev') {
+      const cursor = params.cursor!;
+      const snapshot = await baseQuery
+        .orderBy('purchaseDate', 'asc')
+        .orderBy('purchaseNumber', 'asc')
+        .startAfter(cursor.purchaseDate, cursor.purchaseNumber)
+        .limit(pageSize)
+        .get();
+      items = mapPurchaseDocsToListItems(snapshot.docs).reverse();
+    } else {
+      const lastPageSize = total % pageSize === 0 ? pageSize : total % pageSize;
+      const snapshot = await baseQuery
+        .orderBy('purchaseDate', 'asc')
+        .orderBy('purchaseNumber', 'asc')
+        .limit(lastPageSize)
+        .get();
+      items = mapPurchaseDocsToListItems(snapshot.docs).reverse();
+    }
+
+    const page =
+      position === 'first' ? 1 : position === 'last' ? totalPages : Math.min(params.page ?? 1, totalPages);
+
+    const first = items[0];
+    const last = items[items.length - 1];
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      startCursor: first ? toPageCursor(first) : null,
+      endCursor: last ? toPageCursor(last) : null,
+    };
+  },
+
+  async listReceivedByDate(orgId: string, date: string): Promise<PurchaseListItem[]> {
+    const snapshot = await getOrgCollection(orgId, 'purchases')
+      .where('deletedAt', '==', null)
+      .where('status', '==', 'received')
+      .where('purchaseDate', '==', date)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => toPurchase(doc.id, doc.data() as PurchaseDocument))
+      .map(toListItem);
+  },
+
   async getById(orgId: string, purchaseId: string): Promise<Purchase | null> {
     const doc = await getOrgCollection(orgId, 'purchases').doc(purchaseId).get();
 
@@ -243,6 +368,10 @@ export const purchaseRepository = {
     return toPurchase(doc.id, doc.data() as PurchaseDocument);
   },
 
+  /**
+   * Full active-purchase scan used only for one-time sequence initialization.
+   * Do not call on every create — use documentSequences/purchase instead.
+   */
   async getHighestPurchaseNumber(orgId: string): Promise<number> {
     const snapshot = await getOrgCollection(orgId, 'purchases')
       .where('deletedAt', '==', null)
@@ -252,24 +381,50 @@ export const purchaseRepository = {
 
     for (const doc of snapshot.docs) {
       const data = doc.data() as PurchaseDocument;
-      const match = /^PUR-(\d+)$/i.exec(data.purchaseNumber);
+      const value = parsePurchaseNumberSequence(data.purchaseNumber);
 
-      if (match?.[1]) {
-        const value = Number.parseInt(match[1], 10);
-
-        if (!Number.isNaN(value) && value > highest) {
-          highest = value;
-        }
+      if (value !== null && value > highest) {
+        highest = value;
       }
     }
 
     return highest;
   },
 
+  /**
+   * Ensures organizations/{orgId}/documentSequences/purchase exists.
+   * One-time scan of active purchases when the counter doc is missing
+   * (e.g. bakery with PUR-001…PUR-013 → lastValue 13 so next allocate is 14).
+   */
+  async ensurePurchaseSequenceInitialized(orgId: string): Promise<void> {
+    const sequenceRef = getOrgCollection(orgId, 'documentSequences').doc('purchase');
+    const existing = await sequenceRef.get();
+
+    if (existing.exists) {
+      return;
+    }
+
+    const highest = await this.getHighestPurchaseNumber(orgId);
+    const firestore = getFirestore();
+
+    await firestore.runTransaction(async (transaction) => {
+      const snap = await transaction.get(sequenceRef);
+
+      if (snap.exists) {
+        return;
+      }
+
+      transaction.set(sequenceRef, {
+        kind: 'purchase',
+        lastValue: highest,
+        updatedAt: Timestamp.now(),
+      });
+    });
+  },
+
   async create(
     orgId: string,
     input: {
-      purchaseNumber: string;
       purchaseDate: string;
       supplierName: string;
       invoiceNumber?: string | null;
@@ -280,25 +435,66 @@ export const purchaseRepository = {
     },
     userId: string,
   ): Promise<Purchase> {
+    await this.ensurePurchaseSequenceInitialized(orgId);
+
     const firestore = getFirestore();
     const collection = getOrgCollection(orgId, 'purchases');
     const docRef = collection.doc();
-    const normalizedPurchaseNumber = input.purchaseNumber.trim().toUpperCase();
+    const sequenceRef = getOrgCollection(orgId, 'documentSequences').doc('purchase');
 
     return firestore.runTransaction(async (transaction) => {
+      const sequenceSnap = await transaction.get(sequenceRef);
+      const rawLastValue = sequenceSnap.exists
+        ? Number(sequenceSnap.data()?.lastValue ?? 0)
+        : 0;
+      const lastValue =
+        Number.isFinite(rawLastValue) && rawLastValue > 0 ? Math.floor(rawLastValue) : 0;
+
+      // Probe uniqueNumbers locks before any writes (Firestore: all reads before writes).
+      const reservedProbe = new Set<number>();
+      const maxAttempts = 1000;
+      let allocated: { sequence: number; purchaseNumber: string } | null = null;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const candidate = findNextFreePurchaseSequence(lastValue, (sequence) =>
+          reservedProbe.has(sequence),
+        );
+        const lockRef = getOrgCollection(orgId, 'uniqueNumbers').doc(
+          `purchase_${candidate.purchaseNumber}`,
+        );
+        const lockSnap = await transaction.get(lockRef);
+
+        if (!lockSnap.exists) {
+          allocated = candidate;
+          break;
+        }
+
+        reservedProbe.add(candidate.sequence);
+      }
+
+      if (!allocated) {
+        throw new DomainError('VALIDATION_ERROR', 'Unable to allocate purchase number');
+      }
+
       await reserveUniqueNumberInTransaction(
         transaction,
         orgId,
         'purchase',
-        normalizedPurchaseNumber,
+        allocated.purchaseNumber,
         docRef.id,
       );
+
+      transaction.set(sequenceRef, {
+        kind: 'purchase',
+        lastValue: allocated.sequence,
+        updatedAt: Timestamp.now(),
+      });
 
       const now = Timestamp.now();
 
       const document: PurchaseDocument = {
         organizationId: orgId,
-        purchaseNumber: normalizedPurchaseNumber,
+        purchaseNumber: allocated.purchaseNumber,
         purchaseDate: input.purchaseDate,
         supplierName: input.supplierName.trim(),
         invoiceNumber: normalizeNullableString(input.invoiceNumber),
