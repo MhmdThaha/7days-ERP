@@ -222,7 +222,7 @@ export const saleService = {
     }
 
     const completed = await saleRepository.complete(orgId, saleId, userId);
-    await dailySummaryService.recalculate(orgId, completed.saleDate);
+    await dailySummaryService.recalculateAfterMutation(orgId, completed.saleDate);
     return completed;
   },
 };

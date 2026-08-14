@@ -2,6 +2,7 @@ import 'server-only';
 
 import { Timestamp } from 'firebase-admin/firestore';
 
+import { PRODUCT_LOW_STOCK_THRESHOLD } from '@/lib/domain/constants/dashboard';
 import { DEFAULT_PRODUCT_UNIT } from '@/lib/domain/constants/product';
 import { timestampToDate, normalizeNullableString } from '@/lib/firebase/converters';
 import { buildAuditFields, getOrgCollection } from '@/lib/repositories/base.repository';
@@ -138,6 +139,32 @@ export const productRepository = {
       pageSize,
       totalPages,
     };
+  },
+
+  async listLowStockActive(
+    orgId: string,
+    limit: number,
+  ): Promise<Array<Pick<Product, 'id' | 'code' | 'name' | 'currentStock' | 'unit'>>> {
+    const snapshot = await getOrgCollection(orgId, 'products')
+      .where('deletedAt', '==', null)
+      .where('isActive', '==', true)
+      .where('currentStock', '<=', PRODUCT_LOW_STOCK_THRESHOLD)
+      .orderBy('currentStock')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => {
+        const data = doc.data() as ProductDocument;
+        return {
+          id: doc.id,
+          code: data.code,
+          name: data.name,
+          currentStock: data.currentStock,
+          unit: data.unit,
+        };
+      })
+      .sort((a, b) => a.currentStock - b.currentStock || a.name.localeCompare(b.name));
   },
 
   async sumStockValue(orgId: string): Promise<number> {

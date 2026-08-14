@@ -299,18 +299,6 @@ export const saleRepository = {
     };
   },
 
-  async listCompletedByDate(orgId: string, date: string): Promise<SaleListItem[]> {
-    const snapshot = await getOrgCollection(orgId, 'sales')
-      .where('deletedAt', '==', null)
-      .where('status', '==', 'completed')
-      .where('saleDate', '==', date)
-      .get();
-
-    return snapshot.docs
-      .map((doc) => toSale(doc.id, doc.data() as SaleDocument))
-      .map(toListItem);
-  },
-
   /**
    * Fetches fully-resolved completed sales including their `lines[]`,
    * so reports can aggregate stored per-line COGS.
@@ -325,6 +313,11 @@ export const saleRepository = {
       .get();
 
     return snapshot.docs.map((doc) => toSale(doc.id, doc.data() as SaleDocument));
+  },
+
+  async listCompletedByDate(orgId: string, date: string): Promise<SaleListItem[]> {
+    const sales = await saleRepository.listCompletedByDateWithLines(orgId, date);
+    return sales.map(toListItem);
   },
 
   async getById(orgId: string, saleId: string): Promise<Sale | null> {

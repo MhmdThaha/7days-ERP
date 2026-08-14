@@ -4,7 +4,10 @@ import {
   buildDailySummaryAlerts,
   buildDailySummaryQuickSummary,
 } from '@/lib/domain/calculations/daily-operations';
-import { DAILY_SUMMARY_DASHBOARD_FETCH_PAGE_SIZE } from '@/lib/domain/constants/daily-summary-dashboard';
+import {
+  DAILY_SUMMARY_DASHBOARD_FETCH_PAGE_SIZE,
+  DAILY_SUMMARY_DASHBOARD_LOW_STOCK_LIMIT,
+} from '@/lib/domain/constants/daily-summary-dashboard';
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/domain/constants/expense';
 import { WASTAGE_REASON_LABELS } from '@/lib/domain/constants/wastage';
 import { expenseRepository } from '@/lib/repositories/expense.repository';
@@ -20,14 +23,6 @@ import type {
   DailySummaryDashboardData,
 } from '@/types/daily-summary-dashboard';
 
-function isCompletedOnDate(recordDate: string, status: string, date: string): boolean {
-  return recordDate === date && status === 'completed';
-}
-
-function isReceivedOnDate(purchaseDate: string, status: string, date: string): boolean {
-  return purchaseDate === date && status === 'received';
-}
-
 function formatUnits(value: number): string {
   return `${value.toLocaleString('en-IN')} units`;
 }
@@ -40,39 +35,30 @@ function sortActivityNewestFirst(
 
 export const dailySummaryDashboardRepository = {
   async getDashboard(orgId: string, today: string): Promise<DailySummaryDashboardData> {
-    const listParams = { page: 1, pageSize: DAILY_SUMMARY_DASHBOARD_FETCH_PAGE_SIZE };
+    // Product alerts use an indexed low-stock query. Raw-material alerts still need a
+    // catalog snapshot because reorder comparison is per-document. Today's activity uses
+    // date-equality queries so lifetime history does not determine read volume.
+    const rawMaterialListParams = { page: 1, pageSize: DAILY_SUMMARY_DASHBOARD_FETCH_PAGE_SIZE };
 
     const [
       dailySummary,
-      purchasesResult,
-      salesResult,
-      expensesResult,
-      productionResult,
-      wastageResult,
-      productsResult,
+      todayPurchases,
+      todaySales,
+      todayExpenses,
+      todayProduction,
+      todayWastage,
+      stockProducts,
       rawMaterialsResult,
     ] = await Promise.all([
       dailySummaryService.getOrRecalculate(orgId, today),
-      purchaseRepository.list(orgId, listParams),
-      saleRepository.list(orgId, { ...listParams, status: 'completed' }),
-      expenseRepository.list(orgId, { ...listParams, status: 'completed' }),
-      productionRepository.list(orgId, { ...listParams, status: 'completed' }),
-      wastageRepository.list(orgId, listParams),
-      productRepository.list(orgId, { ...listParams, status: 'active' }),
-      rawMaterialRepository.list(orgId, { ...listParams, status: 'all' }),
+      purchaseRepository.listReceivedByDate(orgId, today),
+      saleRepository.listCompletedByDate(orgId, today),
+      expenseRepository.listCompletedByDate(orgId, today),
+      productionRepository.listCompletedByDate(orgId, today),
+      wastageRepository.listCompletedByDate(orgId, today),
+      productRepository.listLowStockActive(orgId, DAILY_SUMMARY_DASHBOARD_LOW_STOCK_LIMIT),
+      rawMaterialRepository.list(orgId, { ...rawMaterialListParams, status: 'all' }),
     ]);
-
-    const todayPurchases = purchasesResult.items.filter((purchase) =>
-      isReceivedOnDate(purchase.purchaseDate, purchase.status, today),
-    );
-    const todaySales = salesResult.items.filter((sale) => sale.saleDate === today);
-    const todayExpenses = expensesResult.items.filter((expense) => expense.expenseDate === today);
-    const todayProduction = productionResult.items.filter(
-      (entry) => entry.productionDate === today,
-    );
-    const todayWastage = wastageResult.items.filter((entry) =>
-      isCompletedOnDate(entry.wastageDate, entry.status, today),
-    );
 
     const kpis = {
       netSales: dailySummary.totalNetSales,
@@ -92,14 +78,6 @@ export const dailySummaryDashboardRepository = {
       expensesCount: todayExpenses.length,
       wastageCount: dailySummary.wastageCount,
     };
-
-    const stockProducts = productsResult.items.map((product) => ({
-      id: product.id,
-      name: product.name,
-      code: product.code,
-      currentStock: product.currentStock,
-      unit: product.unit,
-    }));
 
     const stockRawMaterials = rawMaterialsResult.items.map((material) => ({
       id: material.id,

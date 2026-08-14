@@ -197,7 +197,7 @@ export const productionService = {
     assertDraftProduction(existing);
 
     const completed = await productionRepository.complete(orgId, productionId, userId);
-    await dailySummaryService.recalculate(orgId, completed.productionDate);
+    await dailySummaryService.recalculateAfterMutation(orgId, completed.productionDate);
     return completed;
   },
 };

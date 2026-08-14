@@ -172,6 +172,23 @@ export const returnRepository = {
     };
   },
 
+  /** Date-bounded completed returns for a single calendar day (YYYY-MM-DD), including lines. */
+  async listCompletedByDateWithLines(orgId: string, date: string): Promise<ReturnEntry[]> {
+    const snapshot = await getOrgCollection(orgId, 'returns')
+      .where('deletedAt', '==', null)
+      .where('status', '==', 'completed')
+      .where('returnDate', '==', date)
+      .get();
+
+    return snapshot.docs.map((doc) => toReturnEntry(doc.id, doc.data() as ReturnDocument));
+  },
+
+  /** Date-bounded completed returns for a single calendar day (YYYY-MM-DD). */
+  async listCompletedByDate(orgId: string, date: string): Promise<ReturnListItem[]> {
+    const entries = await returnRepository.listCompletedByDateWithLines(orgId, date);
+    return entries.map(toListItem);
+  },
+
   async getById(orgId: string, returnId: string): Promise<ReturnEntry | null> {
     const doc = await getOrgCollection(orgId, 'returns').doc(returnId).get();
 

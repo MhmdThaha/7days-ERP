@@ -34,7 +34,7 @@ import {
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { formatMoney } from '@/lib/utils/money';
-import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type PurchaseDetailPageProps = {
@@ -97,6 +97,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
       queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
       queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
       invalidateDashboardQueries(queryClient),
+      invalidateDailyReportQueries(queryClient),
     ]);
   }
 

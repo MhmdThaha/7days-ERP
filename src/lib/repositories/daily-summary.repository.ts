@@ -4,8 +4,23 @@ import { Timestamp } from 'firebase-admin/firestore';
 
 import { DAILY_SUMMARY_COLLECTION } from '@/lib/domain/constants/daily-summary';
 import { timestampToDate } from '@/lib/firebase/converters';
-import { getOrgCollection } from '@/lib/repositories/base.repository';
+import { getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
 import type { DailySummary, DailySummaryExpensesByCategory } from '@/types/daily-summary';
+
+export class DailySummaryVersionConflictError extends Error {
+  readonly code = 'DAILY_SUMMARY_VERSION_CONFLICT';
+
+  constructor() {
+    super('Daily summary was updated by a concurrent recalculation');
+    this.name = 'DailySummaryVersionConflictError';
+  }
+}
+
+export function isDailySummaryVersionConflictError(
+  error: unknown,
+): error is DailySummaryVersionConflictError {
+  return error instanceof DailySummaryVersionConflictError;
+}
 
 type DailySummaryDocument = {
   organizationId: string;
@@ -29,7 +44,14 @@ type DailySummaryDocument = {
   netProfit: number;
   computedAt: Timestamp;
   version: number;
+  /** Absent on documents written before this field existed. */
+  needsRecalculation?: boolean;
 };
+
+type DailySummaryWriteInput = Omit<
+  DailySummary,
+  'id' | 'isClosed' | 'closedAt' | 'closedBy' | 'computedAt' | 'version' | 'needsRecalculation'
+>;
 
 function toDailySummary(id: string, data: DailySummaryDocument): DailySummary {
   return {
@@ -55,6 +77,38 @@ function toDailySummary(id: string, data: DailySummaryDocument): DailySummary {
     netProfit: data.netProfit,
     computedAt: timestampToDate(data.computedAt) ?? new Date(),
     version: data.version,
+    needsRecalculation: data.needsRecalculation === true,
+  };
+}
+
+function buildDocument(
+  summary: DailySummaryWriteInput,
+  existingData: DailySummaryDocument | null,
+  nextVersion: number,
+): DailySummaryDocument {
+  return {
+    organizationId: summary.organizationId,
+    summaryDate: summary.summaryDate,
+    isClosed: existingData?.isClosed ?? false,
+    closedAt: existingData?.closedAt ?? null,
+    closedBy: existingData?.closedBy ?? null,
+    totalProductionUnits: summary.totalProductionUnits,
+    totalProductionCost: summary.totalProductionCost,
+    totalSalesRevenue: summary.totalSalesRevenue,
+    totalSalesDiscount: summary.totalSalesDiscount,
+    totalNetSales: summary.totalNetSales,
+    totalCogs: summary.totalCogs,
+    transactionCount: summary.transactionCount,
+    totalPurchases: summary.totalPurchases,
+    totalExpenses: summary.totalExpenses,
+    expensesByCategory: summary.expensesByCategory,
+    totalWastageCost: summary.totalWastageCost,
+    wastageCount: summary.wastageCount,
+    grossProfit: summary.grossProfit,
+    netProfit: summary.netProfit,
+    computedAt: Timestamp.now(),
+    version: nextVersion,
+    needsRecalculation: false,
   };
 }
 
@@ -80,45 +134,47 @@ export const dailySummaryRepository = {
       .sort((a, b) => a.summaryDate.localeCompare(b.summaryDate));
   },
 
-  async upsert(
-    orgId: string,
-    summary: Omit<
-      DailySummary,
-      'id' | 'isClosed' | 'closedAt' | 'closedBy' | 'computedAt' | 'version'
-    >,
-  ): Promise<DailySummary> {
-    const docRef = getOrgCollection(orgId, DAILY_SUMMARY_COLLECTION).doc(summary.summaryDate);
+  /**
+   * Marks an existing day summary as stale after a failed post-mutation recalculate.
+   * No-op when the document is missing — getOrRecalculate already recalculates missing days.
+   */
+  async markNeedsRecalculation(orgId: string, date: string): Promise<void> {
+    const docRef = getOrgCollection(orgId, DAILY_SUMMARY_COLLECTION).doc(date);
     const existing = await docRef.get();
-    const existingData = existing.exists ? (existing.data() as DailySummaryDocument) : null;
-    const now = Timestamp.now();
-    const version = (existingData?.version ?? 0) + 1;
 
-    const document: DailySummaryDocument = {
-      organizationId: summary.organizationId,
-      summaryDate: summary.summaryDate,
-      isClosed: existingData?.isClosed ?? false,
-      closedAt: existingData?.closedAt ?? null,
-      closedBy: existingData?.closedBy ?? null,
-      totalProductionUnits: summary.totalProductionUnits,
-      totalProductionCost: summary.totalProductionCost,
-      totalSalesRevenue: summary.totalSalesRevenue,
-      totalSalesDiscount: summary.totalSalesDiscount,
-      totalNetSales: summary.totalNetSales,
-      totalCogs: summary.totalCogs,
-      transactionCount: summary.transactionCount,
-      totalPurchases: summary.totalPurchases,
-      totalExpenses: summary.totalExpenses,
-      expensesByCategory: summary.expensesByCategory,
-      totalWastageCost: summary.totalWastageCost,
-      wastageCount: summary.wastageCount,
-      grossProfit: summary.grossProfit,
-      netProfit: summary.netProfit,
-      computedAt: now,
-      version,
-    };
+    if (!existing.exists) {
+      return;
+    }
 
-    await docRef.set(document);
+    await docRef.update({
+      needsRecalculation: true,
+    });
+  },
 
-    return toDailySummary(summary.summaryDate, document);
+  /**
+   * Writes a full recomputed summary only when the document version still matches
+   * `expectedVersion` (0 when the document does not exist yet).
+   */
+  async upsertIfVersionMatches(
+    orgId: string,
+    summary: DailySummaryWriteInput,
+    expectedVersion: number,
+  ): Promise<DailySummary> {
+    const firestore = getFirestore();
+    const docRef = getOrgCollection(orgId, DAILY_SUMMARY_COLLECTION).doc(summary.summaryDate);
+
+    return firestore.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      const existingData = snap.exists ? (snap.data() as DailySummaryDocument) : null;
+      const currentVersion = existingData?.version ?? 0;
+
+      if (currentVersion !== expectedVersion) {
+        throw new DailySummaryVersionConflictError();
+      }
+
+      const document = buildDocument(summary, existingData, expectedVersion + 1);
+      transaction.set(docRef, document);
+      return toDailySummary(summary.summaryDate, document);
+    });
   },
 };

@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { DAILY_REPORT_FETCH_PAGE_SIZE } from '@/lib/domain/constants/daily-report';
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/domain/constants/expense';
 import { RETURN_REASON_LABELS } from '@/lib/domain/constants/return';
 import { WASTAGE_REASON_LABELS } from '@/lib/domain/constants/wastage';
@@ -16,10 +15,6 @@ import type {
   DailyReportTransactionType,
 } from '@/types/daily-report';
 
-function isCompletedOnDate(recordDate: string, status: string, date: string): boolean {
-  return recordDate === date && status === 'completed';
-}
-
 function sortTransactionsNewestFirst(
   transactions: DailyReportTransaction[],
 ): DailyReportTransaction[] {
@@ -32,29 +27,17 @@ function formatUnits(value: number): string {
 
 export const dailyReportRepository = {
   async getDailyReport(orgId: string, today: string): Promise<DailyReportData> {
-    const listParams = { page: 1, pageSize: DAILY_REPORT_FETCH_PAGE_SIZE };
-
-    const [dailySummary, salesResult, expensesResult, productionResult, wastageResult, returnsResult] =
+    // Financial KPIs come from the day summary doc. Activity rows use date-equality
+    // list*ByDate queries so lifetime history does not determine read volume.
+    const [dailySummary, todaySales, todayExpenses, todayProduction, todayWastage, todayReturns] =
       await Promise.all([
         dailySummaryService.getOrRecalculate(orgId, today),
-        saleRepository.list(orgId, { ...listParams, status: 'completed' }),
-        expenseRepository.list(orgId, { ...listParams, status: 'completed' }),
-        productionRepository.list(orgId, { ...listParams, status: 'completed' }),
-        wastageRepository.list(orgId, listParams),
-        returnRepository.list(orgId, listParams),
+        saleRepository.listCompletedByDate(orgId, today),
+        expenseRepository.listCompletedByDate(orgId, today),
+        productionRepository.listCompletedByDate(orgId, today),
+        wastageRepository.listCompletedByDate(orgId, today),
+        returnRepository.listCompletedByDate(orgId, today),
       ]);
-
-    const todaySales = salesResult.items.filter((sale) => sale.saleDate === today);
-    const todayExpenses = expensesResult.items.filter((expense) => expense.expenseDate === today);
-    const todayProduction = productionResult.items.filter(
-      (entry) => entry.productionDate === today,
-    );
-    const todayWastage = wastageResult.items.filter(
-      (entry) => isCompletedOnDate(entry.wastageDate, entry.status, today),
-    );
-    const todayReturns = returnsResult.items.filter((entry) =>
-      isCompletedOnDate(entry.returnDate, entry.status, today),
-    );
 
     const productionUnits = todayProduction.reduce((sum, entry) => sum + entry.totalUnits, 0);
     const wastageUnits = todayWastage.reduce((sum, entry) => sum + entry.totalUnits, 0);

@@ -155,16 +155,19 @@ export const expenseRepository = {
     };
   },
 
-  async listCompletedByDate(orgId: string, date: string): Promise<ExpenseListItem[]> {
+  async listCompletedByDateWithDetails(orgId: string, date: string): Promise<Expense[]> {
     const snapshot = await getOrgCollection(orgId, 'expenses')
       .where('deletedAt', '==', null)
       .where('status', '==', 'completed')
       .where('expenseDate', '==', date)
       .get();
 
-    return snapshot.docs
-      .map((doc) => toExpense(doc.id, doc.data() as ExpenseDocument))
-      .map(toListItem);
+    return snapshot.docs.map((doc) => toExpense(doc.id, doc.data() as ExpenseDocument));
+  },
+
+  async listCompletedByDate(orgId: string, date: string): Promise<ExpenseListItem[]> {
+    const expenses = await expenseRepository.listCompletedByDateWithDetails(orgId, date);
+    return expenses.map(toListItem);
   },
 
   async getById(orgId: string, expenseId: string): Promise<Expense | null> {

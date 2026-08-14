@@ -179,16 +179,19 @@ export const wastageRepository = {
     };
   },
 
-  async listCompletedByDate(orgId: string, date: string): Promise<WastageListItem[]> {
+  async listCompletedByDateWithLines(orgId: string, date: string): Promise<Wastage[]> {
     const snapshot = await getOrgCollection(orgId, 'wastage')
       .where('deletedAt', '==', null)
       .where('status', '==', 'completed')
       .where('wastageDate', '==', date)
       .get();
 
-    return snapshot.docs
-      .map((doc) => toWastage(doc.id, doc.data() as WastageDocument))
-      .map(toListItem);
+    return snapshot.docs.map((doc) => toWastage(doc.id, doc.data() as WastageDocument));
+  },
+
+  async listCompletedByDate(orgId: string, date: string): Promise<WastageListItem[]> {
+    const entries = await wastageRepository.listCompletedByDateWithLines(orgId, date);
+    return entries.map(toListItem);
   },
 
   async getById(orgId: string, wastageId: string): Promise<Wastage | null> {

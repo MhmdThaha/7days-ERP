@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { getDailyBusinessStatementAction } from '@/actions/daily-business-statement';
 import { getDailyReportAction } from '@/actions/daily-report';
 import { getDashboardAction } from '@/actions/dashboard';
 import { listProductsAction } from '@/actions/products';
@@ -18,6 +19,21 @@ vi.mock('@/lib/firebase/auth-server', () => ({
 vi.mock('@/lib/services/daily-report.service', () => ({
   dailyReportService: {
     getDailyReport: vi.fn(async (orgId: string) => ({ orgId, rows: [] })),
+  },
+}));
+
+vi.mock('@/lib/services/daily-business-statement.service', () => ({
+  dailyBusinessStatementService: {
+    getDailyBusinessStatement: vi.fn(async (orgId: string, date: string) => ({
+      orgId,
+      reportDate: date,
+      summary: {},
+      sales: [],
+      expenses: [],
+      production: [],
+      wastage: [],
+      returns: [],
+    })),
   },
 }));
 
@@ -57,6 +73,7 @@ vi.mock('@/lib/services/purchase.service', () => ({
   },
 }));
 
+import { dailyBusinessStatementService } from '@/lib/services/daily-business-statement.service';
 import { dailyReportService } from '@/lib/services/daily-report.service';
 import { dashboardService } from '@/lib/services/dashboard.service';
 import { monthlyReportService } from '@/lib/services/monthly-report.service';
@@ -71,6 +88,7 @@ describe('RBAC enforcement through server actions', () => {
   beforeEach(() => {
     mockGetAuthenticatedContext.mockReset();
     vi.mocked(dailyReportService.getDailyReport).mockClear();
+    vi.mocked(dailyBusinessStatementService.getDailyBusinessStatement).mockClear();
     vi.mocked(monthlyReportService.getMonthlyReport).mockClear();
     vi.mocked(dashboardService.getDashboard).mockClear();
     vi.mocked(productService.list).mockClear();
@@ -106,6 +124,28 @@ describe('RBAC enforcement through server actions', () => {
       code: 'UNAUTHORIZED',
     });
     expect(dailyReportService.getDailyReport).not.toHaveBeenCalled();
+  });
+
+  it('allows owner to export a daily business statement for the session org and date', async () => {
+    grantContext({ userId: 'owner-1', orgId: 'org-a', role: 'owner' });
+
+    const result = await getDailyBusinessStatementAction('2026-08-10');
+
+    expect(result.success).toBe(true);
+    expect(dailyBusinessStatementService.getDailyBusinessStatement).toHaveBeenCalledWith(
+      'org-a',
+      '2026-08-10',
+    );
+  });
+
+  it('denies sales access to daily business statement export', async () => {
+    grantContext({ userId: 'sales-1', orgId: 'org-a', role: 'sales' });
+
+    const result = await getDailyBusinessStatementAction('2026-08-10');
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('UNAUTHORIZED');
+    expect(dailyBusinessStatementService.getDailyBusinessStatement).not.toHaveBeenCalled();
   });
 
   it('denies store access to monthly summary', async () => {

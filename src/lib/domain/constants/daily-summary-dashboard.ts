@@ -1,3 +1,4 @@
+/** Page size for raw-material catalog snapshots used by Kitchen Dashboard alerts. */
 export const DAILY_SUMMARY_DASHBOARD_FETCH_PAGE_SIZE = 10_000;
 
 export const DAILY_SUMMARY_DASHBOARD_LOW_STOCK_LIMIT = 10;

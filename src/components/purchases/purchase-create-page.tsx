@@ -19,7 +19,7 @@ import {
 } from '@/lib/utils/purchase-form-errors';
 import { rememberSupplier } from '@/lib/utils/form-recent-values';
 import { toastFormError } from '@/lib/utils/toast-form-error';
-import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'purchase-create-form';
 
@@ -192,6 +192,7 @@ export function PurchaseCreatePage() {
         queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
         queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
         invalidateDashboardQueries(queryClient),
+        invalidateDailyReportQueries(queryClient),
       ]);
 
       const successAt = performance.now();

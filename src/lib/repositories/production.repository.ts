@@ -212,16 +212,19 @@ export const productionRepository = {
     };
   },
 
-  async listCompletedByDate(orgId: string, date: string): Promise<ProductionListItem[]> {
+  async listCompletedByDateWithLines(orgId: string, date: string): Promise<Production[]> {
     const snapshot = await getOrgCollection(orgId, 'production')
       .where('deletedAt', '==', null)
       .where('status', '==', 'completed')
       .where('productionDate', '==', date)
       .get();
 
-    return snapshot.docs
-      .map((doc) => toProduction(doc.id, doc.data() as ProductionDocument))
-      .map(toListItem);
+    return snapshot.docs.map((doc) => toProduction(doc.id, doc.data() as ProductionDocument));
+  },
+
+  async listCompletedByDate(orgId: string, date: string): Promise<ProductionListItem[]> {
+    const productions = await productionRepository.listCompletedByDateWithLines(orgId, date);
+    return productions.map(toListItem);
   },
 
   async getById(orgId: string, productionId: string): Promise<Production | null> {

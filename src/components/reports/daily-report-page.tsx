@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Banknote,
   Factory,
+  FileDown,
   Package,
   RotateCcw,
   TrendingUp,
@@ -10,6 +12,9 @@ import {
   Wallet,
 } from 'lucide-react';
 
+import { toast } from 'sonner';
+
+import { getDailyBusinessStatementAction } from '@/actions/daily-business-statement';
 import { AccessDenied } from '@/components/shared/access-denied';
 import {
   ReportActionCenter,
@@ -31,7 +36,9 @@ import { reportPrimaryMetricGridClass } from '@/components/reports/report-kpi-va
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { useDailyReport } from '@/hooks/queries/use-daily-report';
+import { downloadDailyBusinessStatement } from '@/lib/export/download-daily-business-statement';
 import { formatDisplayDate } from '@/lib/utils/date';
 
 import { DailyReportSkeleton } from './daily-report-skeleton';
@@ -85,6 +92,7 @@ function buildActionItems(
 
 export function DailyReportPage() {
   const { data, isLoading, error, refetch, isRefetching } = useDailyReport();
+  const [isExporting, setIsExporting] = useState(false);
 
   if (isLoading) {
     return <DailyReportSkeleton />;
@@ -133,6 +141,7 @@ export function DailyReportPage() {
   }
 
   const { financial } = data;
+  const reportDate = data.reportDate;
   const profitTone = getProfitTone(financial.netProfit);
   const dateLabel = formatExecutiveDate(data.reportDate);
   const actionItems = buildActionItems(financial.netProfit, financial.netSales, financial.wastageCost);
@@ -186,6 +195,29 @@ export function DailyReportPage() {
     },
   ];
 
+  async function handleExport() {
+    if (isExporting) {
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const result = await getDailyBusinessStatementAction(reportDate);
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      downloadDailyBusinessStatement(result.data);
+    } catch {
+      toast.error('Could not export the daily statement. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <div className="page-stack-loose">
       <ReportExecutiveVerdict
@@ -194,6 +226,21 @@ export function DailyReportPage() {
         message={verdictMessage}
         tone={verdictTone}
       />
+
+      <div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="xl"
+          className="h-12 min-h-12 w-full gap-2 px-5 sm:w-auto"
+          onClick={handleExport}
+          disabled={isExporting}
+          aria-label="Export daily business statement as Excel"
+        >
+          <FileDown data-icon="inline-start" aria-hidden="true" />
+          {isExporting ? 'Preparing Excel…' : 'Export Daily Statement'}
+        </Button>
+      </div>
 
       <section aria-labelledby="daily-report-kpis-heading" className="section-stack">
         <h2 id="daily-report-kpis-heading" className="sr-only">

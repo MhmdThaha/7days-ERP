@@ -216,7 +216,7 @@ export const purchaseService = {
     const txnMs = Math.round(performance.now() - txnStartedAt);
 
     const summaryStartedAt = performance.now();
-    await dailySummaryService.recalculate(orgId, received.purchaseDate);
+    await dailySummaryService.recalculateAfterMutation(orgId, received.purchaseDate);
     const summaryMs = Math.round(performance.now() - summaryStartedAt);
 
     if (process.env.NODE_ENV !== 'production') {

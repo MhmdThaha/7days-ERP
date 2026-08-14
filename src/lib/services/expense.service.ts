@@ -105,7 +105,7 @@ export const expenseService = {
     assertDraftExpense(existing);
 
     const completed = await expenseRepository.complete(orgId, expenseId, userId);
-    await dailySummaryService.recalculate(orgId, completed.expenseDate);
+    await dailySummaryService.recalculateAfterMutation(orgId, completed.expenseDate);
     return completed;
   },
 };

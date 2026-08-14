@@ -25,6 +25,11 @@ export type DailySummary = {
   netProfit: number;
   computedAt: Date;
   version: number;
+  /**
+   * When true, derived totals may be stale after a failed post-mutation recalculate.
+   * Report loads must recalculate before trusting this document.
+   */
+  needsRecalculation: boolean;
 };
 
 export type DailySummaryAggregationInput = {

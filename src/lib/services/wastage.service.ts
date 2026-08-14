@@ -170,7 +170,7 @@ export const wastageService = {
     }
 
     const completed = await wastageRepository.complete(orgId, wastageId, userId);
-    await dailySummaryService.recalculate(orgId, completed.wastageDate);
+    await dailySummaryService.recalculateAfterMutation(orgId, completed.wastageDate);
     return completed;
   },
 };
