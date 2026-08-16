@@ -24,7 +24,12 @@ import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMon
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
-import type { ProductionListItem, ProductionStatusFilter } from '@/types/production';
+import type {
+  ProductionListItem,
+  ProductionListPagePosition,
+  ProductionPageCursor,
+  ProductionStatusFilter,
+} from '@/types/production';
 
 function getProductionListSummary(status: ProductionStatusFilter, total: number): string {
   if (status === 'draft') {
@@ -49,12 +54,24 @@ export function ProductionsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
-  const resetPage = useCallback(() => setPage(1), []);
+  const [position, setPosition] = useState<ProductionListPagePosition>('first');
+  const [cursor, setCursor] = useState<ProductionPageCursor | null>(null);
+  const [pageEdgeCursors, setPageEdgeCursors] = useState<{
+    start: ProductionPageCursor | null;
+    end: ProductionPageCursor | null;
+  }>({ start: null, end: null });
+
+  const resetPagination = useCallback(() => {
+    setPage(1);
+    setPosition('first');
+    setCursor(null);
+  }, []);
+
   const [status, setStatus] = useStatusFilterFromSearchParams(
     searchParams,
     ['all', 'draft', 'completed'],
     'all',
-    resetPage,
+    resetPagination,
   );
   const [deletingProduction, setDeletingProduction] = useState<ProductionListItem | null>(null);
   const [completingProduction, setCompletingProduction] = useState<ProductionListItem | null>(null);
@@ -64,21 +81,35 @@ export function ProductionsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1);
+      resetPagination();
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, resetPagination]);
 
   const { data, isLoading, isFetching, error, refetch, isRefetching } = useProductions({
     search: debouncedSearch,
     status,
     page,
     pageSize: PRODUCTION_PAGE_SIZE,
+    position,
+    cursor,
   });
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    setPageEdgeCursors({
+      start: data.startCursor,
+      end: data.endCursor,
+    });
+  }, [data]);
 
   const isSearching = search !== debouncedSearch;
   const hasActiveFilters = Boolean(debouncedSearch.trim()) || status !== 'all';
+  const hasSearch = Boolean(debouncedSearch.trim());
   const showEmptyCatalog = !isLoading && !error && data?.total === 0 && !hasActiveFilters;
   const showNoResults = !isLoading && !error && data?.total === 0 && hasActiveFilters;
   const isOrgError = error?.message.includes('Organization context is not configured');
@@ -88,7 +119,57 @@ export function ProductionsPage() {
     setSearch('');
     setDebouncedSearch('');
     setStatus('all');
-    setPage(1);
+    resetPagination();
+  }
+
+  function handlePageChange(newPage: number) {
+    if (hasSearch) {
+      setPage(newPage);
+      setPosition('first');
+      setCursor(null);
+      return;
+    }
+
+    const totalPages = data?.totalPages ?? 1;
+
+    if (newPage <= 1) {
+      setPage(1);
+      setPosition('first');
+      setCursor(null);
+      return;
+    }
+
+    if (newPage >= totalPages) {
+      if (newPage === page + 1 && pageEdgeCursors.end) {
+        setPage(newPage);
+        setPosition('next');
+        setCursor(pageEdgeCursors.end);
+        return;
+      }
+
+      setPage(totalPages);
+      setPosition('last');
+      setCursor(null);
+      return;
+    }
+
+    if (newPage === page + 1) {
+      setPage(newPage);
+      setPosition('next');
+      setCursor(pageEdgeCursors.end);
+      return;
+    }
+
+    if (newPage === page - 1) {
+      setPage(newPage);
+      setPosition('prev');
+      setCursor(pageEdgeCursors.start);
+      return;
+    }
+
+    setPage(newPage);
+    setPosition('first');
+    setCursor(null);
   }
 
   async function handleDelete() {
@@ -110,7 +191,18 @@ export function ProductionsPage() {
       setDeletingProduction(null);
 
       if (data?.items.length === 1 && page > 1) {
-        setPage((currentPage) => currentPage - 1);
+        if (page - 1 <= 1) {
+          setPage(1);
+          setPosition('first');
+          setCursor(null);
+        } else {
+          setPage(page - 1);
+          setPosition('prev');
+          setCursor(pageEdgeCursors.start);
+        }
+      } else if (page <= 1) {
+        setPosition('first');
+        setCursor(null);
       }
 
       await Promise.all([
@@ -171,7 +263,7 @@ export function ProductionsPage() {
         description="Record daily production and complete it to update inventory automatically."
       >
         {!showEmptyCatalog ? (
-          <Button nativeButton={false} variant="success" size="xl" render={<Link href="/production/new" />}>
+          <Button nativeButton={false} variant="success" size="xl" className="w-full min-h-12 sm:w-auto" render={<Link href="/production/new" />}>
             <Plus />
             Record Production
           </Button>
@@ -196,7 +288,7 @@ export function ProductionsPage() {
         onSearchChange={setSearch}
         onStatusChange={(value) => {
           setStatus(value);
-          setPage(1);
+          resetPagination();
         }}
       />
 
@@ -257,7 +349,7 @@ export function ProductionsPage() {
               pageSize={data.pageSize}
               entityName="production entries"
               disabled={isFetching || isBusy}
-              onPageChange={setPage}
+              onPageChange={handlePageChange}
             />
           ) : null}
         </>

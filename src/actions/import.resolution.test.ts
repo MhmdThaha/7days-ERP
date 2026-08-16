@@ -215,4 +215,68 @@ describe('commitImportWithResolutionAction', () => {
     expect(vi.mocked(getFirestore)).not.toHaveBeenCalled();
     expect(vi.mocked(commitProductImportWithResolution)).not.toHaveBeenCalled();
   });
+
+  it('uses authenticated session orgId and never a client-supplied organization', async () => {
+    vi.mocked(getAuthenticatedContext).mockResolvedValue({
+      orgId: 'org-a',
+      userId: 'user-a',
+      role: 'owner',
+    });
+    const db = {} as Firestore;
+    vi.mocked(getFirestore).mockReturnValue(db);
+    vi.mocked(commitProductImportWithResolution).mockResolvedValue({
+      importedCount: 1,
+      skippedCount: 0,
+      skippedExistingCount: 0,
+      skippedExactDuplicateCount: 0,
+      failedCount: 0,
+      updatedCount: 0,
+      documentIds: ['doc-1'],
+      updatedDocumentIds: [],
+      rowResults: [],
+      commitErrors: [],
+    });
+
+    const report = productReport([validRow(2)]);
+    const result = await commitImportWithResolutionAction(
+      report,
+      noConflicts,
+      'new-only',
+      { saveMapping: false },
+    );
+
+    expect(result.success).toBe(true);
+    expect(vi.mocked(commitProductImportWithResolution)).toHaveBeenCalledWith(
+      db,
+      report,
+      noConflicts,
+      'new-only',
+      { orgId: 'org-a', userId: 'user-a' },
+    );
+    expect(vi.mocked(commitProductImportWithResolution)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org-b' }),
+    );
+  });
+
+  it('blocks sales from committing a product import', async () => {
+    vi.mocked(getAuthenticatedContext).mockResolvedValue({
+      orgId: 'org-1',
+      userId: 'sales-1',
+      role: 'sales',
+    });
+
+    const result = await commitImportWithResolutionAction(
+      productReport([validRow(2)]),
+      noConflicts,
+      'new-only',
+    );
+
+    expect(result).toMatchObject({ success: false, code: 'UNAUTHORIZED' });
+    expect(vi.mocked(getFirestore)).not.toHaveBeenCalled();
+    expect(vi.mocked(commitProductImportWithResolution)).not.toHaveBeenCalled();
+  });
 });

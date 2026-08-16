@@ -35,6 +35,7 @@ import { AccessDenied } from '@/components/shared/access-denied';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useDailySummaryDashboard } from '@/hooks/queries/use-daily-summary-dashboard';
+import { isUnauthorizedError } from '@/lib/domain/errors';
 import type {
   DailySummaryDashboardAlert,
   DailySummaryDashboardQuickSummaryItem,
@@ -98,7 +99,7 @@ export function DailySummaryPage() {
   }
 
   const isOrgError = error?.message.includes('Organization context is not configured');
-  const isUnauthorized = error?.message.includes('permission to view the daily summary');
+  const isUnauthorized = isUnauthorizedError(error);
 
   if (error || !data) {
     return (
@@ -110,7 +111,7 @@ export function DailySummaryPage() {
           tone="neutral"
         />
         {isUnauthorized ? (
-          <AccessDenied description="Daily Summary is available to owners, managers, and production staff." />
+          <AccessDenied description="Kitchen Dashboard is available to owners and managers only." />
         ) : isOrgError ? (
           <Alert variant="destructive">
             <AlertTitle>Configuration required</AlertTitle>

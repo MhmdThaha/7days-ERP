@@ -135,7 +135,7 @@ export const dailySummaryRepository = {
   },
 
   /**
-   * Marks an existing day summary as stale after a failed post-mutation recalculate.
+   * Marks an existing day summary as stale (pending or failed rebuild).
    * No-op when the document is missing — getOrRecalculate already recalculates missing days.
    */
   async markNeedsRecalculation(orgId: string, date: string): Promise<void> {

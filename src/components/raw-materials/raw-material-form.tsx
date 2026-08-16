@@ -247,7 +247,7 @@ export function RawMaterialForm({
                   shouldValidate: true,
                 })
               }
-              disabled={isSubmitting}
+              disabled={isSubmitting || Boolean(rawMaterial)}
             >
               <SelectTrigger
                 id="unit"
@@ -271,7 +271,9 @@ export function RawMaterialForm({
               </p>
             ) : (
               <p id="unit-hint" className="text-sm text-muted-foreground">
-                How you buy and track this ingredient (e.g. kg, L, piece).
+                {rawMaterial
+                  ? 'Unit cannot be changed after the material is created.'
+                  : 'How you buy and track this ingredient (e.g. kg, L, piece).'}
               </p>
             )}
           </div>

@@ -136,7 +136,7 @@ export function ProductionLineItemRow({
               disabled={disabled}
               aria-invalid={Boolean(lineErrors?.quantity)}
               aria-describedby={lineErrors?.quantity ? quantityErrorId : undefined}
-              className="h-8 tabular-nums"
+              className="h-11 min-h-11 tabular-nums lg:h-8 lg:min-h-8"
               value={Number.isNaN(field.value) ? '' : field.value}
               onChange={(event) => {
                 const nextValue =
@@ -166,6 +166,7 @@ export function ProductionLineItemRow({
         onRemove={onRemove}
         disabled={disabled}
         label={`Remove product line ${index + 1}`}
+        className="[&_button]:size-11 lg:[&_button]:size-8"
       />
     </LineItemsGridRow>
   );

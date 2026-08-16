@@ -6,12 +6,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { completeProductionAction, createProductionAction, getProductionAction, listProductionsAction } from '@/actions/production';
+import { completeProductionAction, createProductionAction, getLatestProductionForRepeatAction, getProductionAction } from '@/actions/production';
 import { ProductionForm } from '@/components/production/production-form';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
+import { toRepeatLastFormLines } from '@/lib/domain/production/repeat-last';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import {
@@ -169,18 +170,14 @@ export function ProductionCreatePage() {
     setIsRepeating(true);
 
     try {
-      const listResult = await listProductionsAction({
-        page: 1,
-        pageSize: 1,
-        status: 'all',
-      });
+      const latestResult = await getLatestProductionForRepeatAction();
 
-      if (!listResult.success) {
-        toastFormError(listResult.error);
+      if (!latestResult.success) {
+        toastFormError(latestResult.error);
         return;
       }
 
-      const latestProduction = listResult.data.items[0];
+      const latestProduction = latestResult.data;
 
       if (!latestProduction) {
         toast.error('No previous production found.');
@@ -194,11 +191,7 @@ export function ProductionCreatePage() {
         return;
       }
 
-      const lines = productionResult.data.lines.map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        unit: line.unit,
-      }));
+      const lines = toRepeatLastFormLines(productionResult.data.lines);
 
       setSuccessState(null);
       setRepeatLines(lines);

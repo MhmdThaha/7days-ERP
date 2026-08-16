@@ -103,13 +103,18 @@ function createFakeFirestore(failBatchIndexes: readonly number[] = []) {
     };
   }
 
+  const productPaths: string[] = [];
+
   const store = {
     seedExisting(id: string, data: Record<string, unknown>) {
       existingDocs.set(id, { id, data });
     },
-    collection: () => ({
-      doc: () => ({
-        collection: () => productsCollection(),
+    collection: (root: string) => ({
+      doc: (orgId: string) => ({
+        collection: (sub: string) => {
+          productPaths.push(`${root}/${orgId}/${sub}`);
+          return productsCollection();
+        },
       }),
     }),
     batch: () => {
@@ -142,6 +147,7 @@ function createFakeFirestore(failBatchIndexes: readonly number[] = []) {
     created,
     updated,
     existingDocs,
+    productPaths,
   };
 
   return { db: store as unknown as Firestore, store };
@@ -338,6 +344,55 @@ describe('commitProductImportWithResolution', () => {
     expect(result.updatedCount).toBe(1);
     expect(store.created.map((d) => d.data['name'])).toEqual(['Milk Bread']);
     expect(store.updated[0]?.id).toBe('p9');
+  });
+
+  it('update-existing: never overwrites live currentStock or averageCost', async () => {
+    const rows = [
+      row(2, {
+        name: 'Tea Bun',
+        code: 'TB-1',
+        sellingPrice: 22,
+        openingStock: 8,
+        costPrice: 640,
+      }),
+    ];
+    const existing = index({ 'tea bun': { id: 'p9', name: 'Tea Bun', code: 'TB-1' } });
+    const conflicts = conflictsFor(rows, existing);
+    const { db, store } = createFakeFirestore();
+
+    vi.mocked(loadProductNameIndex).mockResolvedValue(existing);
+
+    store.seedExisting('p9', {
+      organizationId: 'org-1',
+      name: 'Tea Bun',
+      code: 'TB-1',
+      sellingPrice: 2000,
+      currentStock: 50,
+      averageCost: 1000,
+    });
+
+    const result = await commitProductImportWithResolution(
+      db,
+      report(rows),
+      conflicts,
+      'update-existing',
+      options,
+    );
+
+    expect(result.updatedCount).toBe(1);
+    expect(store.updated[0]?.id).toBe('p9');
+    expect(store.updated[0]?.data).not.toHaveProperty('currentStock');
+    expect(store.updated[0]?.data).not.toHaveProperty('averageCost');
+    expect(store.updated[0]?.data).toMatchObject({
+      name: 'Tea Bun',
+      sellingPrice: 2200,
+    });
+    expect(store.existingDocs.get('p9')?.data).toMatchObject({
+      currentStock: 50,
+      averageCost: 1000,
+      sellingPrice: 2200,
+    });
+    expect(store.productPaths).toEqual(['organizations/org-1/products']);
   });
 
   it('skips all rows when duplicate product codes block the import', () => {

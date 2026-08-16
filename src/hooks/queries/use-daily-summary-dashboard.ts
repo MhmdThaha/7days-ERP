@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { getDailySummaryDashboardAction } from '@/actions/daily-summary-dashboard';
+import { DomainError } from '@/lib/domain/errors';
 import { useAuth } from '@/hooks/use-auth';
 
 export function useDailySummaryDashboard() {
@@ -14,6 +15,10 @@ export function useDailySummaryDashboard() {
       const result = await getDailySummaryDashboardAction();
 
       if (!result.success) {
+        if (result.code === 'UNAUTHORIZED') {
+          throw new DomainError('UNAUTHORIZED', result.error);
+        }
+
         throw new Error(result.error);
       }
 

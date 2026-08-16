@@ -47,8 +47,9 @@ export function RecipeChangedDialog({
         <DialogHeader className="px-4 pt-4 sm:px-6">
           <DialogTitle>Recipe Changed</DialogTitle>
           <DialogDescription className="break-words">
-            This recipe was updated after this draft was created. Updating the draft will use the
-            latest recipe. No inventory, costing or accounting has been affected.
+            This recipe was updated after this draft was created. Use New Recipe updates the draft
+            to the latest formula. Keep Current keeps this draft on the original recipe. No
+            inventory, costing or accounting has been affected.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-col gap-2 px-4 pb-4 sm:flex-col sm:px-6 sm:pb-6">
@@ -66,7 +67,7 @@ export function RecipeChangedDialog({
                 Updating draft...
               </>
             ) : (
-              'Update Draft'
+              'Use New Recipe'
             )}
           </Button>
           <Button
@@ -76,7 +77,7 @@ export function RecipeChangedDialog({
             disabled={isUpdating}
             className="w-full"
           >
-            Continue with Current Draft
+            Keep Current
           </Button>
           <Button
             type="button"

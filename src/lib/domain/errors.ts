@@ -19,3 +19,16 @@ export class DomainError extends Error {
     this.code = code;
   }
 }
+
+export function isUnauthorizedError(error: unknown): boolean {
+  if (error instanceof DomainError) {
+    return error.code === 'UNAUTHORIZED';
+  }
+
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: unknown }).code === 'UNAUTHORIZED'
+  );
+}

@@ -1,29 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { updateProductionAction } from '@/actions/production';
 import { getRecipeAction } from '@/actions/recipes';
+import { shouldPromptRecipeChanged } from '@/lib/domain/production/draft-recipe-version';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { Production } from '@/types/production';
 import type { Recipe } from '@/types/recipe';
-
-function hasDraftRecipeVersionMismatch(
-  production: Production,
-  recipesById: Map<string, Recipe>,
-): boolean {
-  for (const line of production.lines) {
-    const recipe = recipesById.get(line.recipeId);
-
-    if (recipe && recipe.version !== line.recipeVersion) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 type UseDraftRecipeVersionCheckOptions = {
   production: Production | undefined;
@@ -40,7 +26,6 @@ export function useDraftRecipeVersionCheck({
 }: UseDraftRecipeVersionCheckOptions) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isUpdatingDraft, setIsUpdatingDraft] = useState(false);
-  const continueWithCurrentDraftRef = useRef(false);
 
   const isDraft = production?.status === 'draft';
   const recipeIds = useMemo(
@@ -80,18 +65,21 @@ export function useDraftRecipeVersionCheck({
       return false;
     }
 
-    return hasDraftRecipeVersionMismatch(production, recipesById);
+    return shouldPromptRecipeChanged(production, recipesById);
   }, [production, isDraft, isLoadingRecipes, recipesById]);
 
   useEffect(() => {
-    if (!hasMismatch || continueWithCurrentDraftRef.current) {
+    if (!hasMismatch) {
       return;
     }
 
     setDialogOpen(true);
   }, [hasMismatch]);
 
-  async function handleUpdateDraft() {
+  async function persistDraftChoice(
+    input: Parameters<typeof updateProductionAction>[1],
+    successMessage: string,
+  ) {
     if (!production || isUpdatingDraft) {
       return;
     }
@@ -99,16 +87,7 @@ export function useDraftRecipeVersionCheck({
     setIsUpdatingDraft(true);
 
     try {
-      const result = await updateProductionAction(productionId, {
-        productionDate: production.productionDate,
-        lines: production.lines.map((line) => ({
-          id: line.id,
-          productId: line.productId,
-          quantity: line.quantity,
-          unit: line.unit,
-        })),
-        notes: production.notes,
-      });
+      const result = await updateProductionAction(productionId, input);
 
       if (!result.success) {
         toastFormError(result.error);
@@ -121,15 +100,33 @@ export function useDraftRecipeVersionCheck({
       ]);
 
       setDialogOpen(false);
-      toast.success('Draft updated to use the latest recipe.');
+      toast.success(successMessage);
     } finally {
       setIsUpdatingDraft(false);
     }
   }
 
-  function handleContinueWithCurrentDraft() {
-    continueWithCurrentDraftRef.current = true;
-    setDialogOpen(false);
+  async function handleUpdateDraft() {
+    await persistDraftChoice(
+      {
+        productionDate: production?.productionDate,
+        lines: (production?.lines ?? []).map((line) => ({
+          id: line.id,
+          productId: line.productId,
+          quantity: line.quantity,
+          unit: line.unit,
+        })),
+        notes: production?.notes,
+      },
+      'Draft updated to use the latest recipe.',
+    );
+  }
+
+  async function handleContinueWithCurrentDraft() {
+    await persistDraftChoice(
+      { acceptedStaleRecipe: true },
+      'Draft kept on the current recipe.',
+    );
   }
 
   function handleClose() {

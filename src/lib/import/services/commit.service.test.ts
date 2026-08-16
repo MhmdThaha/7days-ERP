@@ -188,6 +188,7 @@ describe('commitProductImport', () => {
       deletedAt: null,
       deletedBy: null,
     });
+    expect(paths).not.toContain('inventoryMovements');
   });
 
   it('applies the same defaults as productRepository.create for missing fields', async () => {

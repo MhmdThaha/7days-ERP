@@ -113,6 +113,18 @@ export const rawMaterialService = {
       input = { ...input, code: resolvedCode };
     }
 
+    if (input.unit !== undefined) {
+      if (input.unit.trim().toLowerCase() !== existing.unit.trim().toLowerCase()) {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          'Unit of measure cannot be changed after the raw material is created.',
+        );
+      }
+
+      const { unit: _ignoredUnit, ...rest } = input;
+      input = rest;
+    }
+
     return rawMaterialRepository.update(orgId, rawMaterialId, input, userId);
   },
 

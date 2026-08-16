@@ -386,10 +386,10 @@ function buildProductUpdates(
 ): Partial<ProductDocument> {
   const now = Timestamp.now();
   const sellingPrice = asNumber(values['sellingPrice']);
-  const costPrice = asNumber(values['costPrice']);
-  const openingStock = asNumber(values['openingStock']);
 
-  const updates: Partial<ProductDocument> = {
+  // Catalog fields only. openingStock / costPrice must not overwrite live
+  // currentStock / averageCost on an existing product.
+  return {
     code: asString(values['code'])?.trim().toUpperCase() ?? '',
     name: asString(values['name'])?.trim() ?? '',
     category: asString(values['category']) ?? FALLBACK_CATEGORY,
@@ -398,16 +398,6 @@ function buildProductUpdates(
     updatedAt: now,
     updatedBy: userId,
   };
-
-  if (openingStock !== null) {
-    updates.currentStock = openingStock;
-  }
-
-  if (costPrice !== null) {
-    updates.averageCost = toMinorUnits(costPrice);
-  }
-
-  return updates;
 }
 
 async function applyProductUpdates(

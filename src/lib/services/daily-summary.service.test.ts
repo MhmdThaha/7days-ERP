@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
+const scheduledTasks: Array<() => Promise<void>> = [];
+const scheduleAfterResponseMock = vi.fn((task: () => Promise<void>) => {
+  scheduledTasks.push(task);
+  return true;
+});
+
+vi.mock('@/lib/server/schedule-after-response', () => ({
+  scheduleAfterResponse: (task: () => Promise<void>) => scheduleAfterResponseMock(task),
+}));
+
 vi.mock('@/lib/repositories/daily-summary.repository', async () => {
   const actual = await vi.importActual<typeof import('@/lib/repositories/daily-summary.repository')>(
     '@/lib/repositories/daily-summary.repository',
@@ -112,6 +122,12 @@ describe('dailySummaryService recalculation reliability', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    scheduledTasks.length = 0;
+    scheduleAfterResponseMock.mockReset();
+    scheduleAfterResponseMock.mockImplementation((task: () => Promise<void>) => {
+      scheduledTasks.push(task);
+      return true;
+    });
     stubRecalculateSources();
   });
 
@@ -241,5 +257,96 @@ describe('dailySummaryService recalculation reliability', () => {
 
     expect(dailySummaryRepository.upsertIfVersionMatches).toHaveBeenCalled();
     expect(dailySummaryRepository.markNeedsRecalculation).not.toHaveBeenCalled();
+  });
+
+  it('getOrRecalculate rebuilds a dirty production total before returning it', async () => {
+    vi.mocked(dailySummaryRepository.getByDate).mockResolvedValue(
+      summary({ needsRecalculation: true, totalProductionUnits: 100, version: 1 }),
+    );
+    vi.mocked(productionRepository.listCompletedByDate).mockResolvedValue([
+      { totalUnits: 100 },
+      { totalUnits: 50 },
+    ] as never);
+    vi.mocked(dailySummaryRepository.upsertIfVersionMatches).mockResolvedValue(
+      summary({
+        version: 2,
+        needsRecalculation: false,
+        totalProductionUnits: 150,
+      }),
+    );
+
+    const result = await dailySummaryService.getOrRecalculate('org-1', date);
+
+    expect(result.totalProductionUnits).toBe(150);
+    expect(result.needsRecalculation).toBe(false);
+    expect(dailySummaryRepository.upsertIfVersionMatches).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ totalProductionUnits: 150 }),
+      1,
+    );
+  });
+
+  it('scheduleRecalculationAfterCommit marks dirty and returns without waiting for rebuild', async () => {
+    let rebuildFinished = false;
+    vi.mocked(dailySummaryRepository.markNeedsRecalculation).mockResolvedValue();
+    vi.spyOn(dailySummaryService, 'recalculateAfterMutation').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            rebuildFinished = true;
+            resolve();
+          }, 50);
+        }),
+    );
+
+    await dailySummaryService.scheduleRecalculationAfterCommit('org-1', date);
+
+    expect(rebuildFinished).toBe(false);
+    expect(dailySummaryRepository.markNeedsRecalculation).toHaveBeenCalledWith('org-1', date);
+    expect(scheduleAfterResponseMock).toHaveBeenCalledOnce();
+    expect(dailySummaryService.recalculateAfterMutation).not.toHaveBeenCalled();
+
+    const scheduledTask = scheduledTasks[0];
+    if (!scheduledTask) {
+      throw new Error('expected after() task to be registered');
+    }
+    await scheduledTask();
+
+    expect(rebuildFinished).toBe(true);
+    expect(dailySummaryService.recalculateAfterMutation).toHaveBeenCalledWith('org-1', date);
+  });
+
+  it('scheduleRecalculationAfterCommit awaits rebuild when after() cannot be scheduled', async () => {
+    scheduleAfterResponseMock.mockImplementation(() => false);
+    vi.mocked(dailySummaryRepository.markNeedsRecalculation).mockResolvedValue();
+    const recalcSpy = vi.spyOn(dailySummaryService, 'recalculateAfterMutation').mockResolvedValue();
+
+    await dailySummaryService.scheduleRecalculationAfterCommit('org-1', date);
+
+    expect(recalcSpy).toHaveBeenCalledWith('org-1', date);
+  });
+
+  it('scheduleRecalculationAfterCommit falls back to rebuild when mark dirty fails', async () => {
+    vi.mocked(dailySummaryRepository.markNeedsRecalculation).mockRejectedValue(
+      new Error('mark failed'),
+    );
+    const recalcSpy = vi.spyOn(dailySummaryService, 'recalculateAfterMutation').mockResolvedValue();
+
+    await dailySummaryService.scheduleRecalculationAfterCommit('org-1', date);
+
+    expect(recalcSpy).toHaveBeenCalledWith('org-1', date);
+    expect(scheduleAfterResponseMock).not.toHaveBeenCalled();
+  });
+
+  it('two overlapping schedules both mark dirty and both queue a rebuild', async () => {
+    vi.mocked(dailySummaryRepository.markNeedsRecalculation).mockResolvedValue();
+
+    await Promise.all([
+      dailySummaryService.scheduleRecalculationAfterCommit('org-1', date),
+      dailySummaryService.scheduleRecalculationAfterCommit('org-1', date),
+    ]);
+
+    expect(dailySummaryRepository.markNeedsRecalculation).toHaveBeenCalledTimes(2);
+    expect(scheduleAfterResponseMock).toHaveBeenCalledTimes(2);
   });
 });

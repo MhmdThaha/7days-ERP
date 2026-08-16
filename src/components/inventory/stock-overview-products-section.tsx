@@ -26,6 +26,8 @@ type StockOverviewProductsSectionProps = {
   totalCount: number;
   hasActiveFilters: boolean;
   onClearFilters: () => void;
+  canAdjustStock?: boolean;
+  onAdjustStock?: (product: StockOverviewProductItem) => void;
 };
 
 const TABLE_CELL_CLASS = 'py-4 text-base';
@@ -39,6 +41,8 @@ export function StockOverviewProductsSection({
   totalCount,
   hasActiveFilters,
   onClearFilters,
+  canAdjustStock = false,
+  onAdjustStock,
 }: StockOverviewProductsSectionProps) {
   return (
     <section aria-labelledby="stock-overview-products-heading">
@@ -74,6 +78,11 @@ export function StockOverviewProductsSection({
                     <TableHead className={cn('text-right', TABLE_CELL_CLASS)}>Current Stock</TableHead>
                     <TableHead className={cn('hidden md:table-cell', TABLE_CELL_CLASS)}>Unit</TableHead>
                     <TableHead className={TABLE_CELL_CLASS}>Status</TableHead>
+                    {canAdjustStock ? (
+                      <TableHead className={cn('text-right', TABLE_CELL_CLASS)}>
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    ) : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -111,6 +120,18 @@ export function StockOverviewProductsSection({
                       <TableCell className={TABLE_CELL_CLASS}>
                         <StockStatusBadge status={product.status} />
                       </TableCell>
+                      {canAdjustStock ? (
+                        <TableCell className={cn('text-right', TABLE_CELL_CLASS)}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 min-h-11"
+                            onClick={() => onAdjustStock?.(product)}
+                          >
+                            Adjust Stock
+                          </Button>
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   ))}
                 </TableBody>

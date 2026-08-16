@@ -5,7 +5,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { PRODUCT_LOW_STOCK_THRESHOLD } from '@/lib/domain/constants/dashboard';
 import { DEFAULT_PRODUCT_UNIT } from '@/lib/domain/constants/product';
 import { timestampToDate, normalizeNullableString } from '@/lib/firebase/converters';
-import { buildAuditFields, getOrgCollection } from '@/lib/repositories/base.repository';
+import { buildAuditFields, getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
 import type {
   CreateProductInput,
   Product,
@@ -192,6 +192,40 @@ export const productRepository = {
     }
 
     return product;
+  },
+
+  async getByIds(orgId: string, productIds: readonly string[]): Promise<Product[]> {
+    const uniqueIds = [...new Set(productIds.filter((id) => id.trim().length > 0))];
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const collection = getOrgCollection(orgId, 'products');
+    const firestore = getFirestore();
+    const products: Product[] = [];
+    const chunkSize = 100;
+
+    for (let start = 0; start < uniqueIds.length; start += chunkSize) {
+      const chunk = uniqueIds.slice(start, start + chunkSize);
+      const snapshots = await firestore.getAll(...chunk.map((id) => collection.doc(id)));
+
+      for (const snapshot of snapshots) {
+        if (!snapshot.exists) {
+          continue;
+        }
+
+        const product = toProduct(snapshot.id, snapshot.data() as ProductDocument);
+
+        if (product.deletedAt) {
+          continue;
+        }
+
+        products.push(product);
+      }
+    }
+
+    return products;
   },
 
   async findByCode(orgId: string, code: string, excludeId?: string): Promise<Product | null> {

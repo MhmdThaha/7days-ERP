@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -13,10 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import {
   convertQuantity,
   listCompatibleUnits,
 } from '@/lib/domain/units/uom-conversion';
+import {
+  chooseReadableDisplayUnit,
+  formatProductionQuantityDisplay,
+} from '@/lib/utils/production-quantity-display';
 import type { MaterialPreviewRow } from '@/types/production';
 
 type ProductionMaterialPreviewProps = {
@@ -29,11 +34,11 @@ type ProductionMaterialPreviewProps = {
 };
 
 const DETAIL_TABLE_HEAD_CLASS =
-  'normal-case text-sm font-medium tracking-normal';
-const DETAIL_TABLE_CELL_CLASS = 'py-4 text-base';
+  'normal-case text-xs font-semibold tracking-wide text-muted-foreground';
+const DETAIL_TABLE_CELL_CLASS = 'py-3.5 text-base';
 
 function formatQuantity(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 6 });
+  return formatProductionQuantityDisplay(value);
 }
 
 function QuantityWithUnitSwitch({
@@ -46,11 +51,9 @@ function QuantityWithUnitSwitch({
   className?: string;
 }) {
   const options = listCompatibleUnits(canonicalUnit);
-  const [displayUnit, setDisplayUnit] = useState(canonicalUnit);
-
-  useEffect(() => {
-    setDisplayUnit(canonicalUnit);
-  }, [canonicalUnit]);
+  const readableUnit = chooseReadableDisplayUnit(canonicalQuantity, canonicalUnit);
+  const [userPickedUnit, setUserPickedUnit] = useState<string | null>(null);
+  const displayUnit = userPickedUnit ?? readableUnit;
 
   const displayQuantity =
     displayUnit.trim().toLowerCase() === canonicalUnit.trim().toLowerCase()
@@ -70,9 +73,9 @@ function QuantityWithUnitSwitch({
       <span className="tabular-nums">{formatQuantity(displayQuantity)}</span>
       <select
         aria-label="Display unit"
-        className="h-7 max-w-[4.5rem] rounded-md border border-input bg-transparent px-1 text-sm"
+        className="h-11 max-w-[4.75rem] rounded-md border border-input bg-transparent px-1 text-sm lg:h-7"
         value={displayUnit}
-        onChange={(event) => setDisplayUnit(event.target.value)}
+        onChange={(event) => setUserPickedUnit(event.target.value)}
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -136,7 +139,7 @@ export function ProductionMaterialPreview({
       ) : null}
 
       {!isCompleted && shortageCount > 0 ? (
-        <Alert variant="warning">
+        <Alert variant="destructive">
           <AlertTriangle />
           <AlertTitle>You may not have enough stock</AlertTitle>
           <AlertDescription>
@@ -149,26 +152,38 @@ export function ProductionMaterialPreview({
       <div className="overflow-x-auto rounded-lg border bg-background">
         <Table className={comfortableTable ? 'text-base' : undefined}>
           <TableHeader>
-            <TableRow>
+            <TableRow className="hover:bg-transparent">
               <TableHead
-                className={`min-w-[180px] ${comfortableTable ? DETAIL_TABLE_HEAD_CLASS : ''}`}
+                className={cn(
+                  'min-w-[7.5rem] bg-muted/50 sm:min-w-[180px]',
+                  comfortableTable ? DETAIL_TABLE_HEAD_CLASS : 'bg-muted/50',
+                )}
               >
                 Ingredient
               </TableHead>
               <TableHead
-                className={`text-right whitespace-nowrap ${comfortableTable ? DETAIL_TABLE_HEAD_CLASS : ''}`}
+                className={cn(
+                  'bg-muted/50 text-right whitespace-nowrap',
+                  comfortableTable ? DETAIL_TABLE_HEAD_CLASS : '',
+                )}
               >
                 {isCompleted ? 'Used' : 'Needed'}
               </TableHead>
               {!isCompleted ? (
                 <>
                   <TableHead
-                    className={`text-right whitespace-nowrap ${comfortableTable ? DETAIL_TABLE_HEAD_CLASS : ''}`}
+                    className={cn(
+                      'bg-muted/50 text-right whitespace-nowrap',
+                      comfortableTable ? DETAIL_TABLE_HEAD_CLASS : '',
+                    )}
                   >
                     In Stock
                   </TableHead>
                   <TableHead
-                    className={`text-right whitespace-nowrap ${comfortableTable ? DETAIL_TABLE_HEAD_CLASS : ''}`}
+                    className={cn(
+                      'bg-muted/50 text-right whitespace-nowrap',
+                      comfortableTable ? DETAIL_TABLE_HEAD_CLASS : '',
+                    )}
                   >
                     Shortage
                   </TableHead>
@@ -189,19 +204,27 @@ export function ProductionMaterialPreview({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row) => (
-                <TableRow key={row.rawMaterialId}>
+              rows.map((row) => {
+                const hasShortage = row.shortage > 0;
+
+                return (
+                <TableRow
+                  key={row.rawMaterialId}
+                  className={hasShortage ? 'bg-destructive/[0.04]' : undefined}
+                >
                   <TableCell className={comfortableTable ? DETAIL_TABLE_CELL_CLASS : undefined}>
+                    <span className="font-semibold">{row.rawMaterialName}</span>
                     <span
-                      className={`font-mono text-muted-foreground ${comfortableTable ? 'text-sm' : 'text-xs'}`}
+                      className={`mt-0.5 block font-mono text-muted-foreground ${comfortableTable ? 'text-xs' : 'text-[11px]'}`}
                     >
                       {row.rawMaterialCode}
                     </span>
-                    <span className="mx-1.5 text-muted-foreground">·</span>
-                    {row.rawMaterialName}
                   </TableCell>
                   <TableCell
-                    className={`text-right ${comfortableTable ? DETAIL_TABLE_CELL_CLASS : ''}`}
+                    className={cn(
+                      'text-right font-semibold tabular-nums',
+                      comfortableTable ? DETAIL_TABLE_CELL_CLASS : '',
+                    )}
                   >
                     <QuantityWithUnitSwitch
                       canonicalQuantity={row.requiredQuantity}
@@ -211,7 +234,10 @@ export function ProductionMaterialPreview({
                   {!isCompleted ? (
                     <>
                       <TableCell
-                        className={`text-right ${comfortableTable ? DETAIL_TABLE_CELL_CLASS : ''}`}
+                        className={cn(
+                          'text-right text-muted-foreground tabular-nums',
+                          comfortableTable ? DETAIL_TABLE_CELL_CLASS : '',
+                        )}
                       >
                         <QuantityWithUnitSwitch
                           canonicalQuantity={row.currentStock}
@@ -219,13 +245,15 @@ export function ProductionMaterialPreview({
                         />
                       </TableCell>
                       <TableCell
-                        className={`text-right ${
-                          comfortableTable ? DETAIL_TABLE_CELL_CLASS : ''
-                        } ${
-                          row.shortage > 0 ? 'font-medium text-warning-foreground' : 'text-muted-foreground'
-                        }`}
+                        className={cn(
+                          'text-right',
+                          comfortableTable ? DETAIL_TABLE_CELL_CLASS : '',
+                          hasShortage
+                            ? 'font-semibold text-destructive'
+                            : 'text-success-foreground',
+                        )}
                       >
-                        {row.shortage > 0 ? (
+                        {hasShortage ? (
                           <QuantityWithUnitSwitch
                             canonicalQuantity={row.shortage}
                             canonicalUnit={row.unit}
@@ -237,7 +265,8 @@ export function ProductionMaterialPreview({
                     </>
                   ) : null}
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

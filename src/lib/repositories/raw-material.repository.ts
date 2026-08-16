@@ -3,7 +3,7 @@ import 'server-only';
 import { Timestamp } from 'firebase-admin/firestore';
 
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
-import { buildAuditFields, getOrgCollection } from '@/lib/repositories/base.repository';
+import { buildAuditFields, getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
 import type {
   CreateRawMaterialInput,
   RawMaterial,
@@ -159,6 +159,40 @@ export const rawMaterialRepository = {
     }
 
     return rawMaterial;
+  },
+
+  async getByIds(orgId: string, rawMaterialIds: readonly string[]): Promise<RawMaterial[]> {
+    const uniqueIds = [...new Set(rawMaterialIds.filter((id) => id.trim().length > 0))];
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const collection = getOrgCollection(orgId, 'rawMaterials');
+    const firestore = getFirestore();
+    const materials: RawMaterial[] = [];
+    const chunkSize = 100;
+
+    for (let start = 0; start < uniqueIds.length; start += chunkSize) {
+      const chunk = uniqueIds.slice(start, start + chunkSize);
+      const snapshots = await firestore.getAll(...chunk.map((id) => collection.doc(id)));
+
+      for (const snapshot of snapshots) {
+        if (!snapshot.exists) {
+          continue;
+        }
+
+        const rawMaterial = toRawMaterial(snapshot.id, snapshot.data() as RawMaterialDocument);
+
+        if (rawMaterial.deletedAt) {
+          continue;
+        }
+
+        materials.push(rawMaterial);
+      }
+    }
+
+    return materials;
   },
 
   async findByCode(

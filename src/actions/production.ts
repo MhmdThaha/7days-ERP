@@ -2,6 +2,7 @@
 
 import {
   createProductionSchema,
+  productionListPageParamsSchema,
   productionListParamsSchema,
   updateProductionSchema,
 } from '@/lib/domain/schemas/production.schema';
@@ -17,6 +18,9 @@ import type {
   CreateProductionInput,
   MaterialPreviewRow,
   Production,
+  ProductionListItem,
+  ProductionListPageParams,
+  ProductionListPageResult,
   ProductionListParams,
   ProductionListResult,
   UpdateProductionInput,
@@ -31,6 +35,28 @@ export async function listProductionsAction(
     assertCan(role, 'read', 'production');
     const validated = productionListParamsSchema.parse(params);
     return productionService.list(orgId, validated);
+  });
+}
+
+/** Production page only — paginated when search is empty; legacy substring list when search is set. */
+export async function listProductionsPageAction(
+  params: ProductionListPageParams,
+): Promise<ActionResult<ProductionListPageResult>> {
+  return wrapAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'production');
+    const validated = productionListPageParamsSchema.parse(params);
+    return productionService.listPage(orgId, validated);
+  });
+}
+
+export async function getLatestProductionForRepeatAction(): Promise<
+  ActionResult<ProductionListItem | null>
+> {
+  return wrapAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'production');
+    return productionService.getLatestForRepeat(orgId);
   });
 }
 
@@ -67,13 +93,9 @@ export async function getProductionConsumedMaterialsAction(
           .map((movement) => movement.itemId),
       ),
     ];
-    const rawMaterials = await Promise.all(
-      rawMaterialIds.map((rawMaterialId) => rawMaterialRepository.getById(orgId, rawMaterialId)),
-    );
+    const rawMaterials = await rawMaterialRepository.getByIds(orgId, rawMaterialIds);
     const rawMaterialsById = new Map(
-      rawMaterials
-        .filter((rawMaterial) => rawMaterial !== null)
-        .map((rawMaterial) => [rawMaterial.id, toRawMaterialListItem(rawMaterial)]),
+      rawMaterials.map((rawMaterial) => [rawMaterial.id, toRawMaterialListItem(rawMaterial)]),
     );
 
     return buildMaterialRowsFromRawOutMovements(movements, rawMaterialsById);

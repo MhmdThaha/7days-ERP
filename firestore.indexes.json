@@ -89,6 +89,44 @@
       ]
     },
     {
+      "collectionGroup": "production",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "productionDate", "order": "DESCENDING" },
+        { "fieldPath": "productionNumber", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "production",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "productionDate", "order": "ASCENDING" },
+        { "fieldPath": "productionNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "production",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "productionDate", "order": "DESCENDING" },
+        { "fieldPath": "productionNumber", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "production",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "productionDate", "order": "ASCENDING" },
+        { "fieldPath": "productionNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "expenses",
       "queryScope": "COLLECTION",
       "fields": [

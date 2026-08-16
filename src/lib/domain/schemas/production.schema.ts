@@ -65,6 +65,7 @@ export const updateProductionSchema = productionFormBaseSchema
       .regex(dateRegex, 'Enter a valid production date.')
       .optional(),
     lines: z.array(productionLineItemSchema).min(1, 'Add at least one product line.').optional(),
+    acceptedStaleRecipe: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.lines) {
@@ -77,4 +78,18 @@ export const productionListParamsSchema = z.object({
   status: z.enum(['all', 'draft', 'completed']).optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().max(100).default(25),
+});
+
+const productionPageCursorSchema = z.object({
+  productionDate: z.string().min(1),
+  productionNumber: z.string().min(1),
+});
+
+export const productionListPageParamsSchema = z.object({
+  search: z.string().trim().optional(),
+  status: z.enum(['all', 'draft', 'completed']).optional(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().max(100).default(25),
+  position: z.enum(['first', 'next', 'prev', 'last']).default('first'),
+  cursor: productionPageCursorSchema.nullable().optional(),
 });

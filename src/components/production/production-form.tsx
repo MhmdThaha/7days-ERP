@@ -7,7 +7,6 @@ import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-for
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/hooks/use-auth';
-import { listRecipesAction } from '@/actions/recipes';
 import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
 import { ProductionLineItemRow } from '@/components/production/production-line-item-row';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
@@ -24,6 +23,8 @@ import { useProductsByIds } from '@/hooks/use-products-by-ids';
 import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
 import { buildMaterialPreview } from '@/lib/domain/calculations/production-materials';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/production';
+import { isEligibleProductionProduct } from '@/lib/domain/production/eligible-production-product';
+import { recipesFromLineSnapshots } from '@/lib/domain/production/draft-recipe-version';
 import {
   productionFormSchema,
   type ProductionFormValues,
@@ -35,6 +36,7 @@ import {
   getLocalProductionDateString,
   type ProductionFieldError,
 } from '@/lib/utils/production-form-errors';
+import { formatProductionQuantityDisplay } from '@/lib/utils/production-quantity-display';
 import {
   PRODUCTION_PREVIEW_STALE_TIME,
   fetchProductionPreviewPipeline,
@@ -47,7 +49,7 @@ import {
 } from '@/lib/ui/line-items-grid-config';
 import type { Production } from '@/types/production';
 import type { ProductListItem } from '@/types/product';
-import type { Recipe, RecipeListItem } from '@/types/recipe';
+import type { Recipe } from '@/types/recipe';
 
 type ProductionFormProps = {
   production?: Production;
@@ -77,20 +79,7 @@ function formatProductionDateLabel(date: string): string {
 }
 
 function formatQuantity(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 3 });
-}
-
-function isEligibleProduct(
-  product: ProductListItem,
-  recipesById: Map<string, RecipeListItem>,
-): boolean {
-  if (!product.isActive || !product.activeRecipeId) {
-    return false;
-  }
-
-  const recipe = recipesById.get(product.activeRecipeId);
-
-  return Boolean(recipe?.isActive && recipe.productId === product.id);
+  return formatProductionQuantityDisplay(value);
 }
 
 export function ProductionForm({
@@ -137,27 +126,6 @@ export function ProductionForm({
     });
   }, [append]);
 
-  const {
-    data: recipesResult,
-    isLoading: isLoadingRecipes,
-  } = useQuery({
-    queryKey: ['recipes', 'production-picker'],
-    queryFn: async () => {
-      const result = await listRecipesAction({
-        status: 'active',
-        page: 1,
-        pageSize: 100,
-      });
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result.data;
-    },
-    enabled: isAuthenticated,
-  });
-
   const selectedProductIds = useMemo(
     () => lines.map((line) => line.productId).filter(Boolean),
     [lines],
@@ -166,20 +134,12 @@ export function ProductionForm({
   const { productsById, isLoading: isLoadingSelectedProducts } =
     useProductsByIds(selectedProductIds);
 
-  const recipesById = useMemo(() => {
-    const map = new Map<string, RecipeListItem>();
-
-    for (const item of recipesResult?.items ?? []) {
-      map.set(item.id, item);
-    }
-
-    return map;
-  }, [recipesResult?.items]);
-
   const filterEligibleProduct = useCallback(
-    (product: ProductListItem) => isEligibleProduct(product, recipesById),
-    [recipesById],
+    (product: ProductListItem) => isEligibleProductionProduct(product),
+    [],
   );
+
+  const useLockedRecipeSnapshot = Boolean(production?.acceptedStaleRecipe);
 
   const activeRecipeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -201,12 +161,16 @@ export function ProductionForm({
 
   const { data: fullRecipes, isLoading: isLoadingFullRecipes } = useQuery({
     queryKey: productionFullRecipesQueryKey(activeRecipeIds),
-    enabled: isAuthenticated && activeRecipeIds.length > 0,
+    enabled: isAuthenticated && activeRecipeIds.length > 0 && !useLockedRecipeSnapshot,
     queryFn: () => fetchProductionPreviewPipeline(queryClient, user?.uid, activeRecipeIds),
     staleTime: PRODUCTION_PREVIEW_STALE_TIME,
   });
 
   const fullRecipesById = useMemo(() => {
+    if (useLockedRecipeSnapshot && production) {
+      return recipesFromLineSnapshots(production.lines);
+    }
+
     const map = new Map<string, Recipe>();
 
     for (const recipe of fullRecipes ?? []) {
@@ -214,19 +178,19 @@ export function ProductionForm({
     }
 
     return map;
-  }, [fullRecipes]);
+  }, [fullRecipes, production, useLockedRecipeSnapshot]);
 
   const previewMaterialIds = useMemo(() => {
     const ids = new Set<string>();
 
-    for (const recipe of fullRecipes ?? []) {
+    for (const recipe of fullRecipesById.values()) {
       for (const ingredient of recipe.ingredients) {
         ids.add(ingredient.rawMaterialId);
       }
     }
 
     return [...ids];
-  }, [fullRecipes]);
+  }, [fullRecipesById]);
 
   const { rawMaterialsById, isLoading: isLoadingPreviewMaterials } =
     useRawMaterialsByIds(previewMaterialIds);
@@ -377,14 +341,16 @@ export function ProductionForm({
   }
 
   const isFormDisabled = isSubmitting;
-  const isPreviewLoading = isLoadingFullRecipes || isLoadingPreviewMaterials;
-  const isProductLineBusy = isSubmitting || isLoadingRecipes;
+  const isPreviewLoading = useLockedRecipeSnapshot
+    ? isLoadingPreviewMaterials
+    : isLoadingFullRecipes || isLoadingPreviewMaterials;
+  const isProductLineBusy = isSubmitting;
   const ingredientShortageCount = materialPreviewRows.filter((row) => row.shortage > 0).length;
 
   useAutoFirstLine(
     Boolean(production) || Boolean(initialLines?.length),
     fields.length,
-    !isLoadingRecipes,
+    true,
     appendEmptyLine,
   );
 

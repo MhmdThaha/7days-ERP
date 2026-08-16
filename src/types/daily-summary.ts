@@ -26,7 +26,7 @@ export type DailySummary = {
   computedAt: Date;
   version: number;
   /**
-   * When true, derived totals may be stale after a failed post-mutation recalculate.
+   * When true, derived totals may be stale (rebuild pending or last rebuild failed).
    * Report loads must recalculate before trusting this document.
    */
   needsRecalculation: boolean;

@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/table';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { formatProductionQuantityDisplay } from '@/lib/utils/production-quantity-display';
 import type { ProductionListItem } from '@/types/production';
 
 type ProductionTableProps = {
@@ -73,7 +74,7 @@ function formatDate(date: string): string {
 }
 
 function formatQuantity(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 3 });
+  return formatProductionQuantityDisplay(value);
 }
 
 export function ProductionTable({
@@ -98,13 +99,23 @@ export function ProductionTable({
         aria-busy={isFetching}
       >
         <Table>
-          <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
-            <TableRow>
-              <TableHead className="w-[100px]">Number</TableHead>
-              <TableHead className="w-[110px]">Date</TableHead>
-              <TableHead className="hidden w-[90px] sm:table-cell">Products</TableHead>
-              <TableHead className="w-[120px]">Total Units</TableHead>
-              <TableHead className="w-[90px]">Status</TableHead>
+          <TableHeader className="sticky top-0 z-10 bg-muted/60 shadow-sm">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[100px] text-xs font-semibold tracking-wide text-muted-foreground">
+                Number
+              </TableHead>
+              <TableHead className="w-[110px] text-xs font-semibold tracking-wide text-muted-foreground">
+                Date
+              </TableHead>
+              <TableHead className="hidden w-[90px] text-xs font-semibold tracking-wide text-muted-foreground sm:table-cell">
+                Products
+              </TableHead>
+              <TableHead className="w-[120px] text-xs font-semibold tracking-wide text-muted-foreground">
+                Total Units
+              </TableHead>
+              <TableHead className="w-[90px] text-xs font-semibold tracking-wide text-muted-foreground">
+                Status
+              </TableHead>
               <TableHead className="min-w-[140px] text-right">
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -126,7 +137,7 @@ export function ProductionTable({
 
                 return (
                 <TableRow key={production.id} className="group hover:bg-muted/40">
-                  <TableCell className="font-medium">
+                  <TableCell className="font-semibold">
                       <Link
                         href={`/production/${production.id}`}
                         className="font-mono text-xs hover:underline sm:text-sm"
@@ -137,9 +148,13 @@ export function ProductionTable({
                         />
                       </Link>
                     </TableCell>
-                  <TableCell>{formatDate(production.productionDate)}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{production.lineCount}</TableCell>
-                  <TableCell className="tabular-nums">
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(production.productionDate)}
+                  </TableCell>
+                  <TableCell className="hidden tabular-nums text-muted-foreground sm:table-cell">
+                    {production.lineCount}
+                  </TableCell>
+                  <TableCell className="font-semibold tabular-nums">
                     {formatQuantity(production.totalUnits)}
                   </TableCell>
                   <TableCell>
@@ -151,6 +166,7 @@ export function ProductionTable({
                         <Button
                           variant="success"
                           size="default"
+                          className="min-h-11 px-3 font-semibold sm:min-h-9"
                           onClick={() => onComplete(production)}
                           disabled={disabled}
                         >
@@ -160,7 +176,7 @@ export function ProductionTable({
                       ) : null}
                       <DropdownMenu>
                         <DropdownMenuTrigger
-                          className="inline-flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          className="inline-flex size-11 items-center justify-center rounded-md opacity-100 transition-opacity hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:size-8 sm:opacity-70 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                           aria-label={`Actions for ${production.productionNumber}`}
                           disabled={disabled}
                         >

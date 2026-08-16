@@ -51,4 +51,4 @@ export const PRODUCTION_GRID_ROW_CLASS =
 export const PURCHASE_GRID_MIN_WIDTH = 'min-w-[46rem]';
 export const RECIPE_GRID_MIN_WIDTH = 'min-w-[32rem]';
 export const SALE_GRID_MIN_WIDTH = 'min-w-[42rem]';
-export const PRODUCTION_GRID_MIN_WIDTH = 'min-w-[28rem]';
+export const PRODUCTION_GRID_MIN_WIDTH = 'min-w-0 lg:min-w-[28rem]';

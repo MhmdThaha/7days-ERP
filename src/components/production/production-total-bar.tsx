@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent } from '@/components/ui/card';
+import { formatProductionQuantityDisplay } from '@/lib/utils/production-quantity-display';
 
 type ProductionTotalBarProps = {
   lineCount: number;
@@ -9,7 +10,7 @@ type ProductionTotalBarProps = {
 };
 
 function formatQuantity(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 3 });
+  return formatProductionQuantityDisplay(value);
 }
 
 export function ProductionTotalBar({
@@ -18,30 +19,18 @@ export function ProductionTotalBar({
   variant = 'default',
 }: ProductionTotalBarProps) {
   const content = (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+    <div className="flex flex-wrap items-center gap-x-8 gap-y-1">
       <div className="flex items-baseline gap-2">
-        <p className="text-sm font-medium text-muted-foreground">Product lines</p>
-        <p
-          className={
-            variant === 'compact'
-              ? 'text-sm font-medium tabular-nums text-muted-foreground'
-              : 'text-lg font-semibold tabular-nums'
-          }
-        >
-          {lineCount}
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Product lines
         </p>
+        <p className="text-sm font-medium tabular-nums text-muted-foreground">{lineCount}</p>
       </div>
       <div className="flex items-baseline gap-2">
-        <p className="text-sm font-medium text-muted-foreground">Total units</p>
-        <p
-          className={
-            variant === 'compact'
-              ? 'text-2xl font-semibold tabular-nums'
-              : 'text-2xl font-semibold tabular-nums'
-          }
-        >
-          {formatQuantity(totalUnits)}
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Total units
         </p>
+        <p className="text-2xl font-semibold tabular-nums">{formatQuantity(totalUnits)}</p>
       </div>
     </div>
   );

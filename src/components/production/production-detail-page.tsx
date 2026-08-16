@@ -43,6 +43,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { buildMaterialPreview } from '@/lib/domain/calculations/production-materials';
+import { formatProductionQuantityDisplay } from '@/lib/utils/production-quantity-display';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -73,7 +74,7 @@ function formatDate(date: string): string {
 }
 
 function formatQuantity(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 3 });
+  return formatProductionQuantityDisplay(value);
 }
 
 export function ProductionDetailPage({ productionId }: ProductionDetailPageProps) {
@@ -321,10 +322,11 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
         description={headerSubtitle}
       >
         {canEdit ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <Button
               variant="success"
               size="xl"
+              className="w-full min-h-12 sm:w-auto"
               onClick={() => setIsCompleteOpen(true)}
               disabled={isBusy}
             >
@@ -334,6 +336,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
             <Button
               nativeButton={false}
               variant="outline"
+              className="w-full min-h-11 sm:w-auto"
               render={<Link href={`/production/${productionId}/edit`} />}
               disabled={isBusy}
             >
@@ -342,7 +345,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
             </Button>
             <Button
               variant="outline"
-              className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+              className="w-full min-h-11 border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive sm:w-auto"
               onClick={() => setIsDeleteOpen(true)}
               disabled={isBusy}
             >

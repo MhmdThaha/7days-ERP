@@ -14,6 +14,7 @@ import { productionRepository } from '@/lib/repositories/production.repository';
 import { purchaseRepository } from '@/lib/repositories/purchase.repository';
 import { saleRepository } from '@/lib/repositories/sale.repository';
 import { wastageRepository } from '@/lib/repositories/wastage.repository';
+import { scheduleAfterResponse } from '@/lib/server/schedule-after-response';
 import { getDaysInMonth } from '@/lib/utils/month';
 import type { DailySummary, DailySummaryExpensesByCategory } from '@/types/daily-summary';
 import type { ExpenseCategory } from '@/types/expense';
@@ -57,6 +58,32 @@ export const dailySummaryService = {
     return dates
       .map((date) => summariesByDate.get(date))
       .filter((summary): summary is DailySummary => summary !== undefined);
+  },
+
+  /**
+   * After a business mutation has already committed:
+   * 1. Mark the day dirty so getOrRecalculate never treats stored totals as fresh.
+   * 2. Schedule the heavy rebuild with Next.js `after()` so Finish can return.
+   * Falls back to awaiting the rebuild if scheduling is unavailable.
+   */
+  async scheduleRecalculationAfterCommit(orgId: string, date: string): Promise<void> {
+    try {
+      await dailySummaryRepository.markNeedsRecalculation(orgId, date);
+    } catch (error) {
+      console.error('[daily-summary] markNeedsRecalculation failed before schedule', {
+        orgId,
+        date,
+        error,
+      });
+      await this.recalculateAfterMutation(orgId, date);
+      return;
+    }
+
+    const scheduled = scheduleAfterResponse(() => this.recalculateAfterMutation(orgId, date));
+
+    if (!scheduled) {
+      await this.recalculateAfterMutation(orgId, date);
+    }
   },
 
   /**

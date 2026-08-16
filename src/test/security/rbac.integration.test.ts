@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getDailyBusinessStatementAction } from '@/actions/daily-business-statement';
 import { getDailyReportAction } from '@/actions/daily-report';
+import { getDailySummaryDashboardAction } from '@/actions/daily-summary-dashboard';
 import { getDashboardAction } from '@/actions/dashboard';
 import { listProductsAction } from '@/actions/products';
 import { listPurchasesAction } from '@/actions/purchases';
 import { getMonthlyReportAction } from '@/actions/monthly-report';
+import { getStockOverviewAction } from '@/actions/stock-overview';
 import { DomainError } from '@/lib/domain/errors';
 
 const { mockGetAuthenticatedContext } = vi.hoisted(() => ({
@@ -43,6 +45,12 @@ vi.mock('@/lib/services/monthly-report.service', () => ({
   },
 }));
 
+vi.mock('@/lib/services/daily-summary-dashboard.service', () => ({
+  dailySummaryDashboardService: {
+    getDashboard: vi.fn(async (orgId: string) => ({ orgId, kpis: {} })),
+  },
+}));
+
 vi.mock('@/lib/services/dashboard.service', () => ({
   dashboardService: {
     getDashboard: vi.fn(async (orgId: string) => ({ orgId, cards: [] })),
@@ -73,12 +81,31 @@ vi.mock('@/lib/services/purchase.service', () => ({
   },
 }));
 
+vi.mock('@/lib/services/stock-overview.service', () => ({
+  stockOverviewService: {
+    getOverview: vi.fn(async (orgId: string) => ({
+      orgId,
+      products: [],
+      rawMaterials: [],
+      summary: {
+        totalProducts: 0,
+        totalRawMaterials: 0,
+        lowStockItems: 0,
+        outOfStockItems: 0,
+      },
+      attentionItems: [],
+    })),
+  },
+}));
+
 import { dailyBusinessStatementService } from '@/lib/services/daily-business-statement.service';
 import { dailyReportService } from '@/lib/services/daily-report.service';
+import { dailySummaryDashboardService } from '@/lib/services/daily-summary-dashboard.service';
 import { dashboardService } from '@/lib/services/dashboard.service';
 import { monthlyReportService } from '@/lib/services/monthly-report.service';
 import { productService } from '@/lib/services/product.service';
 import { purchaseService } from '@/lib/services/purchase.service';
+import { stockOverviewService } from '@/lib/services/stock-overview.service';
 
 function grantContext(input: { userId: string; orgId: string; role: 'owner' | 'manager' | 'sales' | 'production' | 'store' }) {
   mockGetAuthenticatedContext.mockResolvedValue(input);
@@ -89,10 +116,12 @@ describe('RBAC enforcement through server actions', () => {
     mockGetAuthenticatedContext.mockReset();
     vi.mocked(dailyReportService.getDailyReport).mockClear();
     vi.mocked(dailyBusinessStatementService.getDailyBusinessStatement).mockClear();
+    vi.mocked(dailySummaryDashboardService.getDashboard).mockClear();
     vi.mocked(monthlyReportService.getMonthlyReport).mockClear();
     vi.mocked(dashboardService.getDashboard).mockClear();
     vi.mocked(productService.list).mockClear();
     vi.mocked(purchaseService.list).mockClear();
+    vi.mocked(stockOverviewService.getOverview).mockClear();
   });
 
   it('allows owner to read reports', async () => {
@@ -148,6 +177,34 @@ describe('RBAC enforcement through server actions', () => {
     expect(dailyBusinessStatementService.getDailyBusinessStatement).not.toHaveBeenCalled();
   });
 
+  it('allows owner and manager to read Kitchen Dashboard', async () => {
+    grantContext({ userId: 'owner-1', orgId: 'org-a', role: 'owner' });
+    const ownerResult = await getDailySummaryDashboardAction();
+
+    grantContext({ userId: 'manager-1', orgId: 'org-a', role: 'manager' });
+    const managerResult = await getDailySummaryDashboardAction();
+
+    expect(ownerResult.success).toBe(true);
+    expect(managerResult.success).toBe(true);
+    expect(dailySummaryDashboardService.getDashboard).toHaveBeenCalledWith('org-a');
+  });
+
+  it('denies production, sales, and store access to Kitchen Dashboard', async () => {
+    for (const role of ['production', 'sales', 'store'] as const) {
+      grantContext({ userId: `${role}-1`, orgId: 'org-a', role });
+      vi.mocked(dailySummaryDashboardService.getDashboard).mockClear();
+
+      const result = await getDailySummaryDashboardAction();
+
+      expect(result).toEqual({
+        success: false,
+        error: 'You do not have permission to perform this action.',
+        code: 'UNAUTHORIZED',
+      });
+      expect(dailySummaryDashboardService.getDashboard).not.toHaveBeenCalled();
+    }
+  });
+
   it('denies store access to monthly summary', async () => {
     grantContext({ userId: 'store-1', orgId: 'org-a', role: 'store' });
 
@@ -166,6 +223,16 @@ describe('RBAC enforcement through server actions', () => {
     expect(result.success).toBe(false);
     expect(result.code).toBe('UNAUTHORIZED');
     expect(purchaseService.list).not.toHaveBeenCalled();
+  });
+
+  it('allows owner to read inventory for the session organization', async () => {
+    grantContext({ userId: 'owner-1', orgId: 'org-a', role: 'owner' });
+
+    const result = await getStockOverviewAction();
+
+    expect(result.success).toBe(true);
+    expect(stockOverviewService.getOverview).toHaveBeenCalledWith('org-a');
+    expect(stockOverviewService.getOverview).not.toHaveBeenCalledWith('org-b');
   });
 
   it('allows production to read products but not purchases', async () => {
@@ -194,6 +261,7 @@ describe('organization isolation through server actions', () => {
   beforeEach(() => {
     mockGetAuthenticatedContext.mockReset();
     vi.mocked(productService.list).mockClear();
+    vi.mocked(stockOverviewService.getOverview).mockClear();
   });
 
   it('User A reads only Organization A data', async () => {
@@ -212,6 +280,15 @@ describe('organization isolation through server actions', () => {
 
     expect(productService.list).toHaveBeenCalledWith('org-b', expect.any(Object));
     expect(productService.list).not.toHaveBeenCalledWith('org-a', expect.any(Object));
+  });
+
+  it('inventory overview uses session orgId and cannot target another organization', async () => {
+    grantContext({ userId: 'user-a', orgId: 'org-a', role: 'owner' });
+
+    await getStockOverviewAction();
+
+    expect(stockOverviewService.getOverview).toHaveBeenCalledWith('org-a');
+    expect(stockOverviewService.getOverview).not.toHaveBeenCalledWith('org-b');
   });
 });
 

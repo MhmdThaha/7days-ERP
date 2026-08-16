@@ -57,7 +57,7 @@ const defaultValues: RecipeFormValues = {
   productId: '',
   recipeCode: '',
   recipeName: '',
-  batchOutputQuantity: null,
+  batchOutputQuantity: null as unknown as number,
   targetWeightGrams: null,
   ingredients: [],
   notes: '',
@@ -150,7 +150,7 @@ export function RecipeForm({
         productId: recipe.productId,
         recipeCode: recipe.recipeCode,
         recipeName: recipe.recipeName,
-        batchOutputQuantity: recipe.batchOutputQuantity,
+        batchOutputQuantity: recipe.batchOutputQuantity ?? Number.NaN,
         targetWeightGrams: recipe.targetWeightGrams,
         ingredients: recipe.ingredients.map((ingredient) => ({
           rawMaterialId: ingredient.rawMaterialId,
@@ -297,7 +297,9 @@ export function RecipeForm({
           {errors.batchOutputQuantity ? (
             <p className="text-sm text-destructive">{errors.batchOutputQuantity.message}</p>
           ) : (
-            <p className="text-xs text-muted-foreground">How many finished products this batch makes.</p>
+            <p className="text-xs text-muted-foreground">
+              How many finished products this batch makes. Required.
+            </p>
           )}
         </div>
 

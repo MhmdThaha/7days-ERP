@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { PRODUCTION_NUMBER_PREFIX } from '@/lib/domain/constants/production';
 import { DomainError } from '@/lib/domain/errors';
 import { productRepository } from '@/lib/repositories/product.repository';
 import {
@@ -14,40 +13,46 @@ import type {
   Production,
   ProductionLineItem,
   ProductionLineItemInput,
+  ProductionListItem,
+  ProductionListPageParams,
+  ProductionListPageResult,
   ProductionListParams,
   ProductionListResult,
   UpdateProductionInput,
 } from '@/types/production';
 
-function formatGeneratedNumber(sequence: number): string {
-  return `${PRODUCTION_NUMBER_PREFIX}-${String(sequence).padStart(3, '0')}`;
-}
-
 function calculateTotalUnits(lines: ProductionLineItem[]): number {
   return lines.reduce((sum, line) => sum + line.quantity, 0);
-}
-
-async function resolveProductionNumber(orgId: string): Promise<string> {
-  const highest = await productionRepository.getHighestProductionNumber(orgId);
-  let next = highest + 1;
-  let generated = formatGeneratedNumber(next);
-
-  while (await productionRepository.findByProductionNumber(orgId, generated)) {
-    next += 1;
-    generated = formatGeneratedNumber(next);
-  }
-
-  return generated;
 }
 
 async function resolveLineItems(
   orgId: string,
   lines: ProductionLineItemInput[],
 ): Promise<ProductionLineItem[]> {
+  const uniqueProductIds = [...new Set(lines.map((line) => line.productId).filter(Boolean))];
+  const products =
+    uniqueProductIds.length === 0
+      ? []
+      : await productRepository.getByIds(orgId, uniqueProductIds);
+  const productsById = new Map(products.map((product) => [product.id, product]));
+
+  const uniqueRecipeIds = [
+    ...new Set(
+      uniqueProductIds
+        .map((productId) => productsById.get(productId)?.activeRecipeId)
+        .filter((recipeId): recipeId is string => Boolean(recipeId)),
+    ),
+  ];
+  const recipes =
+    uniqueRecipeIds.length === 0
+      ? []
+      : await recipeRepository.getByIds(orgId, uniqueRecipeIds);
+  const recipesById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+
   const resolved: ProductionLineItem[] = [];
 
   for (const line of lines) {
-    const product = await productRepository.getById(orgId, line.productId);
+    const product = productsById.get(line.productId);
 
     if (!product) {
       throw new DomainError('NOT_FOUND', 'One or more products were not found');
@@ -64,7 +69,7 @@ async function resolveLineItems(
       );
     }
 
-    const recipe = await recipeRepository.getById(orgId, product.activeRecipeId);
+    const recipe = recipesById.get(product.activeRecipeId);
 
     if (!recipe) {
       throw new DomainError(
@@ -95,6 +100,13 @@ async function resolveLineItems(
       recipeCode: recipe.recipeCode,
       recipeName: recipe.recipeName,
       recipeVersion: recipe.version,
+      recipeBatchOutputQuantity: recipe.batchOutputQuantity,
+      recipeIngredients: recipe.ingredients.map((ingredient) => ({
+        rawMaterialId: ingredient.rawMaterialId,
+        rawMaterialName: ingredient.rawMaterialName,
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+      })),
     });
   }
 
@@ -112,6 +124,51 @@ export const productionService = {
     return productionRepository.list(orgId, params);
   },
 
+  async getLatestForRepeat(orgId: string): Promise<ProductionListItem | null> {
+    return productionRepository.getLatestForRepeat(orgId);
+  },
+
+  /**
+   * Production page retrieval: empty search → Firestore listPage; non-empty search → legacy list()
+   * substring semantics (unchanged).
+   */
+  async listPage(
+    orgId: string,
+    params: ProductionListPageParams,
+  ): Promise<ProductionListPageResult> {
+    const search = params.search?.trim() ?? '';
+
+    if (search) {
+      const result = await productionRepository.list(orgId, {
+        search,
+        status: params.status,
+        page: params.page ?? 1,
+        pageSize: params.pageSize,
+      });
+
+      const first = result.items[0];
+      const last = result.items[result.items.length - 1];
+
+      return {
+        ...result,
+        startCursor: first
+          ? { productionDate: first.productionDate, productionNumber: first.productionNumber }
+          : null,
+        endCursor: last
+          ? { productionDate: last.productionDate, productionNumber: last.productionNumber }
+          : null,
+      };
+    }
+
+    return productionRepository.listPage(orgId, {
+      status: params.status,
+      pageSize: params.pageSize,
+      page: params.page,
+      position: params.position,
+      cursor: params.cursor,
+    });
+  },
+
   async getById(orgId: string, productionId: string): Promise<Production> {
     const production = await productionRepository.getById(orgId, productionId);
 
@@ -123,14 +180,12 @@ export const productionService = {
   },
 
   async create(orgId: string, input: CreateProductionInput, userId: string): Promise<Production> {
-    const productionNumber = await resolveProductionNumber(orgId);
     const lines = await resolveLineItems(orgId, input.lines);
     const totalUnits = calculateTotalUnits(lines);
 
     return productionRepository.create(
       orgId,
       {
-        productionNumber,
         productionDate: input.productionDate,
         lines,
         totalUnits,
@@ -156,10 +211,14 @@ export const productionService = {
 
     let lines = existing.lines;
     let totalUnits = existing.totalUnits;
+    let acceptedStaleRecipe: boolean | undefined;
 
     if (input.lines) {
       lines = await resolveLineItems(orgId, input.lines);
       totalUnits = calculateTotalUnits(lines);
+      acceptedStaleRecipe = false;
+    } else if (input.acceptedStaleRecipe !== undefined) {
+      acceptedStaleRecipe = input.acceptedStaleRecipe;
     }
 
     return productionRepository.update(
@@ -170,6 +229,7 @@ export const productionService = {
         lines: input.lines ? lines : undefined,
         totalUnits: input.lines ? totalUnits : undefined,
         notes: input.notes,
+        acceptedStaleRecipe,
       },
       userId,
     );
@@ -188,16 +248,8 @@ export const productionService = {
   },
 
   async complete(orgId: string, productionId: string, userId: string): Promise<Production> {
-    const existing = await productionRepository.getById(orgId, productionId);
-
-    if (!existing) {
-      throw new DomainError('NOT_FOUND', 'Production entry not found');
-    }
-
-    assertDraftProduction(existing);
-
     const completed = await productionRepository.complete(orgId, productionId, userId);
-    await dailySummaryService.recalculateAfterMutation(orgId, completed.productionDate);
+    await dailySummaryService.scheduleRecalculationAfterCommit(orgId, completed.productionDate);
     return completed;
   },
 };

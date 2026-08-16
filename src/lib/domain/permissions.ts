@@ -91,6 +91,8 @@ const PERMISSIONS: PermissionMatrix = {
   },
   inventory: {
     read: allRoles,
+    create: managementRoles,
+    complete: managementRoles,
   },
   dailySummary: {
     read: managementRoles,

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 
+import { InventoryAdjustDialog, type InventoryAdjustTarget } from '@/components/inventory/inventory-adjust-dialog';
 import { StockOverviewActionCenter } from '@/components/inventory/stock-overview-action-center';
 import { StockOverviewAttentionSection } from '@/components/inventory/stock-overview-attention-section';
 import { StockOverviewProductsSection } from '@/components/inventory/stock-overview-products-section';
@@ -22,10 +23,15 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useStockOverview } from '@/hooks/queries/use-stock-overview';
 
-export function StockOverviewPage() {
+type StockOverviewPageProps = {
+  canAdjustStock: boolean;
+};
+
+export function StockOverviewPage({ canAdjustStock }: StockOverviewPageProps) {
   const { data, isLoading, isFetching, error, refetch, isRefetching } = useStockOverview();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StockOverviewStatusFilter>('all');
+  const [adjustTarget, setAdjustTarget] = useState<InventoryAdjustTarget | null>(null);
 
   const showSkeleton = isLoading || (isFetching && !data);
 
@@ -156,6 +162,16 @@ export function StockOverviewPage() {
         totalCount={data.products.length}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
+        canAdjustStock={canAdjustStock}
+        onAdjustStock={(product) =>
+          setAdjustTarget({
+            itemType: 'finished_product',
+            itemId: product.id,
+            name: product.name,
+            unit: product.unit,
+            currentStock: product.currentStock,
+          })
+        }
       />
 
       <StockOverviewRawMaterialsSection
@@ -163,6 +179,26 @@ export function StockOverviewPage() {
         totalCount={data.rawMaterials.length}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
+        canAdjustStock={canAdjustStock}
+        onAdjustStock={(material) =>
+          setAdjustTarget({
+            itemType: 'raw_material',
+            itemId: material.id,
+            name: material.name,
+            unit: material.unit,
+            currentStock: material.currentStock,
+          })
+        }
+      />
+
+      <InventoryAdjustDialog
+        target={adjustTarget}
+        open={adjustTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAdjustTarget(null);
+          }
+        }}
       />
     </div>
   );

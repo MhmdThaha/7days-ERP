@@ -5,11 +5,11 @@ type ProductionStatusBadgeProps = {
   status: ProductionStatus;
 };
 
-const STATUS_CONFIG: Record<ProductionStatus, { label: string; variant: 'neutral' | 'success' }> =
+const STATUS_CONFIG: Record<ProductionStatus, { label: string; variant: 'warning' | 'success' }> =
   {
     draft: {
       label: 'Draft',
-      variant: 'neutral',
+      variant: 'warning',
     },
     completed: {
       label: 'Completed',
@@ -20,5 +20,9 @@ const STATUS_CONFIG: Record<ProductionStatus, { label: string; variant: 'neutral
 export function ProductionStatusBadge({ status }: ProductionStatusBadgeProps) {
   const config = STATUS_CONFIG[status];
 
-  return <Badge variant={config.variant}>{config.label}</Badge>;
+  return (
+    <Badge variant={config.variant} className="h-6 px-2.5 text-xs font-semibold">
+      {config.label}
+    </Badge>
+  );
 }

@@ -3,7 +3,7 @@ import 'server-only';
 import { Timestamp } from 'firebase-admin/firestore';
 
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
-import { buildAuditFields, getOrgCollection } from '@/lib/repositories/base.repository';
+import { buildAuditFields, getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
 import type {
   Recipe,
   RecipeIngredient,
@@ -163,6 +163,40 @@ export const recipeRepository = {
     }
 
     return recipe;
+  },
+
+  async getByIds(orgId: string, recipeIds: readonly string[]): Promise<Recipe[]> {
+    const uniqueIds = [...new Set(recipeIds.filter((id) => id.trim().length > 0))];
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const collection = getOrgCollection(orgId, 'recipes');
+    const firestore = getFirestore();
+    const recipes: Recipe[] = [];
+    const chunkSize = 100;
+
+    for (let start = 0; start < uniqueIds.length; start += chunkSize) {
+      const chunk = uniqueIds.slice(start, start + chunkSize);
+      const snapshots = await firestore.getAll(...chunk.map((id) => collection.doc(id)));
+
+      for (const snapshot of snapshots) {
+        if (!snapshot.exists) {
+          continue;
+        }
+
+        const recipe = toRecipe(snapshot.id, snapshot.data() as RecipeDocument);
+
+        if (recipe.deletedAt) {
+          continue;
+        }
+
+        recipes.push(recipe);
+      }
+    }
+
+    return recipes;
   },
 
   async findActiveByProductId(

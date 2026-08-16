@@ -151,7 +151,7 @@ export const navGroups: readonly NavGroupConfig[] = [
         label: 'Kitchen Dashboard',
         icon: 'CalendarDays',
         module: 'daily-summary',
-        roles: productionRoles,
+        roles: managementRoles,
       },
       {
         href: '/monthly-summary',
