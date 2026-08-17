@@ -8,6 +8,7 @@ import { DomainError } from '@/lib/domain/errors';
 import {
   detectDuplicateImport,
   DUPLICATE_IMPORT_RECOMMENDATION,
+  shouldResumeBlockedDuplicateImport,
   type DuplicateImportResult,
 } from '@/lib/import/duplicate';
 import { executeSalesImport } from '@/lib/import/execution/sales-import-execution.service';
@@ -92,7 +93,10 @@ export async function commitSalesImportPipeline(
     importHistory,
   });
 
-  if (duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT) {
+  if (
+    duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT &&
+    !shouldResumeBlockedDuplicateImport(duplicateResult)
+  ) {
     return {
       status: 'blocked',
       duplicateResult,

@@ -5,6 +5,10 @@ import { randomUUID } from 'crypto';
 import { Timestamp, type DocumentReference, type Query, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 import { DomainError } from '@/lib/domain/errors';
+import {
+  findNextFreeSaleSequence,
+  parseSaleNumberSequence,
+} from '@/lib/domain/sale-number';
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
 import {
   buildAuditFields,
@@ -12,6 +16,7 @@ import {
   getOrgCollection,
 } from '@/lib/repositories/base.repository';
 import { reserveUniqueNumberInTransaction } from '@/lib/repositories/unique-number.repository';
+import { importHistoryRepository } from '@/lib/repositories/import-history.repository';
 import { inventoryRepository } from '@/lib/repositories/inventory.repository';
 import type {
   Sale,
@@ -51,6 +56,7 @@ type SaleDocument = {
   totalCogs?: number;
   lineCount: number;
   notes: string | null;
+  importId?: string | null;
   createdAt: Timestamp;
   createdBy: string;
   updatedAt: Timestamp;
@@ -361,6 +367,10 @@ export const saleRepository = {
     return toSale(doc.id, doc.data() as SaleDocument);
   },
 
+  /**
+   * Full active-sale scan used only for one-time sequence initialization.
+   * Do not call on every create — use documentSequences/sale instead.
+   */
   async getHighestSaleNumber(orgId: string): Promise<number> {
     const snapshot = await getOrgCollection(orgId, 'sales')
       .where('deletedAt', '==', null)
@@ -370,51 +380,205 @@ export const saleRepository = {
 
     for (const doc of snapshot.docs) {
       const data = doc.data() as SaleDocument;
-      const match = /^SAL-(\d+)$/i.exec(data.saleNumber);
+      const value = parseSaleNumberSequence(data.saleNumber);
 
-      if (match?.[1]) {
-        const value = Number.parseInt(match[1], 10);
-
-        if (!Number.isNaN(value) && value > highest) {
-          highest = value;
-        }
+      if (value !== null && value > highest) {
+        highest = value;
       }
     }
 
     return highest;
   },
 
+  /**
+   * Ensures organizations/{orgId}/documentSequences/sale exists.
+   * One-time scan of active sales when the counter doc is missing.
+   */
+  async ensureSaleSequenceInitialized(orgId: string): Promise<void> {
+    const sequenceRef = getOrgCollection(orgId, 'documentSequences').doc('sale');
+    const existing = await sequenceRef.get();
+
+    if (existing.exists) {
+      return;
+    }
+
+    const highest = await this.getHighestSaleNumber(orgId);
+    const firestore = getFirestore();
+
+    await firestore.runTransaction(async (transaction) => {
+      const snap = await transaction.get(sequenceRef);
+
+      if (snap.exists) {
+        return;
+      }
+
+      transaction.set(sequenceRef, {
+        kind: 'sale',
+        lastValue: highest,
+        updatedAt: Timestamp.now(),
+      });
+    });
+  },
+
   async create(
     orgId: string,
     input: {
-      saleNumber: string;
+      saleNumber?: string;
       saleDate: string;
       customerNameSnapshot: string | null;
       lines: SaleLineItem[];
       subtotal: number;
       notes?: string | null;
+      importSource?: { importId: string; groupKey: string };
     },
     userId: string,
   ): Promise<Sale> {
+    await this.ensureSaleSequenceInitialized(orgId);
+
     const firestore = getFirestore();
     const collection = getOrgCollection(orgId, 'sales');
     const docRef = collection.doc();
-    const normalizedSaleNumber = input.saleNumber.trim().toUpperCase();
+    const sequenceRef = getOrgCollection(orgId, 'documentSequences').doc('sale');
+    const explicitSaleNumber = input.saleNumber?.trim().toUpperCase() || null;
 
     return firestore.runTransaction(async (transaction) => {
+      const importSource = input.importSource;
+
+      if (importSource) {
+        const linkRef = importHistoryRepository.sourceSaleLinkRef(
+          orgId,
+          importSource.importId,
+          importSource.groupKey,
+        );
+        const linkSnap = await transaction.get(linkRef);
+
+        if (linkSnap.exists) {
+          const existingSaleId = String(linkSnap.data()?.saleId ?? '');
+          const existingSaleRef = collection.doc(existingSaleId);
+          const existingSaleSnap = await transaction.get(existingSaleRef);
+
+          if (!existingSaleSnap.exists) {
+            throw new DomainError('NOT_FOUND', 'Sale not found');
+          }
+
+          const existingData = existingSaleSnap.data() as SaleDocument;
+
+          if (existingData.deletedAt || existingData.organizationId !== orgId) {
+            throw new DomainError('NOT_FOUND', 'Sale not found');
+          }
+
+          return toSale(existingSaleSnap.id, existingData);
+        }
+
+        if (explicitSaleNumber) {
+          const lockRef = getOrgCollection(orgId, 'uniqueNumbers').doc(
+            `sale_${explicitSaleNumber}`,
+          );
+          const lockSnap = await transaction.get(lockRef);
+
+          if (lockSnap.exists) {
+            const existingSaleId = String(lockSnap.data()?.documentId ?? '');
+
+            if (!existingSaleId) {
+              throw new DomainError('VALIDATION_ERROR', 'Sale number already exists');
+            }
+
+            const existingSaleRef = collection.doc(existingSaleId);
+            const existingSaleSnap = await transaction.get(existingSaleRef);
+
+            if (!existingSaleSnap.exists) {
+              throw new DomainError('VALIDATION_ERROR', 'Sale number already exists');
+            }
+
+            const existingData = existingSaleSnap.data() as SaleDocument;
+
+            if (existingData.deletedAt || existingData.organizationId !== orgId) {
+              throw new DomainError('VALIDATION_ERROR', 'Sale number already exists');
+            }
+
+            if (existingData.importId !== importSource.importId) {
+              throw new DomainError('VALIDATION_ERROR', 'Sale number already exists');
+            }
+
+            importHistoryRepository.writeSourceSaleLinkInTransaction(
+              transaction,
+              orgId,
+              importSource.importId,
+              importSource.groupKey,
+              existingSaleSnap.id,
+              userId,
+            );
+
+            return toSale(existingSaleSnap.id, existingData);
+          }
+        }
+      }
+
+      const sequenceSnap = await transaction.get(sequenceRef);
+      const rawLastValue = sequenceSnap.exists
+        ? Number(sequenceSnap.data()?.lastValue ?? 0)
+        : 0;
+      const lastValue =
+        Number.isFinite(rawLastValue) && rawLastValue > 0 ? Math.floor(rawLastValue) : 0;
+
+      let allocatedNumber: string;
+      let nextLastValue = lastValue;
+
+      if (explicitSaleNumber) {
+        allocatedNumber = explicitSaleNumber;
+        const parsed = parseSaleNumberSequence(allocatedNumber);
+        if (parsed !== null && parsed > lastValue) {
+          nextLastValue = parsed;
+        }
+      } else {
+        const reservedProbe = new Set<number>();
+        const maxAttempts = 1000;
+        let allocated: { sequence: number; saleNumber: string } | null = null;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          const candidate = findNextFreeSaleSequence(lastValue, (sequence) =>
+            reservedProbe.has(sequence),
+          );
+          const lockRef = getOrgCollection(orgId, 'uniqueNumbers').doc(
+            `sale_${candidate.saleNumber}`,
+          );
+          const lockSnap = await transaction.get(lockRef);
+
+          if (!lockSnap.exists) {
+            allocated = candidate;
+            break;
+          }
+
+          reservedProbe.add(candidate.sequence);
+        }
+
+        if (!allocated) {
+          throw new DomainError('VALIDATION_ERROR', 'Unable to allocate sale number');
+        }
+
+        allocatedNumber = allocated.saleNumber;
+        nextLastValue = allocated.sequence;
+      }
+
       await reserveUniqueNumberInTransaction(
         transaction,
         orgId,
         'sale',
-        normalizedSaleNumber,
+        allocatedNumber,
         docRef.id,
       );
+
+      transaction.set(sequenceRef, {
+        kind: 'sale',
+        lastValue: nextLastValue,
+        updatedAt: Timestamp.now(),
+      });
 
       const now = Timestamp.now();
 
       const document: SaleDocument = {
         organizationId: orgId,
-        saleNumber: normalizedSaleNumber,
+        saleNumber: allocatedNumber,
         saleDate: input.saleDate,
         customerId: null,
         customerNameSnapshot: normalizeNullableString(input.customerNameSnapshot),
@@ -433,6 +597,7 @@ export const saleRepository = {
         totalCogs: 0,
         lineCount: input.lines.length,
         notes: normalizeNullableString(input.notes),
+        ...(importSource ? { importId: importSource.importId } : {}),
         createdAt: now,
         createdBy: userId,
         updatedAt: now,
@@ -444,6 +609,18 @@ export const saleRepository = {
       };
 
       transaction.set(docRef, document);
+
+      if (importSource) {
+        importHistoryRepository.writeSourceSaleLinkInTransaction(
+          transaction,
+          orgId,
+          importSource.importId,
+          importSource.groupKey,
+          docRef.id,
+          userId,
+        );
+      }
+
       return toSale(docRef.id, document);
     });
   },

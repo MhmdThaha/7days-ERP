@@ -43,9 +43,30 @@ const NON_BLOCKING_IMPORT_HISTORY_STATUSES = new Set<ImportHistoryStatus>([
   IMPORT_HISTORY_STATUS.CANCELLED,
 ]);
 
+const RESUMABLE_IMPORT_HISTORY_STATUSES = new Set<ImportHistoryStatus>([
+  IMPORT_HISTORY_STATUS.IMPORTING,
+  IMPORT_HISTORY_STATUS.IMPORTED,
+  IMPORT_HISTORY_STATUS.FINALIZING,
+  IMPORT_HISTORY_STATUS.FAILED,
+]);
+
 /** Imports in these states can still block duplicate re-import of the same data. */
 export function isBlockingImportHistoryStatus(status: ImportHistoryStatus): boolean {
   return !NON_BLOCKING_IMPORT_HISTORY_STATUSES.has(status);
+}
+
+/** In-progress or failed imports can be resumed instead of starting a second import. */
+export function isResumableImportHistoryStatus(status: ImportHistoryStatus): boolean {
+  return RESUMABLE_IMPORT_HISTORY_STATUSES.has(status);
+}
+
+/** Exact-file BLOCK that should resume the matched in-progress import instead of aborting. */
+export function shouldResumeBlockedDuplicateImport(result: DuplicateImportResult): boolean {
+  return (
+    result.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT &&
+    result.matchedImport !== null &&
+    isResumableImportHistoryStatus(result.matchedImport.status)
+  );
 }
 
 /** One prior import attempt stored for duplicate comparison (caller-supplied). */

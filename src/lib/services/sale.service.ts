@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { SALE_NUMBER_PREFIX } from '@/lib/domain/constants/sale';
 import { DomainError } from '@/lib/domain/errors';
 import { productRepository } from '@/lib/repositories/product.repository';
 import { generateSaleLineId, saleRepository } from '@/lib/repositories/sale.repository';
@@ -17,10 +16,6 @@ import type {
   UpdateSaleInput,
 } from '@/types/sale';
 
-function formatGeneratedNumber(sequence: number): string {
-  return `${SALE_NUMBER_PREFIX}-${String(sequence).padStart(3, '0')}`;
-}
-
 function calculateLineTotal(quantity: number, sellingPrice: number): number {
   return Math.round(quantity * sellingPrice);
 }
@@ -29,24 +24,18 @@ function calculateSubtotal(lines: SaleLineItem[]): number {
   return lines.reduce((sum, line) => sum + line.lineTotal, 0);
 }
 
-async function resolveSaleNumber(orgId: string): Promise<string> {
-  const highest = await saleRepository.getHighestSaleNumber(orgId);
-  let next = highest + 1;
-  let generated = formatGeneratedNumber(next);
-
-  while (await saleRepository.findBySaleNumber(orgId, generated)) {
-    next += 1;
-    generated = formatGeneratedNumber(next);
-  }
-
-  return generated;
-}
-
 async function resolveLineItems(orgId: string, lines: SaleLineItemInput[]): Promise<SaleLineItem[]> {
+  const uniqueProductIds = [...new Set(lines.map((line) => line.productId).filter(Boolean))];
+  const products =
+    uniqueProductIds.length === 0
+      ? []
+      : await productRepository.getByIds(orgId, uniqueProductIds);
+  const productsById = new Map(products.map((product) => [product.id, product]));
+
   const resolved: SaleLineItem[] = [];
 
   for (const line of lines) {
-    const product = await productRepository.getById(orgId, line.productId);
+    const product = productsById.get(line.productId);
 
     if (!product) {
       throw new DomainError('NOT_FOUND', 'One or more products were not found');
@@ -130,12 +119,15 @@ export const saleService = {
     return sale;
   },
 
-  async create(orgId: string, input: CreateSaleInput, userId: string): Promise<Sale> {
-    const saleNumber = input.saleNumber
-      ? input.saleNumber.trim().toUpperCase()
-      : await resolveSaleNumber(orgId);
+  async create(
+    orgId: string,
+    input: CreateSaleInput,
+    userId: string,
+    options?: { importSource?: { importId: string; groupKey: string } },
+  ): Promise<Sale> {
+    const saleNumber = input.saleNumber?.trim().toUpperCase() || undefined;
 
-    if (input.saleNumber) {
+    if (saleNumber && !options?.importSource) {
       const existing = await saleRepository.findBySaleNumber(orgId, saleNumber);
 
       if (existing) {
@@ -155,6 +147,7 @@ export const saleService = {
         lines,
         subtotal,
         notes: input.notes,
+        importSource: options?.importSource,
       },
       userId,
     );
@@ -208,7 +201,12 @@ export const saleService = {
     await saleRepository.softDelete(orgId, saleId, userId);
   },
 
-  async complete(orgId: string, saleId: string, userId: string): Promise<Sale> {
+  async complete(
+    orgId: string,
+    saleId: string,
+    userId: string,
+    options?: { deferSummaryRebuild?: boolean },
+  ): Promise<Sale> {
     const existing = await saleRepository.getById(orgId, saleId);
 
     if (!existing) {
@@ -222,7 +220,13 @@ export const saleService = {
     }
 
     const completed = await saleRepository.complete(orgId, saleId, userId);
-    await dailySummaryService.recalculateAfterMutation(orgId, completed.saleDate);
+
+    if (options?.deferSummaryRebuild) {
+      await dailySummaryService.markDirtyAfterCommit(orgId, completed.saleDate);
+    } else {
+      await dailySummaryService.scheduleRecalculationAfterCommit(orgId, completed.saleDate);
+    }
+
     return completed;
   },
 };

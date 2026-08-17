@@ -43,12 +43,16 @@ vi.mock('@/lib/services/sale.service', () => ({
 vi.mock('@/lib/repositories/product.repository', () => ({
   productRepository: {
     getById: vi.fn(),
+    getByIds: vi.fn(),
   },
 }));
 
 vi.mock('@/lib/repositories/import-history.repository', () => ({
   importHistoryRepository: {
     create: vi.fn(),
+    beginOrResume: vi.fn(),
+    listSourceSales: vi.fn(),
+    updateLifecycle: vi.fn(),
   },
 }));
 
@@ -158,33 +162,59 @@ function review(rows: ResolvedImportReviewRow[]): ImportReviewViewModelWithResol
   };
 }
 
+function historyDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    importId: 'imp-1',
+    importedAt: '2026-03-15T12:00:00.000Z',
+    importedBy: 'user-1',
+    reportType: 'sales-detail',
+    rowCount: 1,
+    fileFingerprint: 'fp-1',
+    invoiceNumbers: ['SAL-2'],
+    rowFingerprints: ['row-fp'],
+    status: IMPORT_HISTORY_STATUS.IMPORTING,
+    rowsImported: 0,
+    rowsSkipped: 0,
+    rowsFailed: 0,
+    saleIds: [] as string[],
+    executionStatus: IMPORT_EXECUTION_STATUS.IMPORTED,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.mocked(saleService.create).mockReset();
   vi.mocked(saleService.complete).mockReset();
   vi.mocked(productRepository.getById).mockReset();
+  vi.mocked(productRepository.getByIds).mockReset();
   vi.mocked(importHistoryRepository.create).mockReset();
+  vi.mocked(importHistoryRepository.beginOrResume).mockReset();
+  vi.mocked(importHistoryRepository.listSourceSales).mockReset();
+  vi.mocked(importHistoryRepository.updateLifecycle).mockReset();
 
-  vi.mocked(productRepository.getById).mockResolvedValue({
-    id: 'prod-bread',
-    organizationId: 'org-1',
-    code: 'BRD-001',
-    name: 'Milk Bread',
-    category: 'Breads',
-    unit: 'pcs',
-    sellingPrice: 4500,
-    description: null,
-    isActive: true,
-    currentStock: 10,
-    averageCost: 3000,
-    activeRecipeId: null,
-    imageUrl: null,
-    createdAt: new Date(),
-    createdBy: 'user',
-    updatedAt: new Date(),
-    updatedBy: 'user',
-    deletedAt: null,
-    deletedBy: null,
-  });
+  vi.mocked(productRepository.getByIds).mockResolvedValue([
+    {
+      id: 'prod-bread',
+      organizationId: 'org-1',
+      code: 'BRD-001',
+      name: 'Milk Bread',
+      category: 'Breads',
+      unit: 'pcs',
+      sellingPrice: 4500,
+      description: null,
+      isActive: true,
+      currentStock: 10,
+      averageCost: 3000,
+      activeRecipeId: null,
+      imageUrl: null,
+      createdAt: new Date(),
+      createdBy: 'user',
+      updatedAt: new Date(),
+      updatedBy: 'user',
+      deletedAt: null,
+      deletedBy: null,
+    },
+  ]);
 
   vi.mocked(saleService.create).mockResolvedValue({
     id: 'sale-1',
@@ -209,6 +239,15 @@ beforeEach(() => {
     deletedBy: null,
   });
 
+  vi.mocked(importHistoryRepository.beginOrResume).mockResolvedValue({
+    history: historyDetail(),
+    resumed: false,
+    alreadyCompleted: false,
+  });
+  vi.mocked(importHistoryRepository.listSourceSales).mockResolvedValue(new Map());
+  vi.mocked(importHistoryRepository.updateLifecycle).mockResolvedValue(
+    historyDetail({ status: IMPORT_HISTORY_STATUS.IMPORTED, rowsImported: 1, saleIds: ['sale-1'] }),
+  );
   vi.mocked(importHistoryRepository.create).mockResolvedValue({
     importId: 'imp-1',
     importedAt: '2026-03-15T12:00:00.000Z',
@@ -292,6 +331,7 @@ describe('executeSalesImport', () => {
     expect(result.status).toBe(IMPORT_EXECUTION_STATUS.BLOCKED);
     expect(result.importId).toBeNull();
     expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).not.toHaveBeenCalled();
     expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
   });
 
@@ -313,16 +353,172 @@ describe('executeSalesImport', () => {
     expect(result.warnings).toEqual([]);
     expect(result.errors).toEqual([]);
     expect(vi.mocked(saleService.create)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(saleService.complete)).not.toHaveBeenCalled();
-    expect(vi.mocked(importHistoryRepository.create)).toHaveBeenCalledWith(
+    expect(vi.mocked(saleService.create)).toHaveBeenCalledWith(
       'org-1',
+      expect.objectContaining({
+        saleNumber: 'SAL-2',
+      }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({
+          importId: 'imp-1',
+          groupKey: 'number:SAL-2',
+        }),
+      }),
+    );
+    expect(vi.mocked(saleService.complete)).not.toHaveBeenCalled();
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
+    expect(vi.mocked(importHistoryRepository.updateLifecycle)).toHaveBeenCalledWith(
+      'org-1',
+      'imp-1',
       'user-1',
       expect.objectContaining({
         rowsImported: 1,
-        reportType: 'sales-detail',
-        saleIds: ['sale-1'],
-        lifecycleStatus: IMPORT_HISTORY_STATUS.IMPORTED,
+        status: IMPORT_HISTORY_STATUS.IMPORTED,
         executionStatus: IMPORT_EXECUTION_STATUS.IMPORTED,
+      }),
+    );
+    expect(productRepository.getByIds).toHaveBeenCalledTimes(1);
+    expect(productRepository.getByIds).toHaveBeenCalledWith('org-1', ['prod-bread']);
+    expect(productRepository.getById).not.toHaveBeenCalled();
+  });
+
+  it('batches missing selling-price reads for two products in one sale', async () => {
+    vi.mocked(productRepository.getByIds).mockResolvedValue([
+      {
+        id: 'prod-bread',
+        organizationId: 'org-1',
+        code: 'BRD-001',
+        name: 'Milk Bread',
+        category: 'Breads',
+        unit: 'pcs',
+        sellingPrice: 4500,
+        description: null,
+        isActive: true,
+        currentStock: 10,
+        averageCost: 3000,
+        activeRecipeId: null,
+        imageUrl: null,
+        createdAt: new Date(),
+        createdBy: 'user',
+        updatedAt: new Date(),
+        updatedBy: 'user',
+        deletedAt: null,
+        deletedBy: null,
+      },
+      {
+        id: 'prod-cake',
+        organizationId: 'org-1',
+        code: 'CKE-010',
+        name: 'Cake',
+        category: 'Cakes',
+        unit: 'pcs',
+        sellingPrice: 12000,
+        description: null,
+        isActive: true,
+        currentStock: 5,
+        averageCost: 8000,
+        activeRecipeId: null,
+        imageUrl: null,
+        createdAt: new Date(),
+        createdBy: 'user',
+        updatedAt: new Date(),
+        updatedBy: 'user',
+        deletedAt: null,
+        deletedBy: null,
+      },
+    ]);
+
+    await executeSalesImport({
+      resolvedReview: review([
+        importableRow(2, {
+          normalizedValues: {
+            saleDate: '2026-03-15',
+            customerName: 'Corner Store',
+            productName: 'Milk Bread',
+            productCode: 'BRD-001',
+            quantity: 1,
+            saleNumber: 'SAL-SHARED',
+          },
+        }),
+        importableRow(3, {
+          normalizedValues: {
+            saleDate: '2026-03-15',
+            customerName: 'Corner Store',
+            productName: 'Cake',
+            productCode: 'CKE-010',
+            quantity: 1,
+            saleNumber: 'SAL-SHARED',
+          },
+          productMatchResult: {
+            status: PRODUCT_MATCH_STATUS.MATCHED,
+            matchedProductId: 'prod-cake',
+            matchedProductName: 'Cake',
+            confidence: 98,
+            reason: 'Exact Name Match',
+          },
+        }),
+      ]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(productRepository.getByIds).toHaveBeenCalledTimes(1);
+    expect(productRepository.getByIds).toHaveBeenCalledWith('org-1', ['prod-bread', 'prod-cake']);
+    expect(productRepository.getById).not.toHaveBeenCalled();
+    expect(saleService.create).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        saleNumber: 'SAL-SHARED',
+        lines: [
+          { productId: 'prod-bread', quantity: 1, sellingPrice: 4500 },
+          { productId: 'prod-cake', quantity: 1, sellingPrice: 12000 },
+        ],
+      }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({
+          importId: 'imp-1',
+          groupKey: 'number:SAL-SHARED',
+        }),
+      }),
+    );
+  });
+
+  it('does not read products when every imported line already has a selling price', async () => {
+    await executeSalesImport({
+      resolvedReview: review([
+        importableRow(2, {
+          normalizedValues: {
+            saleDate: '2026-03-15',
+            customerName: 'Corner Store',
+            productName: 'Milk Bread',
+            productCode: 'BRD-001',
+            quantity: 2,
+            sellingPrice: 45,
+            saleNumber: 'SAL-2',
+          },
+        }),
+      ]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(productRepository.getByIds).not.toHaveBeenCalled();
+    expect(productRepository.getById).not.toHaveBeenCalled();
+    expect(saleService.create).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        lines: [{ productId: 'prod-bread', quantity: 2, sellingPrice: 4500 }],
+      }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({ importId: 'imp-1' }),
       }),
     );
   });
@@ -369,11 +565,12 @@ describe('executeSalesImport', () => {
     expect(result.failed).toBe(1);
     expect(result.importId).toBe('imp-1');
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(vi.mocked(importHistoryRepository.create)).toHaveBeenCalledWith(
+    expect(vi.mocked(importHistoryRepository.updateLifecycle)).toHaveBeenCalledWith(
       'org-1',
+      'imp-1',
       'user-1',
       expect.objectContaining({
-        lifecycleStatus: IMPORT_HISTORY_STATUS.IMPORTED,
+        status: IMPORT_HISTORY_STATUS.IMPORTED,
         executionStatus: IMPORT_EXECUTION_STATUS.PARTIAL,
       }),
     );
@@ -429,12 +626,22 @@ describe('executeSalesImport', () => {
 
     expect(result.status).toBe(IMPORT_EXECUTION_STATUS.FAILED);
     expect(result.failed).toBe(1);
-    expect(result.importId).toBeNull();
+    expect(result.importId).toBe('imp-1');
     expect(result.errors).toEqual(
       expect.arrayContaining([expect.stringContaining('Row 2')]),
     );
     expect(result.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(result.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(importHistoryRepository.updateLifecycle)).toHaveBeenCalledWith(
+      'org-1',
+      'imp-1',
+      'user-1',
+      expect.objectContaining({
+        status: IMPORT_HISTORY_STATUS.FAILED,
+        rowsFailed: 1,
+      }),
+    );
     expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
   });
 
@@ -447,7 +654,7 @@ describe('executeSalesImport', () => {
       userId: 'user-1',
     });
 
-    expect(vi.mocked(importHistoryRepository.create)).toHaveBeenCalledWith(
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledWith(
       'org-1',
       'user-1',
       expect.objectContaining({
@@ -545,7 +752,8 @@ describe('executeSalesImport', () => {
     );
     expect(vi.mocked(saleService.create)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(saleService.complete)).not.toHaveBeenCalled();
-    expect(vi.mocked(importHistoryRepository.create)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
   });
 
   it('imports zero rows when every row is a SKIP_DUPLICATES overlap', async () => {
@@ -590,6 +798,7 @@ describe('executeSalesImport', () => {
     expect(result.importId).toBeNull();
     expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
     expect(vi.mocked(saleService.complete)).not.toHaveBeenCalled();
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).not.toHaveBeenCalled();
     expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
   });
 
@@ -619,5 +828,400 @@ describe('executeSalesImport', () => {
     expect(result.imported).toBe(2);
     expect(result.skipped).toBe(0);
     expect(vi.mocked(saleService.create)).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens import history before creating the first sale', async () => {
+    const order: string[] = [];
+
+    vi.mocked(importHistoryRepository.beginOrResume).mockImplementation(async () => {
+      order.push('history');
+      return { history: historyDetail(), resumed: false, alreadyCompleted: false };
+    });
+    vi.mocked(saleService.create).mockImplementation(async () => {
+      order.push('sale');
+      return {
+        id: 'sale-1',
+        organizationId: 'org-1',
+        saleNumber: 'SAL-100',
+        saleDate: '2026-03-15',
+        customerId: null,
+        customerNameSnapshot: 'Corner Store',
+        status: 'draft',
+        lines: [],
+        subtotal: 9000,
+        totalCogs: 0,
+        lineCount: 1,
+        notes: null,
+        createdAt: new Date(),
+        createdBy: 'user-1',
+        updatedAt: new Date(),
+        updatedBy: 'user-1',
+        completedAt: null,
+        completedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+      };
+    });
+
+    await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(order).toEqual(['history', 'sale']);
+  });
+
+  it('resumes numbered invoices without creating a second sale', async () => {
+    vi.mocked(importHistoryRepository.beginOrResume).mockResolvedValue({
+      history: historyDetail({ status: IMPORT_HISTORY_STATUS.IMPORTING, resumed: undefined }),
+      resumed: true,
+      alreadyCompleted: false,
+    });
+    vi.mocked(importHistoryRepository.listSourceSales).mockResolvedValue(
+      new Map([['number:SAL-2', 'sale-existing']]),
+    );
+
+    const result = await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: {
+        ...blockedDuplicate,
+        matchedImport: {
+          ...blockedDuplicate.matchedImport!,
+          status: IMPORT_HISTORY_STATUS.IMPORTING,
+        },
+      },
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.imported).toBe(1);
+    expect(result.saleIds).toEqual(['sale-existing']);
+    expect(result.importId).toBe('imp-1');
+    expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
+  });
+
+  it('resumes unnumbered invoices using the fallback group key', async () => {
+    const unnumbered = importableRow(2, {
+      normalizedValues: {
+        saleDate: '2026-03-15',
+        customerName: 'Corner Store',
+        productName: 'Milk Bread',
+        productCode: 'BRD-001',
+        quantity: 10,
+      },
+    });
+
+    vi.mocked(importHistoryRepository.listSourceSales).mockResolvedValue(
+      new Map([['fallback:2026-03-15|corner store', 'sale-unnumbered']]),
+    );
+
+    const result = await executeSalesImport({
+      resolvedReview: review([unnumbered]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.saleIds).toEqual(['sale-unnumbered']);
+    expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
+  });
+
+  it('reuses the first 500 sales and creates only the remaining 500 on retry', async () => {
+    const rows = [
+      importableRow(2, {
+        normalizedValues: { ...importableRow(2).normalizedValues, saleNumber: 'SAL-DONE' },
+      }),
+      importableRow(3, {
+        normalizedValues: { ...importableRow(3).normalizedValues, saleNumber: 'SAL-REST' },
+      }),
+    ];
+
+    vi.mocked(importHistoryRepository.listSourceSales).mockResolvedValue(
+      new Map([['number:SAL-DONE', 'sale-done']]),
+    );
+    vi.mocked(saleService.create).mockResolvedValue({
+      id: 'sale-rest',
+      organizationId: 'org-1',
+      saleNumber: 'SAL-REST',
+      saleDate: '2026-03-15',
+      customerId: null,
+      customerNameSnapshot: 'Corner Store',
+      status: 'draft',
+      lines: [],
+      subtotal: 9000,
+      totalCogs: 0,
+      lineCount: 1,
+      notes: null,
+      createdAt: new Date(),
+      createdBy: 'user-1',
+      updatedAt: new Date(),
+      updatedBy: 'user-1',
+      completedAt: null,
+      completedBy: null,
+      deletedAt: null,
+      deletedBy: null,
+    });
+
+    const result = await executeSalesImport({
+      resolvedReview: review(rows),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.saleIds).toEqual(['sale-done', 'sale-rest']);
+    expect(vi.mocked(saleService.create)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(saleService.create)).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ saleNumber: 'SAL-REST' }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({ groupKey: 'number:SAL-REST' }),
+      }),
+    );
+  });
+
+  it('blocks retry of an already completed import without creating sales', async () => {
+    vi.mocked(importHistoryRepository.beginOrResume).mockResolvedValue({
+      history: historyDetail({ status: IMPORT_HISTORY_STATUS.COMPLETED }),
+      resumed: true,
+      alreadyCompleted: true,
+    });
+
+    const result = await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.status).toBe(IMPORT_EXECUTION_STATUS.BLOCKED);
+    expect(result.importId).toBe('imp-1');
+    expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
+  });
+
+  it('keeps source-sale lookups scoped to the authenticated organization', async () => {
+    await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(importHistoryRepository.beginOrResume).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.any(Object),
+    );
+    expect(importHistoryRepository.listSourceSales).toHaveBeenCalledWith('org-1', 'imp-1');
+    expect(saleService.create).toHaveBeenCalledWith(
+      'org-1',
+      expect.any(Object),
+      'user-1',
+      expect.any(Object),
+    );
+  });
+
+  it('groups two rows that share an invoice number into one sale', async () => {
+    vi.mocked(productRepository.getByIds).mockResolvedValue([
+      {
+        id: 'prod-bread',
+        organizationId: 'org-1',
+        code: 'BRD-001',
+        name: 'Milk Bread',
+        category: 'Breads',
+        unit: 'pcs',
+        sellingPrice: 4500,
+        description: null,
+        isActive: true,
+        currentStock: 10,
+        averageCost: 3000,
+        activeRecipeId: null,
+        imageUrl: null,
+        createdAt: new Date(),
+        createdBy: 'user',
+        updatedAt: new Date(),
+        updatedBy: 'user',
+        deletedAt: null,
+        deletedBy: null,
+      },
+      {
+        id: 'prod-cake',
+        organizationId: 'org-1',
+        code: 'CKE-010',
+        name: 'Cake',
+        category: 'Cakes',
+        unit: 'pcs',
+        sellingPrice: 12000,
+        description: null,
+        isActive: true,
+        currentStock: 5,
+        averageCost: 8000,
+        activeRecipeId: null,
+        imageUrl: null,
+        createdAt: new Date(),
+        createdBy: 'user',
+        updatedAt: new Date(),
+        updatedBy: 'user',
+        deletedAt: null,
+        deletedBy: null,
+      },
+    ]);
+
+    await executeSalesImport({
+      resolvedReview: review([
+        importableRow(2, {
+          normalizedValues: { ...importableRow(2).normalizedValues, saleNumber: 'INV-DUP' },
+        }),
+        importableRow(3, {
+          normalizedValues: {
+            ...importableRow(3).normalizedValues,
+            saleNumber: 'INV-DUP',
+            productName: 'Cake',
+            productCode: 'CKE-010',
+          },
+          productMatchResult: {
+            status: PRODUCT_MATCH_STATUS.MATCHED,
+            matchedProductId: 'prod-cake',
+            matchedProductName: 'Cake',
+            confidence: 98,
+            reason: 'Exact Name Match',
+          },
+        }),
+      ]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(saleService.create).toHaveBeenCalledTimes(1);
+    expect(saleService.create).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ saleNumber: 'INV-DUP' }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({ groupKey: 'number:INV-DUP' }),
+      }),
+    );
+  });
+
+  it('keeps two same-looking numbered rows as two sales when invoices differ', async () => {
+    const shared = {
+      saleDate: '2026-03-15',
+      customerName: 'Ravi',
+      productName: 'Milk Bread',
+      productCode: 'BRD-001',
+      quantity: 10,
+      sellingPrice: 45,
+    };
+
+    await executeSalesImport({
+      resolvedReview: review([
+        importableRow(2, { normalizedValues: { ...shared, saleNumber: 'INV-A' } }),
+        importableRow(3, { normalizedValues: { ...shared, saleNumber: 'INV-B' } }),
+      ]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(saleService.create).toHaveBeenCalledTimes(2);
+    expect(saleService.create).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ saleNumber: 'INV-A' }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({ groupKey: 'number:INV-A' }),
+      }),
+    );
+    expect(saleService.create).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ saleNumber: 'INV-B' }),
+      'user-1',
+      expect.objectContaining({
+        importSource: expect.objectContaining({ groupKey: 'number:INV-B' }),
+      }),
+    );
+  });
+
+  it('on a 1000-row retry creates only the 500 groups that have no source-sale link', async () => {
+    const rows = Array.from({ length: 1000 }, (_, index) => {
+      const invoice = `INV-${String(index + 1).padStart(4, '0')}`;
+
+      return importableRow(index + 2, {
+        normalizedValues: {
+          saleDate: '2026-03-15',
+          customerName: 'Ravi',
+          productName: 'Milk Bread',
+          productCode: 'BRD-001',
+          quantity: 10,
+          sellingPrice: 45,
+          saleNumber: invoice,
+        },
+      });
+    });
+
+    const existing = new Map(
+      rows.slice(0, 500).map((row) => {
+        const invoice = String(row.normalizedValues['saleNumber']).toUpperCase();
+        return [`number:${invoice}`, `sale-existing-${invoice}`] as const;
+      }),
+    );
+
+    vi.mocked(importHistoryRepository.listSourceSales).mockResolvedValue(existing);
+
+    let created = 0;
+    vi.mocked(saleService.create).mockImplementation(async (_orgId, input) => {
+      created += 1;
+
+      return {
+        id: `sale-new-${created}`,
+        organizationId: 'org-1',
+        saleNumber: input.saleNumber ?? `NEW-${created}`,
+        saleDate: '2026-03-15',
+        customerId: null,
+        customerNameSnapshot: 'Ravi',
+        status: 'draft',
+        lines: [],
+        subtotal: 4500,
+        totalCogs: 0,
+        lineCount: 1,
+        notes: null,
+        createdAt: new Date(),
+        createdBy: 'user-1',
+        updatedAt: new Date(),
+        updatedBy: 'user-1',
+        completedAt: null,
+        completedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+      };
+    });
+
+    const result = await executeSalesImport({
+      resolvedReview: review(rows),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.saleIds).toHaveLength(1000);
+    expect(result.saleIds.slice(0, 500)).toEqual(
+      rows.slice(0, 500).map((row) => `sale-existing-${String(row.normalizedValues['saleNumber']).toUpperCase()}`),
+    );
+    expect(created).toBe(500);
+    expect(saleService.create).toHaveBeenCalledTimes(500);
+    expect(saleService.complete).not.toHaveBeenCalled();
   });
 });

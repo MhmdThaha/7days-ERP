@@ -14,6 +14,7 @@ import {
 } from '@/lib/import/finalization';
 import { importHistoryRepository } from '@/lib/repositories/import-history.repository';
 import { saleRepository } from '@/lib/repositories/sale.repository';
+import { dailySummaryService } from '@/lib/services/daily-summary.service';
 import { saleService } from '@/lib/services/sale.service';
 
 vi.mock('@/lib/repositories/import-history.repository', () => ({
@@ -32,6 +33,12 @@ vi.mock('@/lib/repositories/sale.repository', () => ({
 vi.mock('@/lib/services/sale.service', () => ({
   saleService: {
     complete: vi.fn(),
+  },
+}));
+
+vi.mock('@/lib/services/daily-summary.service', () => ({
+  dailySummaryService: {
+    scheduleRecalculationAfterCommit: vi.fn(),
   },
 }));
 
@@ -104,6 +111,7 @@ function completedSale(saleId: string) {
 
 beforeEach(() => {
   vi.mocked(saleService.complete).mockReset();
+  vi.mocked(dailySummaryService.scheduleRecalculationAfterCommit).mockReset();
   vi.mocked(importHistoryRepository.getById).mockReset();
   vi.mocked(importHistoryRepository.updateLifecycle).mockReset();
   vi.mocked(saleRepository.getById).mockReset();
@@ -118,6 +126,7 @@ beforeEach(() => {
   vi.mocked(saleRepository.getById).mockImplementation(async (_orgId, saleId) => draftSale(saleId));
 
   vi.mocked(saleService.complete).mockImplementation(async (_orgId, saleId) => completedSale(saleId));
+  vi.mocked(dailySummaryService.scheduleRecalculationAfterCommit).mockResolvedValue(undefined);
 });
 
 describe('finalizeSalesImportInventory', () => {
@@ -137,8 +146,17 @@ describe('finalizeSalesImportInventory', () => {
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
 
     expect(saleService.complete).toHaveBeenCalledTimes(2);
-    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-1', 'user-1');
-    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-2', 'user-1');
+    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-1', 'user-1', {
+      deferSummaryRebuild: true,
+    });
+    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-2', 'user-1', {
+      deferSummaryRebuild: true,
+    });
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
 
     expect(importHistoryRepository.updateLifecycle).toHaveBeenNthCalledWith(
       1,
@@ -181,7 +199,9 @@ describe('finalizeSalesImportInventory', () => {
     expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.COMPLETED);
     expect(result.completedSaleIds).toEqual(['sale-new-only']);
     expect(saleService.complete).toHaveBeenCalledTimes(1);
-    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-new-only', 'user-1');
+    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-new-only', 'user-1', {
+      deferSummaryRebuild: true,
+    });
   });
 
   it('continues remaining sales when one completion fails and marks history PARTIAL', async () => {
@@ -206,6 +226,11 @@ describe('finalizeSalesImportInventory', () => {
     expect(result.completedSaleIds).toEqual(['sale-1']);
     expect(result.errors).toHaveLength(1);
     expect(result.warnings).toHaveLength(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
     expect(importHistoryRepository.updateLifecycle).toHaveBeenLastCalledWith(
       'org-1',
       'imp-1',
@@ -231,6 +256,7 @@ describe('finalizeSalesImportInventory', () => {
     expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.FAILED);
     expect(result.completedSales).toBe(0);
     expect(result.failedSales).toBe(2);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).not.toHaveBeenCalled();
     expect(importHistoryRepository.updateLifecycle).toHaveBeenLastCalledWith(
       'org-1',
       'imp-1',
@@ -259,7 +285,14 @@ describe('finalizeSalesImportInventory', () => {
 
     expect(result.completedSales).toBe(2);
     expect(saleService.complete).toHaveBeenCalledTimes(1);
-    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-2', 'user-1');
+    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-2', 'user-1', {
+      deferSummaryRebuild: true,
+    });
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
   });
 
   it('retries remaining draft sales when import history is already COMPLETED', async () => {
@@ -284,7 +317,9 @@ describe('finalizeSalesImportInventory', () => {
 
     expect(result.completedSales).toBe(1);
     expect(saleService.complete).toHaveBeenCalledTimes(1);
-    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-2', 'user-1');
+    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-2', 'user-1', {
+      deferSummaryRebuild: true,
+    });
   });
 
   it('skips when import history is already COMPLETED and all sales are finalized', async () => {
@@ -305,10 +340,28 @@ describe('finalizeSalesImportInventory', () => {
 
     expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.SKIPPED);
     expect(saleService.complete).not.toHaveBeenCalled();
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).not.toHaveBeenCalled();
     expect(importHistoryRepository.updateLifecycle).not.toHaveBeenCalled();
   });
 
-  it('rejects finalization when import history is not IMPORTED', async () => {
+  it('rejects finalization when import history is not in a resumable create/finalize state', async () => {
+    vi.mocked(importHistoryRepository.getById).mockResolvedValue({
+      ...importedHistory,
+      status: IMPORT_HISTORY_STATUS.CANCELLED,
+    });
+
+    const result = await finalizeSalesImportInventory({
+      executionResult: baseExecutionResult,
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.FAILED);
+    expect(result.errors[0]).toContain('IMPORTING, IMPORTED, or FINALIZING');
+    expect(saleService.complete).not.toHaveBeenCalled();
+  });
+
+  it('allows finalization while import history is still IMPORTING after a crash', async () => {
     vi.mocked(importHistoryRepository.getById).mockResolvedValue({
       ...importedHistory,
       status: IMPORT_HISTORY_STATUS.IMPORTING,
@@ -320,9 +373,24 @@ describe('finalizeSalesImportInventory', () => {
       userId: 'user-1',
     });
 
-    expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.FAILED);
-    expect(result.errors[0]).toContain('IMPORTED');
+    expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.COMPLETED);
+    expect(saleService.complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not schedule Daily Summary when every sale was already completed', async () => {
+    vi.mocked(saleRepository.getById).mockImplementation(async (_orgId, saleId) =>
+      completedSale(saleId),
+    );
+
+    const result = await finalizeSalesImportInventory({
+      executionResult: baseExecutionResult,
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.completedSales).toBe(2);
     expect(saleService.complete).not.toHaveBeenCalled();
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).not.toHaveBeenCalled();
   });
 
   it('records execution metadata on failure paths', async () => {
@@ -335,5 +403,54 @@ describe('finalizeSalesImportInventory', () => {
     expect(result.status).toBe(INVENTORY_FINALIZATION_STATUS.FAILED);
     expect(result.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(result.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('schedules one Daily Summary rebuild for many same-date sales', async () => {
+    vi.mocked(importHistoryRepository.getById).mockResolvedValue({
+      ...importedHistory,
+      saleIds: ['sale-1', 'sale-2', 'sale-3'],
+      rowsImported: 3,
+    });
+
+    const result = await finalizeSalesImportInventory({
+      executionResult: {
+        ...baseExecutionResult,
+        imported: 3,
+        saleIds: ['sale-1', 'sale-2', 'sale-3'],
+      },
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(result.completedSales).toBe(3);
+    expect(saleService.complete).toHaveBeenCalledTimes(3);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
+  });
+
+  it('schedules one Daily Summary rebuild per distinct backdated saleDate', async () => {
+    vi.mocked(saleService.complete).mockImplementation(async (_orgId, saleId) => ({
+      ...completedSale(saleId),
+      saleDate: saleId === 'sale-1' ? '2026-08-17' : '2026-08-18',
+    }));
+
+    await finalizeSalesImportInventory({
+      executionResult: baseExecutionResult,
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(2);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-08-17',
+    );
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-08-18',
+    );
   });
 });

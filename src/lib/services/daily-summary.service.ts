@@ -87,6 +87,27 @@ export const dailySummaryService = {
   },
 
   /**
+   * Cheap dirty-state update after inventory has already committed.
+   * Does not schedule the heavy rebuild — callers that complete many
+   * same-day documents (Sales Import) mark dirty per success, then
+   * scheduleRecalculationAfterCommit once per distinct date.
+   * Never throws: a mark failure falls back to the same best-effort rebuild
+   * used by scheduleRecalculationAfterCommit so the day is not left looking fresh.
+   */
+  async markDirtyAfterCommit(orgId: string, date: string): Promise<void> {
+    try {
+      await dailySummaryRepository.markNeedsRecalculation(orgId, date);
+    } catch (error) {
+      console.error('[daily-summary] markNeedsRecalculation failed after commit', {
+        orgId,
+        date,
+        error,
+      });
+      await this.recalculateAfterMutation(orgId, date);
+    }
+  },
+
+  /**
    * Best-effort summary refresh after a business mutation has already committed.
    * Never throws — failures are logged and the day is marked for repair on next report load.
    */

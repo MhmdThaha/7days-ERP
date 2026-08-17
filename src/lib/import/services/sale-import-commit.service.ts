@@ -17,6 +17,7 @@ import type { NormalizedValue } from '@/lib/import/engine/types';
 import { normalizeSaleDateValue } from '@/lib/import/services/sale-import-grouping.service';
 import type { ResolvedSaleImportGroup } from '@/lib/import/services/sale-import-product-resolver';
 import { productRepository } from '@/lib/repositories/product.repository';
+import { dailySummaryService } from '@/lib/services/daily-summary.service';
 import { saleService } from '@/lib/services/sale.service';
 import type { CreateSaleInput, Sale, SaleLineItemInput } from '@/types/sale';
 
@@ -187,24 +188,35 @@ async function resolveMissingSellingPrices(
   orgId: string,
   input: SaleImportCreateInput,
 ): Promise<SaleImportCreateInput> {
-  const lines = await Promise.all(
-    input.lines.map(async (line) => {
-      if (line.sellingPrice > 0) {
-        return line;
-      }
+  const missingProductIds = [
+    ...new Set(
+      input.lines.filter((line) => !(line.sellingPrice > 0)).map((line) => line.productId),
+    ),
+  ];
 
-      const product = await productRepository.getById(orgId, line.productId);
+  if (missingProductIds.length === 0) {
+    return input;
+  }
 
-      if (!product) {
-        throw new DomainError('NOT_FOUND', 'One or more products were not found');
-      }
+  const products = await productRepository.getByIds(orgId, missingProductIds);
+  const productsById = new Map(products.map((product) => [product.id, product]));
 
-      return {
-        ...line,
-        sellingPrice: product.sellingPrice,
-      };
-    }),
-  );
+  const lines = input.lines.map((line) => {
+    if (line.sellingPrice > 0) {
+      return line;
+    }
+
+    const product = productsById.get(line.productId);
+
+    if (!product) {
+      throw new DomainError('NOT_FOUND', 'One or more products were not found');
+    }
+
+    return {
+      ...line,
+      sellingPrice: product.sellingPrice,
+    };
+  });
 
   return {
     ...input,
@@ -236,6 +248,7 @@ export async function commitSaleImport(
   const commitErrors: SaleImportCommitError[] = [];
   const saleIds: string[] = [];
   const saleNumbers: string[] = [];
+  const affectedSummaryDates = new Set<string>();
 
   for (const group of cleanGroups) {
     const built = buildSaleImportCreateInput(group);
@@ -253,10 +266,13 @@ export async function commitSaleImport(
     try {
       const input = await resolveMissingSellingPrices(options.orgId, built);
       const draft = await saleService.create(options.orgId, input, options.userId);
-      const completed: Sale = await saleService.complete(options.orgId, draft.id, options.userId);
+      const completed: Sale = await saleService.complete(options.orgId, draft.id, options.userId, {
+        deferSummaryRebuild: true,
+      });
 
       saleIds.push(completed.id);
       saleNumbers.push(completed.saleNumber);
+      affectedSummaryDates.add(completed.saleDate);
 
       groupResults.push({
         groupKey: group.groupKey,
@@ -281,6 +297,10 @@ export async function commitSaleImport(
         reason: message,
       });
     }
+  }
+
+  for (const date of affectedSummaryDates) {
+    await dailySummaryService.scheduleRecalculationAfterCommit(options.orgId, date);
   }
 
   return {

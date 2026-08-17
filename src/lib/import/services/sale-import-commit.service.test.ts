@@ -17,6 +17,7 @@ import type {
   ResolvedSaleImportLineItem,
 } from '@/lib/import/services/sale-import-product-resolver';
 import { productRepository } from '@/lib/repositories/product.repository';
+import { dailySummaryService } from '@/lib/services/daily-summary.service';
 import { saleService } from '@/lib/services/sale.service';
 import type { Sale } from '@/types/sale';
 
@@ -27,9 +28,16 @@ vi.mock('@/lib/services/sale.service', () => ({
   },
 }));
 
+vi.mock('@/lib/services/daily-summary.service', () => ({
+  dailySummaryService: {
+    scheduleRecalculationAfterCommit: vi.fn(),
+  },
+}));
+
 vi.mock('@/lib/repositories/product.repository', () => ({
   productRepository: {
     getById: vi.fn(),
+    getByIds: vi.fn(),
   },
 }));
 
@@ -182,7 +190,10 @@ describe('commitSaleImport', () => {
   beforeEach(() => {
     vi.mocked(saleService.create).mockReset();
     vi.mocked(saleService.complete).mockReset();
+    vi.mocked(dailySummaryService.scheduleRecalculationAfterCommit).mockReset();
     vi.mocked(productRepository.getById).mockReset();
+    vi.mocked(productRepository.getByIds).mockReset();
+    vi.mocked(dailySummaryService.scheduleRecalculationAfterCommit).mockResolvedValue(undefined);
   });
 
   it('creates and completes each clean group, returning import results', async () => {
@@ -208,7 +219,14 @@ describe('commitSaleImport', () => {
       },
       'user-1',
     );
-    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-draft', 'user-1');
+    expect(saleService.complete).toHaveBeenCalledWith('org-1', 'sale-draft', 'user-1', {
+      deferSummaryRebuild: true,
+    });
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
     expect(result.importedCount).toBe(1);
     expect(result.saleIds).toEqual(['sale-draft']);
     expect(result.groupResults[0]).toMatchObject({
@@ -224,27 +242,29 @@ describe('commitSaleImport', () => {
       resolvedLine(2, { productCode: 'BRD-001', quantity: 1 }, bread),
     ]);
 
-    vi.mocked(productRepository.getById).mockResolvedValue({
-      id: 'prod-bread',
-      organizationId: 'org-1',
-      code: 'BRD-001',
-      name: 'Milk Bread',
-      category: 'Bread',
-      unit: 'pcs',
-      sellingPrice: 5500,
-      description: null,
-      isActive: true,
-      currentStock: 10,
-      averageCost: 3000,
-      activeRecipeId: null,
-      imageUrl: null,
-      createdAt: new Date(),
-      createdBy: 'user-1',
-      updatedAt: new Date(),
-      updatedBy: 'user-1',
-      deletedAt: null,
-      deletedBy: null,
-    });
+    vi.mocked(productRepository.getByIds).mockResolvedValue([
+      {
+        id: 'prod-bread',
+        organizationId: 'org-1',
+        code: 'BRD-001',
+        name: 'Milk Bread',
+        category: 'Bread',
+        unit: 'pcs',
+        sellingPrice: 5500,
+        description: null,
+        isActive: true,
+        currentStock: 10,
+        averageCost: 3000,
+        activeRecipeId: null,
+        imageUrl: null,
+        createdAt: new Date(),
+        createdBy: 'user-1',
+        updatedAt: new Date(),
+        updatedBy: 'user-1',
+        deletedAt: null,
+        deletedBy: null,
+      },
+    ]);
     vi.mocked(saleService.create).mockResolvedValue(
       completedSale({ id: 'sale-2', saleNumber: 'SAL-400' }),
     );
@@ -254,6 +274,9 @@ describe('commitSaleImport', () => {
 
     await commitSaleImport([group], { orgId: 'org-1', userId: 'user-1' });
 
+    expect(productRepository.getByIds).toHaveBeenCalledTimes(1);
+    expect(productRepository.getByIds).toHaveBeenCalledWith('org-1', ['prod-bread']);
+    expect(productRepository.getById).not.toHaveBeenCalled();
     expect(saleService.create).toHaveBeenCalledWith(
       'org-1',
       expect.objectContaining({
@@ -296,6 +319,11 @@ describe('commitSaleImport', () => {
       'imported',
     );
     expect(result.commitErrors).toHaveLength(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
   });
 
   it('skips groups that cannot build a DTO', async () => {
@@ -305,9 +333,79 @@ describe('commitSaleImport', () => {
 
     expect(result.skippedCount).toBe(1);
     expect(saleService.create).not.toHaveBeenCalled();
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).not.toHaveBeenCalled();
     expect(result.groupResults[0]).toMatchObject({
       status: 'skipped',
       reason: 'Sale has no importable product lines.',
     });
+  });
+
+  it('schedules one Daily Summary rebuild for two same-date sales', async () => {
+    const first = cleanGroup(
+      'number:SAL-100',
+      [resolvedLine(2, { productCode: 'BRD-001', quantity: 1, sellingPrice: 45 }, bread)],
+      { saleNumber: 'SAL-100' },
+    );
+    const second = cleanGroup(
+      'number:SAL-101',
+      [resolvedLine(3, { productCode: 'CKE-010', quantity: 1, sellingPrice: 120 }, cake)],
+      { saleNumber: 'SAL-101' },
+    );
+
+    vi.mocked(saleService.create)
+      .mockResolvedValueOnce(completedSale({ id: 'sale-1', saleNumber: 'SAL-100' }))
+      .mockResolvedValueOnce(completedSale({ id: 'sale-2', saleNumber: 'SAL-101' }));
+    vi.mocked(saleService.complete)
+      .mockResolvedValueOnce(completedSale({ id: 'sale-1', saleNumber: 'SAL-100' }))
+      .mockResolvedValueOnce(completedSale({ id: 'sale-2', saleNumber: 'SAL-101' }));
+
+    await commitSaleImport([first, second], { orgId: 'org-1', userId: 'user-1' });
+
+    expect(saleService.complete).toHaveBeenCalledTimes(2);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(1);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-03-15',
+    );
+  });
+
+  it('schedules one Daily Summary rebuild per distinct saleDate', async () => {
+    const first = cleanGroup(
+      'number:SAL-100',
+      [resolvedLine(2, { productCode: 'BRD-001', quantity: 1, sellingPrice: 45 }, bread)],
+      { saleNumber: 'SAL-100', saleDate: '2026-08-17' },
+    );
+    const second = cleanGroup(
+      'number:SAL-101',
+      [resolvedLine(3, { productCode: 'CKE-010', quantity: 1, sellingPrice: 120 }, cake)],
+      { saleNumber: 'SAL-101', saleDate: '2026-08-18' },
+    );
+
+    vi.mocked(saleService.create)
+      .mockResolvedValueOnce(
+        completedSale({ id: 'sale-1', saleNumber: 'SAL-100', saleDate: '2026-08-17' }),
+      )
+      .mockResolvedValueOnce(
+        completedSale({ id: 'sale-2', saleNumber: 'SAL-101', saleDate: '2026-08-18' }),
+      );
+    vi.mocked(saleService.complete)
+      .mockResolvedValueOnce(
+        completedSale({ id: 'sale-1', saleNumber: 'SAL-100', saleDate: '2026-08-17' }),
+      )
+      .mockResolvedValueOnce(
+        completedSale({ id: 'sale-2', saleNumber: 'SAL-101', saleDate: '2026-08-18' }),
+      );
+
+    await commitSaleImport([first, second], { orgId: 'org-1', userId: 'user-1' });
+
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledTimes(2);
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-08-17',
+    );
+    expect(dailySummaryService.scheduleRecalculationAfterCommit).toHaveBeenCalledWith(
+      'org-1',
+      '2026-08-18',
+    );
   });
 });

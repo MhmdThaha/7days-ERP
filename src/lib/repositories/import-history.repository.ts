@@ -1,13 +1,18 @@
 import 'server-only';
 
-import { Timestamp } from 'firebase-admin/firestore';
+import { createHash } from 'node:crypto';
 
-import type { ImportHistoryRecord, ImportHistoryStatus } from '@/lib/import/duplicate';
+import { FieldValue, Timestamp, type Transaction } from 'firebase-admin/firestore';
+
+import { IMPORT_HISTORY_STATUS, type ImportHistoryRecord, type ImportHistoryStatus } from '@/lib/import/duplicate';
 import type { CreateImportHistoryInput } from '@/lib/import/execution/sales-import-execution.types';
 import type { ImportExecutionStatus } from '@/lib/import/execution/sales-import-execution.types';
-import { buildAuditFields, getOrgCollection } from '@/lib/repositories/base.repository';
+import { IMPORT_EXECUTION_STATUS } from '@/lib/import/execution/sales-import-execution.types';
+import { buildAuditFields, getFirestore, getOrgCollection } from '@/lib/repositories/base.repository';
 
 const COLLECTION = 'importHistory';
+const FILE_LOCK_COLLECTION = 'importFileLocks';
+const SOURCE_SALES_COLLECTION = 'sourceSales';
 
 type ImportHistoryDocument = {
   organizationId: string;
@@ -30,6 +35,13 @@ type ImportHistoryDocument = {
   deletedBy: string | null;
 };
 
+type SourceSaleLinkDocument = {
+  groupKey: string;
+  saleId: string;
+  createdAt: Timestamp;
+  createdBy: string;
+};
+
 export type ImportHistoryDetail = ImportHistoryRecord & {
   rowsImported: number;
   rowsSkipped: number;
@@ -37,6 +49,31 @@ export type ImportHistoryDetail = ImportHistoryRecord & {
   saleIds: readonly string[];
   executionStatus: ImportExecutionStatus;
 };
+
+export type BeginOrResumeImportInput = {
+  reportType: string;
+  rowCount: number;
+  fileFingerprint: string;
+  invoiceNumbers: readonly string[];
+  rowFingerprints: readonly string[];
+};
+
+export type BeginOrResumeImportResult = {
+  history: ImportHistoryDetail;
+  resumed: boolean;
+  alreadyCompleted: boolean;
+};
+
+export function hashImportIdentity(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+export function sourceSaleLinkRef(orgId: string, importId: string, groupKey: string) {
+  return getOrgCollection(orgId, COLLECTION)
+    .doc(importId)
+    .collection(SOURCE_SALES_COLLECTION)
+    .doc(hashImportIdentity(groupKey));
+}
 
 function toImportHistoryRecord(id: string, data: ImportHistoryDocument): ImportHistoryRecord {
   return {
@@ -63,7 +100,149 @@ function toImportHistoryDetail(id: string, data: ImportHistoryDocument): ImportH
   };
 }
 
+function buildNewHistoryDocument(
+  orgId: string,
+  userId: string,
+  input: BeginOrResumeImportInput,
+  now: Timestamp,
+): ImportHistoryDocument {
+  return {
+    organizationId: orgId,
+    reportType: input.reportType,
+    rowCount: input.rowCount,
+    rowsImported: 0,
+    rowsSkipped: 0,
+    rowsFailed: 0,
+    fileFingerprint: input.fileFingerprint,
+    invoiceNumbers: [...input.invoiceNumbers],
+    rowFingerprints: [...input.rowFingerprints],
+    saleIds: [],
+    executionStatus: IMPORT_EXECUTION_STATUS.IMPORTED,
+    status: IMPORT_HISTORY_STATUS.IMPORTING,
+    createdAt: now,
+    createdBy: userId,
+    updatedAt: now,
+    updatedBy: userId,
+    deletedAt: null,
+    deletedBy: null,
+  };
+}
+
 export const importHistoryRepository = {
+  sourceSaleLinkRef,
+
+  writeSourceSaleLinkInTransaction(
+    transaction: Transaction,
+    orgId: string,
+    importId: string,
+    groupKey: string,
+    saleId: string,
+    userId: string,
+  ): void {
+    const now = Timestamp.now();
+    const linkRef = sourceSaleLinkRef(orgId, importId, groupKey);
+    const historyRef = getOrgCollection(orgId, COLLECTION).doc(importId);
+    const document: SourceSaleLinkDocument = {
+      groupKey,
+      saleId,
+      createdAt: now,
+      createdBy: userId,
+    };
+
+    transaction.set(linkRef, document);
+    transaction.update(historyRef, {
+      saleIds: FieldValue.arrayUnion(saleId),
+      updatedAt: now,
+      updatedBy: userId,
+    });
+  },
+
+  async listSourceSales(orgId: string, importId: string): Promise<Map<string, string>> {
+    const snapshot = await getOrgCollection(orgId, COLLECTION)
+      .doc(importId)
+      .collection(SOURCE_SALES_COLLECTION)
+      .get();
+    const links = new Map<string, string>();
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data() as SourceSaleLinkDocument;
+
+      if (data.groupKey && data.saleId) {
+        links.set(data.groupKey, data.saleId);
+      }
+    }
+
+    return links;
+  },
+
+  async beginOrResume(
+    orgId: string,
+    userId: string,
+    input: BeginOrResumeImportInput,
+  ): Promise<BeginOrResumeImportResult> {
+    const firestore = getFirestore();
+    const historyCollection = getOrgCollection(orgId, COLLECTION);
+    const fingerprint = input.fileFingerprint;
+    const fingerprintHash = fingerprint === '' ? null : hashImportIdentity(fingerprint);
+
+    return firestore.runTransaction(async (transaction) => {
+      const now = Timestamp.now();
+
+      if (fingerprintHash) {
+        const lockRef = getOrgCollection(orgId, FILE_LOCK_COLLECTION).doc(fingerprintHash);
+        const lockSnap = await transaction.get(lockRef);
+
+        if (lockSnap.exists) {
+          const importId = String(lockSnap.data()?.importId ?? '');
+          const historyRef = historyCollection.doc(importId);
+          const historySnap = await transaction.get(historyRef);
+
+          if (historySnap.exists) {
+            const data = historySnap.data() as ImportHistoryDocument;
+
+            if (!data.deletedAt) {
+              const history = toImportHistoryDetail(importId, data);
+              const alreadyCompleted = history.status === IMPORT_HISTORY_STATUS.COMPLETED;
+
+              return {
+                history,
+                resumed: true,
+                alreadyCompleted,
+              };
+            }
+          }
+        }
+
+        const historyRef = historyCollection.doc();
+        const document = buildNewHistoryDocument(orgId, userId, input, now);
+        transaction.set(historyRef, document);
+        transaction.set(lockRef, {
+          importId: historyRef.id,
+          fileFingerprintHash: fingerprintHash,
+          organizationId: orgId,
+          createdAt: now,
+          createdBy: userId,
+        });
+
+        return {
+          history: toImportHistoryDetail(historyRef.id, document),
+          resumed: false,
+          alreadyCompleted: false,
+        };
+      }
+
+      const historyRef = historyCollection.doc();
+      const document = buildNewHistoryDocument(orgId, userId, input, now);
+      transaction.set(historyRef, document);
+
+      return {
+        history: toImportHistoryDetail(historyRef.id, document),
+        resumed: false,
+        alreadyCompleted: false,
+      };
+    });
+  },
+
   async create(
     orgId: string,
     userId: string,
@@ -131,19 +310,22 @@ export const importHistoryRepository = {
     update: {
       status: ImportHistoryStatus;
       executionStatus?: ImportExecutionStatus;
+      rowsImported?: number;
+      rowsSkipped?: number;
+      rowsFailed?: number;
     },
   ): Promise<ImportHistoryDetail> {
     const ref = getOrgCollection(orgId, COLLECTION).doc(importId);
     const snapshot = await ref.get();
 
     if (!snapshot.exists) {
-      throw new Error(`Import history ${importId} not found`);
+      throw new Error(`Import history ${importId} was not found`);
     }
 
     const data = snapshot.data() as ImportHistoryDocument;
 
     if (data.deletedAt) {
-      throw new Error(`Import history ${importId} not found`);
+      throw new Error(`Import history ${importId} was not found`);
     }
 
     const audit = buildAuditFields(userId, false);
@@ -151,6 +333,9 @@ export const importHistoryRepository = {
       ...data,
       status: update.status,
       executionStatus: update.executionStatus ?? data.executionStatus,
+      rowsImported: update.rowsImported ?? data.rowsImported,
+      rowsSkipped: update.rowsSkipped ?? data.rowsSkipped,
+      rowsFailed: update.rowsFailed ?? data.rowsFailed,
       updatedAt: audit.updatedAt,
       updatedBy: audit.updatedBy,
     };
@@ -158,6 +343,9 @@ export const importHistoryRepository = {
     await ref.update({
       status: nextDocument.status,
       executionStatus: nextDocument.executionStatus,
+      rowsImported: nextDocument.rowsImported,
+      rowsSkipped: nextDocument.rowsSkipped,
+      rowsFailed: nextDocument.rowsFailed,
       updatedAt: nextDocument.updatedAt,
       updatedBy: nextDocument.updatedBy,
     });

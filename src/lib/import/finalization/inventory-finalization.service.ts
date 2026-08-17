@@ -2,7 +2,9 @@
  * Inventory Finalization Service — Phase 10B orchestrates manual sale completion.
  *
  * For each draft sale created by Phase 10A, delegates to saleService.complete()
- * so imported sales follow the identical inventory, COGS, and daily-summary path.
+ * so imported sales follow the identical inventory and COGS path.
+ * Daily Summary is marked dirty per successful sale, then rebuilt once per
+ * distinct saleDate after the inventory loop.
  */
 
 import 'server-only';
@@ -18,6 +20,7 @@ import {
 } from '@/lib/import/finalization/inventory-finalization.types';
 import { importHistoryRepository } from '@/lib/repositories/import-history.repository';
 import { saleRepository } from '@/lib/repositories/sale.repository';
+import { dailySummaryService } from '@/lib/services/daily-summary.service';
 import { saleService } from '@/lib/services/sale.service';
 
 type FinalizationResultCore = Omit<
@@ -67,11 +70,12 @@ export async function finalizeSalesImportInventory(
     }
   } else if (
     importHistory.status !== IMPORT_HISTORY_STATUS.IMPORTED &&
-    importHistory.status !== IMPORT_HISTORY_STATUS.FINALIZING
+    importHistory.status !== IMPORT_HISTORY_STATUS.FINALIZING &&
+    importHistory.status !== IMPORT_HISTORY_STATUS.IMPORTING
   ) {
     return finalizeResult(
       emptyFailure(
-        `Import history must be IMPORTED before finalization (current: ${importHistory.status}).`,
+        `Import history must be IMPORTING, IMPORTED, or FINALIZING before finalization (current: ${importHistory.status}).`,
       ),
       startedAt,
     );
@@ -97,17 +101,37 @@ export async function finalizeSalesImportInventory(
   const completedSaleIds: string[] = [];
   const warnings: string[] = [];
   const errors: string[] = [];
+  const affectedSummaryDates = new Set<string>();
 
   for (const saleId of saleIds) {
     try {
-      await completeDraftSale(orgId, saleId, userId);
+      const existing = await saleRepository.getById(orgId, saleId);
+
+      if (!existing) {
+        throw new DomainError('NOT_FOUND', 'Sale not found');
+      }
+
+      if (existing.status === 'completed') {
+        completedSaleIds.push(saleId);
+        outcomes.push({ saleId, status: 'completed' });
+        continue;
+      }
+
+      const completed = await saleService.complete(orgId, saleId, userId, {
+        deferSummaryRebuild: true,
+      });
       completedSaleIds.push(saleId);
       outcomes.push({ saleId, status: 'completed' });
+      affectedSummaryDates.add(completed.saleDate);
     } catch (error) {
       const message = error instanceof DomainError ? error.message : 'Inventory finalization failed.';
       errors.push(`Sale ${saleId}: ${message}`);
       outcomes.push({ saleId, status: 'failed', reason: message });
     }
+  }
+
+  for (const date of affectedSummaryDates) {
+    await dailySummaryService.scheduleRecalculationAfterCommit(orgId, date);
   }
 
   const completedSales = outcomes.filter((entry) => entry.status === 'completed').length;
@@ -169,20 +193,6 @@ async function findPendingDraftSaleIds(
   }
 
   return pending;
-}
-
-async function completeDraftSale(orgId: string, saleId: string, userId: string): Promise<void> {
-  const existing = await saleRepository.getById(orgId, saleId);
-
-  if (!existing) {
-    throw new DomainError('NOT_FOUND', 'Sale not found');
-  }
-
-  if (existing.status === 'completed') {
-    return;
-  }
-
-  await saleService.complete(orgId, saleId, userId);
 }
 
 function resolveFinalizationStatus(completedSales: number, failedSales: number) {

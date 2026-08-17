@@ -14,6 +14,7 @@ import {
   DUPLICATE_IMPORT_RECOMMENDATION,
   DUPLICATE_IMPORT_STATUS,
   IMPORT_HISTORY_STATUS,
+  shouldResumeBlockedDuplicateImport,
   type ImportHistoryRecord,
 } from '@/lib/import/duplicate';
 import type { ImportReviewViewModelWithResolution, ResolvedImportReviewRow } from '@/lib/import/resolution/types';
@@ -678,5 +679,48 @@ describe('buildDuplicateImportFileFingerprint stability', () => {
     ]);
 
     expect(ordered).toBe(reversed);
+  });
+});
+
+describe('shouldResumeBlockedDuplicateImport', () => {
+  const blocked = {
+    status: DUPLICATE_IMPORT_STATUS.EXACT_DUPLICATE,
+    confidence: 100,
+    matchedImport: {
+      importId: 'imp-1',
+      importedAt: '2026-03-01T10:00:00.000Z',
+      importedBy: 'owner@test',
+      status: IMPORT_HISTORY_STATUS.IMPORTING,
+    },
+    matchedInvoices: [],
+    matchedRows: 1,
+    duplicateRowFingerprints: ['fp'],
+    duplicateReasons: ['Identical file fingerprint to a completed import.'],
+    recommendation: DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT,
+  };
+
+  it('resumes IMPORTING, IMPORTED, FINALIZING, and FAILED exact-file blocks', () => {
+    for (const status of [
+      IMPORT_HISTORY_STATUS.IMPORTING,
+      IMPORT_HISTORY_STATUS.IMPORTED,
+      IMPORT_HISTORY_STATUS.FINALIZING,
+      IMPORT_HISTORY_STATUS.FAILED,
+    ]) {
+      expect(
+        shouldResumeBlockedDuplicateImport({
+          ...blocked,
+          matchedImport: { ...blocked.matchedImport, status },
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('does not resume a completed exact-file block', () => {
+    expect(
+      shouldResumeBlockedDuplicateImport({
+        ...blocked,
+        matchedImport: { ...blocked.matchedImport, status: IMPORT_HISTORY_STATUS.COMPLETED },
+      }),
+    ).toBe(false);
   });
 });

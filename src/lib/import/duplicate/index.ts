@@ -12,6 +12,8 @@ export {
   DUPLICATE_IMPORT_ROW_SKIP_REASON,
   DUPLICATE_IMPORT_STATUS,
   isBlockingImportHistoryStatus,
+  isResumableImportHistoryStatus,
+  shouldResumeBlockedDuplicateImport,
   IMPORT_HISTORY_STATUS,
   type DetectDuplicateImportInput,
   type DuplicateImportFingerprints,

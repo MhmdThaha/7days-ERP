@@ -349,4 +349,26 @@ describe('dailySummaryService recalculation reliability', () => {
     expect(dailySummaryRepository.markNeedsRecalculation).toHaveBeenCalledTimes(2);
     expect(scheduleAfterResponseMock).toHaveBeenCalledTimes(2);
   });
+
+  it('markDirtyAfterCommit marks the day dirty without scheduling a rebuild', async () => {
+    vi.mocked(dailySummaryRepository.markNeedsRecalculation).mockResolvedValue();
+    const recalcSpy = vi.spyOn(dailySummaryService, 'recalculateAfterMutation').mockResolvedValue();
+
+    await dailySummaryService.markDirtyAfterCommit('org-1', date);
+
+    expect(dailySummaryRepository.markNeedsRecalculation).toHaveBeenCalledWith('org-1', date);
+    expect(scheduleAfterResponseMock).not.toHaveBeenCalled();
+    expect(recalcSpy).not.toHaveBeenCalled();
+  });
+
+  it('markDirtyAfterCommit falls back to rebuild when mark dirty fails and does not throw', async () => {
+    vi.mocked(dailySummaryRepository.markNeedsRecalculation).mockRejectedValue(
+      new Error('mark failed'),
+    );
+    const recalcSpy = vi.spyOn(dailySummaryService, 'recalculateAfterMutation').mockResolvedValue();
+
+    await expect(dailySummaryService.markDirtyAfterCommit('org-1', date)).resolves.toBeUndefined();
+    expect(recalcSpy).toHaveBeenCalledWith('org-1', date);
+    expect(scheduleAfterResponseMock).not.toHaveBeenCalled();
+  });
 });

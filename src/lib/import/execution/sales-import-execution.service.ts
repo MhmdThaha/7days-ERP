@@ -12,6 +12,7 @@ import {
   DUPLICATE_IMPORT_ROW_SKIP_REASON,
   buildDuplicateImportFingerprints,
   buildDuplicateImportRowFingerprint,
+  shouldResumeBlockedDuplicateImport,
 } from '@/lib/import/duplicate';
 import type {
   ExecuteSalesImportInput,
@@ -45,15 +46,20 @@ export { isSalesImportRowImportable, reviewRowSkipReason };
 
 /**
  * Executes a reviewed sales import: draft sales + one import-history document.
- * Aborts with no writes when duplicate protection recommends BLOCK_IMPORT.
+ * Aborts with no writes when duplicate protection recommends BLOCK_IMPORT,
+ * unless the matched import is still resumable (crash/retry of the same file).
  * When SKIP_DUPLICATES, excludes overlapping rows and imports only new rows.
  */
 export async function executeSalesImport(
   input: ExecuteSalesImportInput,
 ): Promise<ImportExecutionResult> {
   const startedAt = new Date().toISOString();
+  const resumeBlockedImport = shouldResumeBlockedDuplicateImport(input.duplicateResult);
 
-  if (input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT) {
+  if (
+    input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT &&
+    !resumeBlockedImport
+  ) {
     return finalizeResult(
       {
         importId: null,
@@ -107,6 +113,71 @@ export async function executeSalesImport(
 
   const importableRows = input.resolvedReview.rows.filter((row) => !skippedRowNumbers.has(row.rowNumber));
   const groups = buildResolvedSaleImportGroups(importableRows);
+  const shouldOpenHistory = groups.length > 0 || resumeBlockedImport;
+
+  if (!shouldOpenHistory) {
+    rowResults.sort((a, b) => a.rowNumber - b.rowNumber);
+
+    const skipped = rowResults.filter((entry) => entry.status === 'skipped').length;
+    const failed = rowResults.filter((entry) => entry.status === 'failed').length;
+    const duplicateSkipsOnly =
+      input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES &&
+      failed === 0 &&
+      skipped > 0 &&
+      rowResults.every(
+        (entry) =>
+          entry.status !== 'skipped' || entry.reason === DUPLICATE_IMPORT_ROW_SKIP_REASON,
+      );
+
+    return finalizeResult(
+      {
+        importId: null,
+        imported: 0,
+        skipped,
+        failed,
+        status: resolveExecutionStatus(0, failed, skipped, duplicateSkipsOnly),
+        saleIds: [],
+        rowResults,
+        warnings: rowResults
+          .filter((entry) => entry.status === 'skipped' && entry.reason)
+          .map((entry) => `Row ${entry.rowNumber}: ${entry.reason}`),
+        errors: rowResults
+          .filter((entry) => entry.status === 'failed' && entry.reason)
+          .map((entry) => `Row ${entry.rowNumber}: ${entry.reason}`),
+      },
+      startedAt,
+    );
+  }
+
+  const session = await importHistoryRepository.beginOrResume(input.orgId, input.userId, {
+    reportType: input.reportType,
+    rowCount: input.resolvedReview.rows.length,
+    fileFingerprint: fingerprints.fileFingerprint,
+    invoiceNumbers: fingerprints.invoiceNumbers,
+    rowFingerprints: fingerprints.rowFingerprints,
+  });
+
+  if (session.alreadyCompleted) {
+    return finalizeResult(
+      {
+        importId: session.history.importId,
+        imported: 0,
+        skipped: 0,
+        failed: 0,
+        status: IMPORT_EXECUTION_STATUS.BLOCKED,
+        saleIds: [],
+        rowResults: [],
+        warnings: [],
+        errors: [],
+      },
+      startedAt,
+    );
+  }
+
+  const existingSourceSales = await importHistoryRepository.listSourceSales(
+    input.orgId,
+    session.history.importId,
+  );
   const saleIds: string[] = [];
 
   for (const group of groups) {
@@ -125,11 +196,33 @@ export async function executeSalesImport(
       continue;
     }
 
+    const existingSaleId = existingSourceSales.get(group.groupKey);
+
+    if (existingSaleId) {
+      saleIds.push(existingSaleId);
+
+      for (const rowNumber of group.rowNumbers) {
+        rowResults.push({
+          rowNumber,
+          status: 'imported',
+          saleId: existingSaleId,
+        });
+      }
+
+      continue;
+    }
+
     try {
       const createInput = await resolveMissingSellingPrices(input.orgId, built);
-      const draft = await saleService.create(input.orgId, createInput, input.userId);
+      const draft = await saleService.create(input.orgId, createInput, input.userId, {
+        importSource: {
+          importId: session.history.importId,
+          groupKey: group.groupKey,
+        },
+      });
 
       saleIds.push(draft.id);
+      existingSourceSales.set(group.groupKey, draft.id);
 
       for (const rowNumber of group.rowNumbers) {
         rowResults.push({
@@ -172,41 +265,25 @@ export async function executeSalesImport(
   const errors = rowResults
     .filter((entry) => entry.status === 'failed' && entry.reason)
     .map((entry) => `Row ${entry.rowNumber}: ${entry.reason}`);
+  const lifecycleStatus =
+    imported === 0 ? IMPORT_HISTORY_STATUS.FAILED : IMPORT_HISTORY_STATUS.IMPORTED;
 
-  if (imported === 0) {
-    return finalizeResult(
-      {
-        importId: null,
-        imported,
-        skipped,
-        failed,
-        status: executionStatus,
-        saleIds,
-        rowResults,
-        warnings,
-        errors,
-      },
-      startedAt,
-    );
-  }
-
-  const history = await importHistoryRepository.create(input.orgId, input.userId, {
-    reportType: input.reportType,
-    rowCount: input.resolvedReview.rows.length,
-    rowsImported: imported,
-    rowsSkipped: skipped,
-    rowsFailed: failed,
-    fileFingerprint: fingerprints.fileFingerprint,
-    invoiceNumbers: fingerprints.invoiceNumbers,
-    rowFingerprints: fingerprints.rowFingerprints,
-    saleIds,
-    lifecycleStatus: IMPORT_HISTORY_STATUS.IMPORTED,
-    executionStatus,
-  });
+  await importHistoryRepository.updateLifecycle(
+    input.orgId,
+    session.history.importId,
+    input.userId,
+    {
+      status: lifecycleStatus,
+      executionStatus,
+      rowsImported: imported,
+      rowsSkipped: skipped,
+      rowsFailed: failed,
+    },
+  );
 
   return finalizeResult(
     {
-      importId: history.importId,
+      importId: session.history.importId,
       imported,
       skipped,
       failed,
@@ -332,24 +409,35 @@ async function resolveMissingSellingPrices(
   orgId: string,
   input: SaleImportCreateInput,
 ): Promise<SaleImportCreateInput> {
-  const lines = await Promise.all(
-    input.lines.map(async (line) => {
-      if (line.sellingPrice > 0) {
-        return line;
-      }
+  const missingProductIds = [
+    ...new Set(
+      input.lines.filter((line) => !(line.sellingPrice > 0)).map((line) => line.productId),
+    ),
+  ];
 
-      const product = await productRepository.getById(orgId, line.productId);
+  if (missingProductIds.length === 0) {
+    return input;
+  }
 
-      if (!product) {
-        throw new DomainError('NOT_FOUND', 'One or more products were not found');
-      }
+  const products = await productRepository.getByIds(orgId, missingProductIds);
+  const productsById = new Map(products.map((product) => [product.id, product]));
 
-      return {
-        ...line,
-        sellingPrice: product.sellingPrice,
-      };
-    }),
-  );
+  const lines = input.lines.map((line) => {
+    if (line.sellingPrice > 0) {
+      return line;
+    }
+
+    const product = productsById.get(line.productId);
+
+    if (!product) {
+      throw new DomainError('NOT_FOUND', 'One or more products were not found');
+    }
+
+    return {
+      ...line,
+      sellingPrice: product.sellingPrice,
+    };
+  });
 
   return {
     ...input,
