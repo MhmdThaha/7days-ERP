@@ -34,7 +34,7 @@ import { prepareSalesImport } from '@/lib/import/preparation/sales-import-prepar
 import type { SalesImportPreparationContext } from '@/lib/import/preparation/sales-import-preparation.types';
 import type { PreparedFieldSources } from '@/lib/import/preparation/sales-import-preparation.types';
 import type { BuildImportReviewInput, BuildImportReviewResult } from '@/lib/import/pipeline/analysis-pipeline';
-import type { NormalizedValue, RawCellValue } from '@/lib/import/engine/types';
+import type { NormalizedRow, NormalizedValue, RawCellValue } from '@/lib/import/engine/types';
 
 export type BuildImportReviewStageTimings = {
   applyMappingMs: number;
@@ -418,7 +418,7 @@ function buildReportSummary(input: BuildImportReviewInput): ImportReviewViewMode
 
 function attachOriginalValues(
   mappedRows: readonly { rowNumber: number; values: Readonly<Record<string, RawCellValue>> }[],
-  normalizedRows: readonly { rowNumber: number; values: Readonly<Record<string, NormalizedValue>> }[],
+  normalizedRows: readonly NormalizedRow[],
 ): NormalizedMappedRow[] {
   const originalsByRow = new Map(
     mappedRows.map((row) => [row.rowNumber, serializeOriginalValues(row.values)]),
