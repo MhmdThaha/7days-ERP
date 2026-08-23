@@ -24,3 +24,74 @@ export function derivePurchaseUnitCost(packPrice: number, packSize: number): num
 export function calculatePurchaseLineTotal(packCount: number, packPrice: number): number {
   return Math.round(packCount * packPrice);
 }
+
+export type PurchaseTotalsInput = {
+  subtotal: number;
+  discountAmount?: number | null;
+  adjustmentAmount?: number | null;
+};
+
+export type PurchaseTotals = {
+  subtotal: number;
+  discountAmount: number;
+  discountedTotal: number;
+  adjustmentAmount: number;
+  finalPayable: number;
+};
+
+export type PurchaseTotalsField = 'discountAmount' | 'adjustmentAmount';
+
+/** Empty / missing money fields are treated as 0. Amounts are integer paise. */
+export function normalizePurchaseMoneyAmount(value: number | null | undefined): number {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 0;
+  }
+
+  return Math.round(value);
+}
+
+/**
+ * Invoice-level purchase totals.
+ *
+ * Line inventory cost is unchanged: WAC still uses each line's unitCost.
+ * `finalPayable` is what the bakery owes after discount and round-off.
+ */
+export function calculatePurchaseTotals(input: PurchaseTotalsInput): PurchaseTotals {
+  const subtotal = normalizePurchaseMoneyAmount(input.subtotal);
+  const discountAmount = normalizePurchaseMoneyAmount(input.discountAmount);
+  const adjustmentAmount = normalizePurchaseMoneyAmount(input.adjustmentAmount);
+  const discountedTotal = subtotal - discountAmount;
+  const finalPayable = discountedTotal + adjustmentAmount;
+
+  return {
+    subtotal,
+    discountAmount,
+    discountedTotal,
+    adjustmentAmount,
+    finalPayable,
+  };
+}
+
+export function getPurchaseTotalsValidationError(
+  totals: PurchaseTotals,
+): { field: PurchaseTotalsField; message: string } | null {
+  if (totals.discountAmount < 0) {
+    return { field: 'discountAmount', message: 'Discount cannot be negative.' };
+  }
+
+  if (totals.discountAmount > totals.subtotal) {
+    return {
+      field: 'discountAmount',
+      message: 'Discount cannot be more than the items total.',
+    };
+  }
+
+  if (totals.finalPayable < 0) {
+    return {
+      field: 'adjustmentAmount',
+      message: 'Final payable cannot be negative.',
+    };
+  }
+
+  return null;
+}

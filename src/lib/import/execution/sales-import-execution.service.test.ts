@@ -29,6 +29,7 @@ import {
   IMPORT_CONFLICT_CODE,
 } from '@/lib/import/services/conflict-engine.service';
 import { PRODUCT_MATCH_STATUS } from '@/lib/import/services/product-matching.service';
+import { importIndexHealthService } from '@/lib/import/duplicate/import-index-repair.service';
 import { importHistoryRepository } from '@/lib/repositories/import-history.repository';
 import { productRepository } from '@/lib/repositories/product.repository';
 import { saleService } from '@/lib/services/sale.service';
@@ -53,6 +54,17 @@ vi.mock('@/lib/repositories/import-history.repository', () => ({
     beginOrResume: vi.fn(),
     listSourceSales: vi.fn(),
     updateLifecycle: vi.fn(),
+  },
+}));
+
+vi.mock('@/lib/import/duplicate/import-index-repair.service', () => ({
+  importIndexHealthService: {
+    recordImportIndexWrite: vi.fn().mockResolvedValue(undefined),
+    scheduleDeferredImportDuplicateIndexWrite: vi.fn(),
+    persistImportDuplicateIndexForImport: vi.fn().mockResolvedValue(undefined),
+  },
+  importIndexRepairService: {
+    scheduleRepair: vi.fn(),
   },
 }));
 
@@ -333,6 +345,92 @@ describe('executeSalesImport', () => {
     expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
     expect(vi.mocked(importHistoryRepository.beginOrResume)).not.toHaveBeenCalled();
     expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
+  });
+
+  it('imports all rows when user acknowledged duplicate risk despite BLOCK recommendation', async () => {
+    const result = await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: blockedDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+      acknowledgeDuplicateRisk: true,
+    });
+
+    expect(result.status).toBe(IMPORT_EXECUTION_STATUS.IMPORTED);
+    expect(result.imported).toBe(1);
+    expect(vi.mocked(saleService.create)).toHaveBeenCalled();
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.objectContaining({
+        forceNewSession: true,
+        resumeImportId: undefined,
+      }),
+    );
+  });
+
+  it('passes resumeImportId for crash recovery without forcing a new session', async () => {
+    vi.mocked(importHistoryRepository.beginOrResume).mockResolvedValue({
+      history: historyDetail({ status: IMPORT_HISTORY_STATUS.IMPORTING }),
+      resumed: true,
+      alreadyCompleted: false,
+    });
+
+    await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: {
+        ...blockedDuplicate,
+        matchedImport: {
+          ...blockedDuplicate.matchedImport!,
+          status: IMPORT_HISTORY_STATUS.IMPORTING,
+        },
+      },
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.objectContaining({
+        resumeImportId: 'imp-old',
+        forceNewSession: false,
+      }),
+    );
+  });
+
+  it('does not force a new session when crash recovery resumes an in-progress import', async () => {
+    vi.mocked(importHistoryRepository.beginOrResume).mockResolvedValue({
+      history: historyDetail({ status: IMPORT_HISTORY_STATUS.IMPORTING }),
+      resumed: true,
+      alreadyCompleted: false,
+    });
+
+    await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: {
+        ...blockedDuplicate,
+        matchedImport: {
+          ...blockedDuplicate.matchedImport!,
+          status: IMPORT_HISTORY_STATUS.IMPORTING,
+        },
+      },
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+      acknowledgeDuplicateRisk: true,
+    });
+
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.objectContaining({
+        resumeImportId: 'imp-old',
+        forceNewSession: false,
+      }),
+    );
   });
 
   it('creates draft sales and import history on a normal import', async () => {
@@ -665,6 +763,21 @@ describe('executeSalesImport', () => {
     );
   });
 
+  it('does not write duplicate index during execution (deferred until after import completes)', async () => {
+    await executeSalesImport({
+      resolvedReview: review([importableRow(2)]),
+      duplicateResult: noDuplicate,
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(vi.mocked(importIndexHealthService.recordImportIndexWrite)).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(importIndexHealthService.scheduleDeferredImportDuplicateIndexWrite),
+    ).not.toHaveBeenCalled();
+  });
+
   it('skips duplicate fingerprints and imports only new rows on SKIP_DUPLICATES', async () => {
     const duplicateRow = importableRow(2, {
       normalizedValues: {
@@ -754,6 +867,69 @@ describe('executeSalesImport', () => {
     expect(vi.mocked(saleService.complete)).not.toHaveBeenCalled();
     expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(importHistoryRepository.create)).not.toHaveBeenCalled();
+  });
+
+  it('imports flagged rows when duplicate review leaves them selected', async () => {
+    const duplicateRow = importableRow(2, {
+      normalizedValues: {
+        saleDate: '2026-03-01',
+        customerName: 'Ravi',
+        productName: 'Milk Bread',
+        productCode: 'BRD-001',
+        quantity: 10,
+        saleNumber: 'SAL-OLD',
+      },
+    });
+    const duplicateFp = buildDuplicateImportRowFingerprint(duplicateRow);
+
+    const result = await executeSalesImport({
+      resolvedReview: review([duplicateRow]),
+      duplicateResult: {
+        status: DUPLICATE_IMPORT_STATUS.HIGH_CONFIDENCE_DUPLICATE,
+        confidence: 90,
+        matchedImport: null,
+        matchedInvoices: ['SAL-OLD'],
+        matchedRows: 1,
+        duplicateRowFingerprints: [duplicateFp],
+        duplicateReasons: ['Similar sale already exists.'],
+        recommendation: DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES,
+      },
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+      duplicateReviewSkippedRowNumbers: [],
+    });
+
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(vi.mocked(saleService.create)).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips only rows unchecked in duplicate review', async () => {
+    const duplicateRow = importableRow(2);
+    const duplicateFp = buildDuplicateImportRowFingerprint(duplicateRow);
+
+    const result = await executeSalesImport({
+      resolvedReview: review([duplicateRow]),
+      duplicateResult: {
+        status: DUPLICATE_IMPORT_STATUS.POSSIBLE_DUPLICATE,
+        confidence: 40,
+        matchedImport: null,
+        matchedInvoices: [],
+        matchedRows: 1,
+        duplicateRowFingerprints: [duplicateFp],
+        duplicateReasons: ['2 rows overlap with a completed import.'],
+        recommendation: DUPLICATE_IMPORT_RECOMMENDATION.REVIEW,
+      },
+      reportType: 'sales-detail',
+      orgId: 'org-1',
+      userId: 'user-1',
+      duplicateReviewSkippedRowNumbers: [2],
+    });
+
+    expect(result.imported).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
   });
 
   it('imports zero rows when every row is a SKIP_DUPLICATES overlap', async () => {
@@ -1005,6 +1181,15 @@ describe('executeSalesImport', () => {
     expect(result.status).toBe(IMPORT_EXECUTION_STATUS.BLOCKED);
     expect(result.importId).toBe('imp-1');
     expect(vi.mocked(saleService.create)).not.toHaveBeenCalled();
+    expect(vi.mocked(importIndexHealthService.recordImportIndexWrite)).not.toHaveBeenCalled();
+    expect(vi.mocked(importHistoryRepository.beginOrResume)).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.objectContaining({
+        forceNewSession: false,
+        resumeImportId: undefined,
+      }),
+    );
   });
 
   it('keeps source-sale lookups scoped to the authenticated organization', async () => {

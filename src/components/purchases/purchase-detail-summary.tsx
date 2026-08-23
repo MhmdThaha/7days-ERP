@@ -41,7 +41,7 @@ export function PurchaseDetailSummary({
       <SummaryItem label="Purchase date" value={purchaseDateLabel} />
       <SummaryItem label="Supplier" value={supplierLabel} />
       <SummaryItem
-        label="Grand total"
+        label="Final payable"
         value={
           <span className="text-lg font-semibold">
             <MoneyDisplay amount={grandTotal} />

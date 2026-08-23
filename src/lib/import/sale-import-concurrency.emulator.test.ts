@@ -612,6 +612,136 @@ describe.skipIf(!emulatorReady)('Phase 3 Firestore emulator concurrency', () => 
     expect(salesA[0]?.organizationId).toBe(orgA);
     expect(salesB[0]?.organizationId).toBe(orgB);
   }, 60_000);
+
+  it('TEST 8 — forced re-import creates a new session without touching the primary file lock', async () => {
+    const org = orgId('t8');
+    const fingerprint = `fp-forced-${org}`;
+    const input = {
+      reportType: 'sales-detail',
+      rowCount: 1,
+      fileFingerprint: fingerprint,
+      invoiceNumbers: ['INV-1'] as const,
+      rowFingerprints: ['row-1'] as const,
+    };
+
+    const original = await importHistoryRepository.beginOrResume(org, USER, input);
+    await importHistoryRepository.updateLifecycle(org, original.history.importId, USER, {
+      status: 'COMPLETED',
+    });
+
+    const blockedRetry = await importHistoryRepository.beginOrResume(org, USER, input);
+    expect(blockedRetry.alreadyCompleted).toBe(true);
+    expect(blockedRetry.history.importId).toBe(original.history.importId);
+
+    const forced = await importHistoryRepository.beginOrResume(org, USER, {
+      ...input,
+      forceNewSession: true,
+    });
+
+    const primaryLock = await orgCol(org, 'importFileLocks')
+      .doc(hashImportIdentity(fingerprint))
+      .get();
+    const sessionLock = await orgCol(org, 'importFileLocks').doc(forced.history.importId).get();
+    const originalHistory = await importHistoryRepository.getById(org, original.history.importId);
+    const forcedHistory = await importHistoryRepository.getById(org, forced.history.importId);
+
+    expect(forced.alreadyCompleted).toBe(false);
+    expect(forced.resumed).toBe(false);
+    expect(forced.history.importId).not.toBe(original.history.importId);
+    expect(primaryLock.data()?.importId).toBe(original.history.importId);
+    expect(sessionLock.data()?.importId).toBe(forced.history.importId);
+    expect(sessionLock.data()?.sessionScope).toBe('forced-reimport');
+    expect(originalHistory?.status).toBe('COMPLETED');
+    expect(forcedHistory?.status).toBe('IMPORTING');
+  }, 60_000);
+
+  it('TEST 9 — executeSalesImport with acknowledgeDuplicateRisk creates a new import after a completed import', async () => {
+    const org = orgId('t9');
+    const fingerprint = `fp-exec-forced-${org}`;
+    await seedProduct(org, BREAD_ID, 'Bread', 'BRD-001', 1000, 300);
+
+    const sessionInput = {
+      reportType: 'sales-detail',
+      rowCount: 1,
+      fileFingerprint: fingerprint,
+      invoiceNumbers: ['SAL-2'] as const,
+      rowFingerprints: ['row-fp'] as const,
+    };
+    const original = await importHistoryRepository.beginOrResume(org, USER, sessionInput);
+    await importHistoryRepository.updateLifecycle(org, original.history.importId, USER, {
+      status: 'COMPLETED',
+    });
+
+    const row = importableRow(2, {
+      saleDate: '2026-03-15',
+      customerName: 'Corner Store',
+      productName: 'Milk Bread',
+      productCode: 'BRD-001',
+      quantity: 2,
+      saleNumber: 'SAL-2',
+    }, BREAD_ID, 'Milk Bread');
+
+    const blockedDuplicate = {
+      status: DUPLICATE_IMPORT_STATUS.EXACT_DUPLICATE,
+      confidence: 100,
+      matchedImport: {
+        importId: original.history.importId,
+        importedAt: original.history.importedAt,
+        importedBy: USER,
+        status: 'COMPLETED' as const,
+      },
+      matchedInvoices: ['SAL-2'],
+      matchedRows: 1,
+      duplicateRowFingerprints: ['row-fp'],
+      duplicateReasons: ['Identical file fingerprint to a completed import.'],
+      recommendation: DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT,
+    };
+
+    const result = await executeSalesImport({
+      resolvedReview: {
+        overview: {
+          fileName: 'sales.csv',
+          detectedReportName: 'Sales Detail',
+          detectedReportType: 'sales-detail',
+          reportConfidence: 0.9,
+          headerRowIndex: 0,
+          totalRows: 1,
+          readyRows: 1,
+          warningRows: 0,
+          errorRows: 0,
+          averageConfidence: 90,
+          autoImportEligibleRows: 0,
+          blockedRows: 0,
+        },
+        reportSummary: {
+          matchedColumns: [],
+          missingRequiredColumns: [],
+          extraColumns: [],
+          unknownHeaders: [],
+          detectionReasons: [],
+        },
+        rows: [row],
+      },
+      duplicateResult: blockedDuplicate,
+      reportType: 'sales-detail',
+      orgId: org,
+      userId: USER,
+      acknowledgeDuplicateRisk: true,
+    });
+
+    const primaryLock = await orgCol(org, 'importFileLocks')
+      .doc(hashImportIdentity(fingerprint))
+      .get();
+    const originalHistory = await importHistoryRepository.getById(org, original.history.importId);
+    const forcedHistory = await importHistoryRepository.getById(org, result.importId ?? '');
+
+    expect(result.status).toBe('IMPORTED');
+    expect(result.imported).toBe(1);
+    expect(result.importId).not.toBe(original.history.importId);
+    expect(primaryLock.data()?.importId).toBe(original.history.importId);
+    expect(originalHistory?.status).toBe('COMPLETED');
+    expect(forcedHistory?.status).toBe('IMPORTED');
+  }, 60_000);
 });
 
 describe.skipIf(emulatorReady)('Phase 3 Firestore emulator concurrency (unavailable)', () => {

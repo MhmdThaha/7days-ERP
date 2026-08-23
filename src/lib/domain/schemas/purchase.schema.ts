@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import {
+  calculatePurchaseLineTotal,
+  calculatePurchaseTotals,
+  getPurchaseTotalsValidationError,
+} from '@/lib/domain/calculations/purchase-pricing';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,11 +70,58 @@ const purchaseFormBaseSchema = z.object({
     .or(z.literal('')),
   paymentStatus: z.enum(['paid', 'credit']),
   lineItems: z.array(purchaseLineItemSchema).min(1, 'Add at least one line item.'),
+  discountAmount: z
+    .number({ error: 'Discount must be a valid amount.' })
+    .int('Discount must be a valid amount.')
+    .min(0, 'Discount cannot be negative.'),
+  adjustmentAmount: z
+    .number({ error: 'Adjustment must be a valid amount.' })
+    .int('Adjustment must be a valid amount.'),
   notes: z.string().max(1000, 'Notes are too long').optional().nullable(),
 });
 
+function purchaseLineItemsSubtotal(
+  lineItems: Array<{ packCount: number; packPrice: number }>,
+): number {
+  return lineItems.reduce((sum, lineItem) => {
+    const packCount = Number(lineItem.packCount);
+    const packPrice = Number(lineItem.packPrice);
+
+    if (Number.isNaN(packCount) || Number.isNaN(packPrice)) {
+      return sum;
+    }
+
+    return sum + calculatePurchaseLineTotal(packCount, packPrice);
+  }, 0);
+}
+
+function refinePurchaseTotals(
+  data: {
+    lineItems: Array<{ packCount: number; packPrice: number }>;
+    discountAmount?: number;
+    adjustmentAmount?: number;
+  },
+  ctx: z.RefinementCtx,
+) {
+  const totals = calculatePurchaseTotals({
+    subtotal: purchaseLineItemsSubtotal(data.lineItems),
+    discountAmount: data.discountAmount,
+    adjustmentAmount: data.adjustmentAmount,
+  });
+  const error = getPurchaseTotalsValidationError(totals);
+
+  if (error) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: error.message,
+      path: [error.field],
+    });
+  }
+}
+
 export const purchaseFormSchema = purchaseFormBaseSchema.superRefine((data, ctx) => {
   refineUniqueRawMaterials(data.lineItems, ctx);
+  refinePurchaseTotals(data, ctx);
 });
 
 export type PurchaseFormValues = z.infer<typeof purchaseFormSchema>;
@@ -91,10 +143,27 @@ export const updatePurchaseSchema = purchaseFormBaseSchema
       .max(120, 'Supplier name must be 120 characters or less.')
       .optional(),
     lineItems: z.array(purchaseLineItemSchema).min(1, 'Add at least one line item.').optional(),
+    discountAmount: z
+      .number({ error: 'Discount must be a valid amount.' })
+      .int('Discount must be a valid amount.')
+      .min(0, 'Discount cannot be negative.')
+      .optional(),
+    adjustmentAmount: z
+      .number({ error: 'Adjustment must be a valid amount.' })
+      .int('Adjustment must be a valid amount.')
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.lineItems) {
       refineUniqueRawMaterials(data.lineItems, ctx);
+      refinePurchaseTotals(
+        {
+          lineItems: data.lineItems,
+          discountAmount: data.discountAmount,
+          adjustmentAmount: data.adjustmentAmount,
+        },
+        ctx,
+      );
     }
   });
 

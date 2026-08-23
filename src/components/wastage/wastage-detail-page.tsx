@@ -36,7 +36,7 @@ import {
   hasWastageLinesStockErrors,
 } from '@/lib/utils/wastage-stock-validation';
 import { toastFormError } from '@/lib/utils/toast-form-error';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type WastageDetailPageProps = {
@@ -133,7 +133,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['wastage'] }),
       queryClient.invalidateQueries({ queryKey: ['wastage-entry', wastageId] }),
-      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      invalidateProductStockQueries(queryClient),
       invalidateDashboardQueries(queryClient),
       invalidateDailyReportQueries(queryClient),
       invalidateMonthlyReportQueries(queryClient),

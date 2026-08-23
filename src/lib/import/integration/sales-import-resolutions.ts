@@ -3,12 +3,13 @@
  */
 
 import {
-  applySingleRowResolution,
   recalculateReviewRowAfterResolution,
+  recomputeImportReviewOverview,
   type ImportReviewViewModelWithResolution,
   type ProductResolutionAction,
   type ProductResolutionActionType,
   type ProductResolutionCatalogItem,
+  type ResolvedImportReviewRow,
 } from '@/lib/import/resolution';
 import type { ImportReviewViewModel } from '@/lib/import/review/types';
 
@@ -27,32 +28,26 @@ export function applySalesImportResolutions(
 ): ImportReviewViewModelWithResolution {
   const resolutionByRow = new Map(resolutions.map((entry) => [entry.rowNumber, entry]));
 
-  let current: ImportReviewViewModelWithResolution = {
-    ...viewModel,
-    rows: viewModel.rows.map((row) => ({ ...row })),
-  };
-
-  for (const row of viewModel.rows) {
+  const rows = viewModel.rows.map((row): ResolvedImportReviewRow => {
     const resolution = resolutionByRow.get(row.rowNumber);
 
     if (!resolution) {
-      continue;
+      return { ...row };
     }
 
-    const updatedRow = recalculateReviewRowAfterResolution({
+    return recalculateReviewRowAfterResolution({
       row,
       action: toProductResolutionAction(resolution),
       catalogProducts: catalogItems,
       stockByProductId,
     });
+  });
 
-    current = {
-      ...current,
-      ...applySingleRowResolution(current, updatedRow),
-    };
-  }
-
-  return current;
+  return {
+    ...viewModel,
+    rows,
+    overview: recomputeImportReviewOverview(viewModel.overview, rows),
+  };
 }
 
 function toProductResolutionAction(

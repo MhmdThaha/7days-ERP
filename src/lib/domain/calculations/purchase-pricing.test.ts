@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   calculatePurchaseLineTotal,
+  calculatePurchaseTotals,
   derivePurchaseQuantity,
   derivePurchaseUnitCost,
+  getPurchaseTotalsValidationError,
+  normalizePurchaseMoneyAmount,
 } from '@/lib/domain/calculations/purchase-pricing';
 
 describe('purchase pack pricing', () => {
@@ -101,5 +104,152 @@ describe('purchase pack pricing', () => {
         expect(Math.abs(quantity * unitCost - lineTotal)).toBeLessThan(1);
       }
     });
+  });
+});
+
+describe('purchase invoice totals', () => {
+  it('treats empty discount and adjustment as 0', () => {
+    const totals = calculatePurchaseTotals({ subtotal: 1_000_000 });
+
+    expect(totals).toEqual({
+      subtotal: 1_000_000,
+      discountAmount: 0,
+      discountedTotal: 1_000_000,
+      adjustmentAmount: 0,
+      finalPayable: 1_000_000,
+    });
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('applies discount only', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      discountAmount: 50_000,
+    });
+
+    expect(totals.discountedTotal).toBe(950_000);
+    expect(totals.finalPayable).toBe(950_000);
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('applies adjustment only', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      adjustmentAmount: -200,
+    });
+
+    expect(totals.discountedTotal).toBe(1_000_000);
+    expect(totals.finalPayable).toBe(999_800);
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('applies discount then adjustment to match the invoice example', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      discountAmount: 50_000,
+      adjustmentAmount: -200,
+    });
+
+    expect(totals.discountedTotal).toBe(950_000);
+    expect(totals.finalPayable).toBe(949_800);
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('allows discount equal to subtotal', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      discountAmount: 1_000_000,
+    });
+
+    expect(totals.finalPayable).toBe(0);
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('rejects discount greater than subtotal', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      discountAmount: 1_000_001,
+    });
+
+    expect(getPurchaseTotalsValidationError(totals)).toEqual({
+      field: 'discountAmount',
+      message: 'Discount cannot be more than the items total.',
+    });
+  });
+
+  it('rejects negative discount', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      discountAmount: -1,
+    });
+
+    expect(getPurchaseTotalsValidationError(totals)).toEqual({
+      field: 'discountAmount',
+      message: 'Discount cannot be negative.',
+    });
+  });
+
+  it('allows a positive adjustment', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 1_000_000,
+      adjustmentAmount: 1_000,
+    });
+
+    expect(totals.finalPayable).toBe(1_001_000);
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('allows adjustment that brings payable to exactly zero', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 500,
+      discountAmount: 400,
+      adjustmentAmount: -100,
+    });
+
+    expect(totals.finalPayable).toBe(0);
+    expect(getPurchaseTotalsValidationError(totals)).toBeNull();
+  });
+
+  it('rejects adjustment that would make payable negative', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 500,
+      adjustmentAmount: -501,
+    });
+
+    expect(getPurchaseTotalsValidationError(totals)).toEqual({
+      field: 'adjustmentAmount',
+      message: 'Final payable cannot be negative.',
+    });
+  });
+
+  it('keeps integer paise for decimal rupee amounts', () => {
+    const totals = calculatePurchaseTotals({
+      subtotal: 9999,
+      discountAmount: 50,
+      adjustmentAmount: -49,
+    });
+
+    expect(totals.finalPayable).toBe(9900);
+    expect(Number.isInteger(totals.finalPayable)).toBe(true);
+  });
+
+  it('sums multiple line totals as the subtotal input', () => {
+    const subtotal =
+      calculatePurchaseLineTotal(2, 40_000) + calculatePurchaseLineTotal(1, 25_000);
+
+    const totals = calculatePurchaseTotals({
+      subtotal,
+      discountAmount: 5_000,
+      adjustmentAmount: 100,
+    });
+
+    expect(totals.subtotal).toBe(105_000);
+    expect(totals.finalPayable).toBe(100_100);
+  });
+
+  it('normalizes empty money to 0', () => {
+    expect(normalizePurchaseMoneyAmount(undefined)).toBe(0);
+    expect(normalizePurchaseMoneyAmount(null)).toBe(0);
+    expect(normalizePurchaseMoneyAmount(Number.NaN)).toBe(0);
   });
 });

@@ -53,6 +53,8 @@ type PurchaseDocument = {
   paymentStatus: PaymentStatus;
   lineItems: PurchaseLineItemDocument[];
   totalAmount: number;
+  discountAmount?: number;
+  adjustmentAmount?: number;
   lineItemCount: number;
   notes: string | null;
   createdAt: Timestamp;
@@ -109,6 +111,8 @@ function toPurchase(id: string, data: PurchaseDocument): Purchase {
     paymentStatus: data.paymentStatus,
     lineItems: data.lineItems.map(toLineItem),
     totalAmount: data.totalAmount,
+    discountAmount: data.discountAmount ?? 0,
+    adjustmentAmount: data.adjustmentAmount ?? 0,
     lineItemCount: data.lineItemCount,
     notes: data.notes,
     createdAt: timestampToDate(data.createdAt) ?? new Date(),
@@ -431,6 +435,8 @@ export const purchaseRepository = {
       paymentStatus: PaymentStatus;
       lineItems: PurchaseLineItem[];
       totalAmount: number;
+      discountAmount?: number;
+      adjustmentAmount?: number;
       notes?: string | null;
     },
     userId: string,
@@ -502,6 +508,8 @@ export const purchaseRepository = {
         paymentStatus: input.paymentStatus,
         lineItems: input.lineItems.map(toLineItemDocument),
         totalAmount: input.totalAmount,
+        discountAmount: input.discountAmount ?? 0,
+        adjustmentAmount: input.adjustmentAmount ?? 0,
         lineItemCount: input.lineItems.length,
         notes: normalizeNullableString(input.notes),
         createdAt: now,
@@ -529,6 +537,8 @@ export const purchaseRepository = {
       paymentStatus?: PaymentStatus;
       lineItems?: PurchaseLineItem[];
       totalAmount?: number;
+      discountAmount?: number;
+      adjustmentAmount?: number;
       notes?: string | null;
     },
     userId: string,
@@ -567,6 +577,14 @@ export const purchaseRepository = {
 
     if (input.totalAmount !== undefined) {
       updates.totalAmount = input.totalAmount;
+    }
+
+    if (input.discountAmount !== undefined) {
+      updates.discountAmount = input.discountAmount;
+    }
+
+    if (input.adjustmentAmount !== undefined) {
+      updates.adjustmentAmount = input.adjustmentAmount;
     }
 
     return firestore.runTransaction(async (transaction) => {

@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapWastageActionError, type WastageFieldError } from '@/lib/utils/wastage-form-errors';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'wastage-create-form';
@@ -74,7 +74,7 @@ export function WastageCreatePage() {
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ['wastage'] }),
             queryClient.invalidateQueries({ queryKey: ['wastage-entry', wastageId] }),
-            queryClient.invalidateQueries({ queryKey: ['products'] }),
+            invalidateProductStockQueries(queryClient),
             invalidateDashboardQueries(queryClient),
             invalidateDailyReportQueries(queryClient),
             invalidateMonthlyReportQueries(queryClient),

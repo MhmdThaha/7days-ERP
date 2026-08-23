@@ -16,6 +16,7 @@ vi.mock('@/actions/import', () => ({
   analyzeImportAction: vi.fn(),
   revalidateImportMappingAction: vi.fn(),
   buildImportReviewAction: vi.fn(),
+  analyzeSalesImportDuplicateReviewAction: vi.fn(),
   detectImportConflictsAction: vi.fn(),
   commitImportWithResolutionAction: vi.fn(),
   commitSalesImportAction: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('@/hooks/use-auth', () => ({
 
 import {
   analyzeImportAction,
+  analyzeSalesImportDuplicateReviewAction,
   buildImportReviewAction,
   commitImportWithResolutionAction,
   commitSalesImportAction,
@@ -510,6 +512,7 @@ beforeEach(() => {
   vi.mocked(analyzeImportAction).mockReset();
   vi.mocked(revalidateImportMappingAction).mockReset();
   vi.mocked(buildImportReviewAction).mockReset();
+  vi.mocked(analyzeSalesImportDuplicateReviewAction).mockReset();
   vi.mocked(detectImportConflictsAction).mockReset();
   vi.mocked(commitImportWithResolutionAction).mockReset();
   vi.mocked(commitSalesImportAction).mockReset();
@@ -816,6 +819,24 @@ describe('ImportWizard sale review flow', () => {
     const { container } = renderSaleWizard();
     const importButton = await goToSalePreview(container);
 
+    vi.mocked(analyzeSalesImportDuplicateReviewAction).mockResolvedValue({
+      success: true,
+      data: {
+        status: 'ok',
+        duplicateResult: {
+          status: 'NO_DUPLICATE',
+          confidence: 0,
+          matchedImport: null,
+          matchedInvoices: [],
+          matchedRows: 0,
+          duplicateRowFingerprints: [],
+          duplicateReasons: [],
+          recommendation: 'CONTINUE',
+        },
+        warning: null,
+      },
+    });
+
     vi.mocked(commitSalesImportAction).mockResolvedValue({
       success: true,
       data: {
@@ -860,7 +881,6 @@ describe('ImportWizard sale review flow', () => {
       saleAnalysis.mapping,
       [],
       expect.objectContaining({
-        acknowledgeDuplicateRisk: false,
         reportType: 'sales-detail',
         preparation: {},
       }),

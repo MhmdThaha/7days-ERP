@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "generatedAt": "2026-08-23T06:21:21.165Z",
+  "runId": "b2k-mt5f58wd",
+  "rowCount": 2000,
+  "structure": "BakeryOS sales-detail export columns",
+  "columns": [
+    "Date",
+    "Party Name",
+    "Item Name",
+    "Item Code",
+    "Qty",
+    "Rate",
+    "Invoice No"
+  ],
+  "composition": {
+    "uniqueRows": 1960,
+    "seedOverlapRows": 0,
+    "inFileDuplicateRows": 40,
+    "inFileDuplicatePairs": 20
+  },
+  "productSource": "Active unique-coded products from DEV_ORG_ID catalog",
+  "eligibleProductCount": 6,
+  "seedImport": null,
+  "invoicePrefix": "B2K-b2k-mt5f58wd"
+}

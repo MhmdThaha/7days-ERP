@@ -9,6 +9,7 @@ import { getRawMaterialAction } from '@/actions/raw-materials';
 import { PurchaseDetailSummary } from '@/components/purchases/purchase-detail-summary';
 import { PurchaseLineItemRow } from '@/components/purchases/purchase-line-item-row';
 import { PurchaseTotalBar } from '@/components/purchases/purchase-total-bar';
+import { PurchaseTotalsFields } from '@/components/purchases/purchase-totals-fields';
 import { LineItemsGrid } from '@/components/shared/line-items-grid/line-items-grid';
 import { EntryFormStickyFooter } from '@/components/shared/entry-form-sticky-footer';
 import {
@@ -31,6 +32,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAutoFirstLine } from '@/hooks/use-auto-first-line';
 import { useRawMaterialsByIds } from '@/hooks/use-raw-materials-by-ids';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
+import {
+  calculatePurchaseLineTotal,
+  calculatePurchaseTotals,
+} from '@/lib/domain/calculations/purchase-pricing';
 import {
   purchaseFormSchema,
   type PurchaseFormValues,
@@ -62,6 +67,8 @@ const defaultValues: PurchaseFormValues = {
   invoiceNumber: '',
   paymentStatus: 'paid',
   lineItems: [],
+  discountAmount: 0,
+  adjustmentAmount: 0,
   notes: '',
 };
 
@@ -92,6 +99,7 @@ export function PurchaseForm({
     clearErrors,
     watch,
     reset,
+    trigger,
     control,
     formState: { errors },
   } = useForm<PurchaseFormValues>({
@@ -110,6 +118,8 @@ export function PurchaseForm({
   const purchaseDate = watch('purchaseDate') ?? defaultValues.purchaseDate;
   const supplierName = watch('supplierName') ?? defaultValues.supplierName;
   const paymentStatus = watch('paymentStatus') ?? defaultValues.paymentStatus;
+  const discountAmount = watch('discountAmount') ?? 0;
+  const adjustmentAmount = watch('adjustmentAmount') ?? 0;
 
   const appendEmptyLineItem = useCallback(() => {
     append({
@@ -146,7 +156,7 @@ export function PurchaseForm({
     [lineItems],
   );
 
-  const grandTotal = useMemo(
+  const subtotal = useMemo(
     () =>
       lineItems.reduce((sum, lineItem) => {
         const packCount = Number(lineItem.packCount);
@@ -156,9 +166,19 @@ export function PurchaseForm({
           return sum;
         }
 
-        return sum + Math.round(packCount * packPrice);
+        return sum + calculatePurchaseLineTotal(packCount, packPrice);
       }, 0),
     [lineItems],
+  );
+
+  const totals = useMemo(
+    () =>
+      calculatePurchaseTotals({
+        subtotal,
+        discountAmount,
+        adjustmentAmount,
+      }),
+    [subtotal, discountAmount, adjustmentAmount],
   );
 
   useEffect(() => {
@@ -178,6 +198,8 @@ export function PurchaseForm({
           unit: lineItem.unit,
           packPrice: lineItem.packPrice ?? lineItem.lineTotal,
         })),
+        discountAmount: purchase.discountAmount ?? 0,
+        adjustmentAmount: purchase.adjustmentAmount ?? 0,
         notes: purchase.notes ?? '',
       });
       return;
@@ -185,6 +207,10 @@ export function PurchaseForm({
 
     reset(defaultValues);
   }, [purchase, reset]);
+
+  useEffect(() => {
+    void trigger(['discountAmount', 'adjustmentAmount']);
+  }, [subtotal, trigger]);
 
   useEffect(() => {
     if (!serverFieldError) {
@@ -393,7 +419,7 @@ export function PurchaseForm({
       <PurchaseDetailSummary
         purchaseDateLabel={formatPurchaseDateLabel(purchaseDate)}
         supplierLabel={supplierName.trim() || '—'}
-        grandTotal={grandTotal}
+        grandTotal={totals.finalPayable}
         lineItemCount={fields.length}
         paymentStatus={paymentStatus === 'credit' ? 'credit' : 'paid'}
         isDraft
@@ -485,11 +511,24 @@ export function PurchaseForm({
         </CardContent>
       </Card>
 
+      <PurchaseTotalsFields
+        totals={totals}
+        discountError={errors.discountAmount?.message}
+        adjustmentError={errors.adjustmentAmount?.message}
+        disabled={isFormDisabled}
+        onDiscountChange={(value) =>
+          setValue('discountAmount', value, { shouldValidate: true, shouldDirty: true })
+        }
+        onAdjustmentChange={(value) =>
+          setValue('adjustmentAmount', value, { shouldValidate: true, shouldDirty: true })
+        }
+      />
+
       <EntryFormStickyFooter
         summary={
           <PurchaseTotalBar
             lineItemCount={fields.length}
-            grandTotal={grandTotal}
+            grandTotal={totals.finalPayable}
             variant="compact"
           />
         }

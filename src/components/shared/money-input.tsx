@@ -18,6 +18,7 @@ type MoneyInputProps = {
   onBlur?: () => void;
   disabled?: boolean;
   className?: string;
+  allowNegative?: boolean;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -56,6 +57,7 @@ export function MoneyInput({
   onBlur,
   disabled,
   className,
+  allowNegative = false,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
   onKeyDown,
@@ -64,10 +66,10 @@ export function MoneyInput({
   const [isFocused, setIsFocused] = useState(false);
   const [draftText, setDraftText] = useState('');
 
-  const sanitizedDraft = sanitizeMoneyText(draftText);
+  const sanitizedDraft = sanitizeMoneyText(draftText, allowNegative);
   const displayValue = isFocused
     ? formatMoneyInputDisplay(sanitizedDraft)
-    : formatMoneyInputDisplay(minorUnitsToDisplayValue(value));
+    : formatMoneyInputDisplay(minorUnitsToDisplayValue(value, allowNegative));
 
   return (
     <div className={cn('relative', className)}>
@@ -91,23 +93,23 @@ export function MoneyInput({
         value={displayValue}
         onFocus={() => {
           setIsFocused(true);
-          setDraftText(minorUnitsToDisplayValue(value));
+          setDraftText(minorUnitsToDisplayValue(value, allowNegative));
         }}
         onChange={(event) => {
           const input = event.target;
           const caretBefore = input.selectionStart ?? 0;
           const digitsBeforeCaret = countDigitsBefore(input.value, caretBefore);
-          const sanitized = sanitizeMoneyText(event.target.value);
+          const sanitized = sanitizeMoneyText(event.target.value, allowNegative);
           const formatted = formatMoneyInputDisplay(sanitized);
 
           setDraftText(sanitized);
 
-          if (!sanitized) {
+          if (!sanitized || sanitized === '-') {
             onChange(0);
           } else {
-            const parsed = parseMoneyInput(sanitized);
+            const parsed = parseMoneyInput(sanitized, allowNegative);
 
-            if (parsed !== null && parsed >= 0) {
+            if (parsed !== null && (allowNegative || parsed >= 0)) {
               onChange(parsed);
             }
           }
@@ -126,13 +128,19 @@ export function MoneyInput({
         onBlur={() => {
           setIsFocused(false);
 
-          if (!sanitizedDraft.trim()) {
+          if (!sanitizedDraft.trim() || sanitizedDraft === '-') {
             onChange(0);
             onBlur?.();
             return;
           }
 
-          const parsed = parseMoneyInput(sanitizedDraft);
+          const parsed = parseMoneyInput(sanitizedDraft, allowNegative);
+
+          if (parsed !== null && allowNegative) {
+            onChange(parsed);
+            onBlur?.();
+            return;
+          }
 
           if (parsed !== null && parsed > 0) {
             onChange(parsed);

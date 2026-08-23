@@ -46,6 +46,10 @@ export type ExecuteSalesImportInput = {
   reportType: string;
   orgId: string;
   userId: string;
+  /** Row numbers unchecked in duplicate review — skip these flagged rows only. */
+  duplicateReviewSkippedRowNumbers?: readonly number[];
+  /** User confirmed import despite duplicate warning — import all rows. */
+  acknowledgeDuplicateRisk?: boolean;
 };
 
 export type CreateImportHistoryInput = {

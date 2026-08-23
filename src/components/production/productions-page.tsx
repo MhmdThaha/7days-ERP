@@ -20,7 +20,12 @@ import { Button } from '@/components/ui/button';
 import { PRODUCTION_PAGE_SIZE } from '@/lib/domain/constants/production';
 import { cn } from '@/lib/utils';
 import { useProductions } from '@/hooks/queries/use-productions';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import {
+  invalidateDailyReportQueries,
+  invalidateDashboardQueries,
+  invalidateInventoryStockQueries,
+  invalidateMonthlyReportQueries,
+} from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -245,8 +250,7 @@ export function ProductionsPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['productions'] }),
         queryClient.invalidateQueries({ queryKey: ['production', completingProduction.id] }),
-        queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
-        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateInventoryStockQueries(queryClient),
         invalidateDashboardQueries(queryClient),
         invalidateDailyReportQueries(queryClient),
         invalidateMonthlyReportQueries(queryClient),

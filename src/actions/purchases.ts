@@ -60,6 +60,8 @@ export async function createPurchaseAction(input: CreatePurchaseInput): Promise<
       ...input,
       invoiceNumber: input.invoiceNumber ?? null,
       notes: input.notes ?? null,
+      discountAmount: input.discountAmount ?? 0,
+      adjustmentAmount: input.adjustmentAmount ?? 0,
     });
 
     return purchaseService.create(
@@ -70,6 +72,8 @@ export async function createPurchaseAction(input: CreatePurchaseInput): Promise<
         invoiceNumber: validated.invoiceNumber ?? null,
         paymentStatus: validated.paymentStatus,
         lineItems: validated.lineItems,
+        discountAmount: validated.discountAmount,
+        adjustmentAmount: validated.adjustmentAmount,
         notes: validated.notes ?? null,
       },
       userId,

@@ -33,7 +33,12 @@ export type Purchase = {
   status: PurchaseStatus;
   paymentStatus: PaymentStatus;
   lineItems: PurchaseLineItem[];
+  /** Final payable in integer paise: subtotal − discount + adjustment. */
   totalAmount: number;
+  /** Invoice-level discount in integer paise. Missing on older documents → 0. */
+  discountAmount: number;
+  /** Invoice-level round-off in integer paise. May be negative. Missing → 0. */
+  adjustmentAmount: number;
   lineItemCount: number;
   notes: string | null;
   createdAt: Date;
@@ -118,6 +123,8 @@ export type CreatePurchaseInput = {
   invoiceNumber?: string | null;
   paymentStatus: PaymentStatus;
   lineItems: PurchaseLineItemInput[];
+  discountAmount?: number;
+  adjustmentAmount?: number;
   notes?: string | null;
 };
 
@@ -127,5 +134,7 @@ export type UpdatePurchaseInput = {
   invoiceNumber?: string | null;
   paymentStatus?: PaymentStatus;
   lineItems?: PurchaseLineItemInput[];
+  discountAmount?: number;
+  adjustmentAmount?: number;
   notes?: string | null;
 };

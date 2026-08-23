@@ -20,6 +20,7 @@ import {
   invalidateDailyReportQueries,
   invalidateDashboardQueries,
   invalidateMonthlyReportQueries,
+  invalidateProductStockQueries,
 } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'sale-create-form';
@@ -32,6 +33,8 @@ export function SaleCreatePage() {
   const queryClient = useQueryClient();
   const submitIntentRef = useRef<'draft' | 'complete'>('draft');
   const pendingDraftIdRef = useRef<string | null>(null);
+  /** Synchronous lock — blocks a second confirm before isSubmitting re-renders. */
+  const confirmCompleteInFlightRef = useRef(false);
   const [submitMode, setSubmitMode] = useState<'draft' | 'complete' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<SaleFieldError | null>(null);
@@ -104,10 +107,11 @@ export function SaleCreatePage() {
   }
 
   async function handleConfirmComplete() {
-    if (!pendingValues || isSubmitting) {
+    if (!pendingValues || confirmCompleteInFlightRef.current) {
       return;
     }
 
+    confirmCompleteInFlightRef.current = true;
     setIsSubmitting(true);
     setServerFieldError(null);
     setSubmitMode('complete');
@@ -136,7 +140,7 @@ export function SaleCreatePage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['sales'] }),
         queryClient.invalidateQueries({ queryKey: ['sale', saleId] }),
-        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateProductStockQueries(queryClient),
         invalidateDashboardQueries(queryClient),
         invalidateDailyReportQueries(queryClient),
         invalidateMonthlyReportQueries(queryClient),
@@ -148,6 +152,7 @@ export function SaleCreatePage() {
       setConfirmOpen(false);
       setFormKey((current) => current + 1);
     } finally {
+      confirmCompleteInFlightRef.current = false;
       setIsSubmitting(false);
       setSubmitMode(null);
     }

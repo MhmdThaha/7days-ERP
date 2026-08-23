@@ -3,6 +3,8 @@
  */
 
 import type { ImportReviewViewModelWithResolution } from '@/lib/import/resolution/types';
+import type { ImportDuplicateIndexStatus } from '@/lib/import/duplicate/import-index-health.types';
+import type { DuplicateMetadataStorage } from '@/lib/import/duplicate/import-history-duplicate-metadata.types';
 
 export const DUPLICATE_IMPORT_STATUS = {
   NO_DUPLICATE: 'NO_DUPLICATE',
@@ -80,6 +82,11 @@ export type ImportHistoryRecord = {
   invoiceNumbers: readonly string[];
   rowFingerprints: readonly string[];
   status: ImportHistoryStatus;
+  duplicateIndexStatus?: ImportDuplicateIndexStatus;
+  duplicateMetadataStorage?: DuplicateMetadataStorage;
+  duplicateMetadataComplete?: boolean;
+  duplicateMetadataRowChunkCount?: number;
+  duplicateMetadataInvoiceChunkCount?: number;
 };
 
 export type DuplicateImportMatchedImport = {

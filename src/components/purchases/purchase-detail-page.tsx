@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { PaymentStatusBadge } from '@/components/purchases/payment-status-badge';
 import { PurchaseDetailSummary } from '@/components/purchases/purchase-detail-summary';
 import { PurchaseStatusBadge } from '@/components/purchases/purchase-status-badge';
+import { PurchaseTotalsBreakdown } from '@/components/purchases/purchase-totals-breakdown';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
 import { MoneyDisplay } from '@/components/shared/money-display';
@@ -34,7 +35,7 @@ import {
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { formatMoney } from '@/lib/utils/money';
-import { invalidateDailyReportQueries, invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type PurchaseDetailPageProps = {
@@ -95,7 +96,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['purchases'] }),
       queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
-      queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+      invalidateRawMaterialStockQueries(queryClient),
       invalidateDashboardQueries(queryClient),
       invalidateDailyReportQueries(queryClient),
     ]);
@@ -280,14 +281,6 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
             />
             <DetailField label="Status" value={<PurchaseStatusBadge status={purchase.status} />} />
             <DetailField
-              label="Grand total"
-              value={
-                <span className="text-base font-semibold tabular-nums">
-                  <MoneyDisplay amount={purchase.totalAmount} />
-                </span>
-              }
-            />
-            <DetailField
               label="Notes"
               value={
                 <span className="break-words whitespace-pre-wrap">{purchase.notes ?? '—'}</span>
@@ -364,6 +357,13 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
             </div>
           </CardContent>
         </Card>
+
+        <PurchaseTotalsBreakdown
+          subtotal={purchase.lineItems.reduce((sum, lineItem) => sum + lineItem.lineTotal, 0)}
+          discountAmount={purchase.discountAmount}
+          adjustmentAmount={purchase.adjustmentAmount}
+          finalPayable={purchase.totalAmount}
+        />
 
         <ConfirmDialog
           open={isDeleteOpen}

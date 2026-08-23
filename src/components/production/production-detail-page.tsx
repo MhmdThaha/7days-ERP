@@ -45,7 +45,12 @@ import {
 import { buildMaterialPreview } from '@/lib/domain/calculations/production-materials';
 import { formatProductionQuantityDisplay } from '@/lib/utils/production-quantity-display';
 import { toastFormError } from '@/lib/utils/toast-form-error';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import {
+  invalidateDailyReportQueries,
+  invalidateDashboardQueries,
+  invalidateInventoryStockQueries,
+  invalidateMonthlyReportQueries,
+} from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import type { Recipe } from '@/types/recipe';
 
@@ -192,8 +197,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['productions'] }),
       queryClient.invalidateQueries({ queryKey: ['production', productionId] }),
-      queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
-      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      invalidateInventoryStockQueries(queryClient),
       invalidateDashboardQueries(queryClient),
       invalidateDailyReportQueries(queryClient),
       invalidateMonthlyReportQueries(queryClient),
@@ -328,7 +332,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
               size="xl"
               className="w-full min-h-12 sm:w-auto"
               onClick={() => setIsCompleteOpen(true)}
-              disabled={isBusy}
+              disabled={isBusy || (!isPreviewLoading && ingredientShortageCount > 0)}
             >
               <CheckCircle2 />
               Finish Production

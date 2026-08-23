@@ -273,6 +273,56 @@ describe('inventory complete/receive transactions', () => {
     ]);
   });
 
+  it('purchase receive WAC uses line unitCost, not invoice totalAmount after discount', async () => {
+    seedRawMaterial(ORG_A, 'rm-flour', 10, 100);
+    seed(ORG_A, 'purchases', 'pur-discount', {
+      organizationId: ORG_A,
+      purchaseNumber: 'PUR-002',
+      purchaseDate: '2026-08-14',
+      supplierName: 'Mill',
+      invoiceNumber: null,
+      status: 'draft',
+      paymentStatus: 'unpaid',
+      lineItems: [
+        {
+          id: 'pl-1',
+          rawMaterialId: 'rm-flour',
+          rawMaterialCode: 'FL-1',
+          rawMaterialName: 'Flour',
+          quantity: 10,
+          unit: 'kg',
+          unitCost: 200,
+          lineTotal: 2000,
+        },
+      ],
+      totalAmount: 1498,
+      discountAmount: 500,
+      adjustmentAmount: -2,
+      lineItemCount: 1,
+      notes: null,
+      receivedAt: null,
+      receivedBy: null,
+      ...auditFields(),
+    });
+
+    await purchaseRepository.receive(ORG_A, 'pur-discount', USER);
+
+    expect(read(ORG_A, 'rawMaterials', 'rm-flour')).toMatchObject({
+      currentStock: 20,
+      averageCost: 150,
+    });
+    expect(movements(ORG_A)).toEqual([
+      expect.objectContaining({
+        movementType: 'PURCHASE_IN',
+        itemId: 'rm-flour',
+        quantity: 10,
+        unitCost: 200,
+        totalCost: 2000,
+        averageCostAfter: 150,
+      }),
+    ]);
+  });
+
   it('duplicate purchase receive does not apply stock twice', async () => {
     seedRawMaterial(ORG_A, 'rm-flour', 10, 100);
     seed(ORG_A, 'purchases', 'pur-1', {

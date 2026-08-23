@@ -20,7 +20,10 @@ import type {
   SalesImportRowExecutionResult,
 } from '@/lib/import/execution/sales-import-execution.types';
 import { IMPORT_EXECUTION_STATUS } from '@/lib/import/execution/sales-import-execution.types';
-import { IMPORT_HISTORY_STATUS } from '@/lib/import/duplicate';
+import {
+  DUPLICATE_IMPORT_STATUS,
+  IMPORT_HISTORY_STATUS,
+} from '@/lib/import/duplicate';
 import type { ValidatedRow } from '@/lib/import/engine/types';
 import type { ExistingProductMatch } from '@/lib/import/services/conflict.service';
 import {
@@ -55,10 +58,12 @@ export async function executeSalesImport(
 ): Promise<ImportExecutionResult> {
   const startedAt = new Date().toISOString();
   const resumeBlockedImport = shouldResumeBlockedDuplicateImport(input.duplicateResult);
+  const userAcknowledgedDuplicateRisk = input.acknowledgeDuplicateRisk === true;
 
   if (
     input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT &&
-    !resumeBlockedImport
+    !resumeBlockedImport &&
+    !userAcknowledgedDuplicateRisk
   ) {
     return finalizeResult(
       {
@@ -79,9 +84,15 @@ export async function executeSalesImport(
   const fingerprints = buildDuplicateImportFingerprints(input.resolvedReview.rows);
   const rowResults: SalesImportRowExecutionResult[] = [];
   const skippedRowNumbers = new Set<number>();
-  const skipDuplicateFingerprints =
-    input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES
-      ? new Set(input.duplicateResult.duplicateRowFingerprints)
+  const duplicateFingerprints = new Set(input.duplicateResult.duplicateRowFingerprints);
+  const userReviewSkippedRows = input.duplicateReviewSkippedRowNumbers
+    ? new Set(input.duplicateReviewSkippedRowNumbers)
+    : null;
+  const autoSkipDuplicateFingerprints =
+    input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES &&
+    userReviewSkippedRows === null &&
+    !userAcknowledgedDuplicateRisk
+      ? duplicateFingerprints
       : null;
 
   for (const row of input.resolvedReview.rows) {
@@ -97,10 +108,14 @@ export async function executeSalesImport(
       continue;
     }
 
-    if (skipDuplicateFingerprints) {
-      const fingerprint = buildDuplicateImportRowFingerprint(row);
+    const fingerprint = buildDuplicateImportRowFingerprint(row);
 
-      if (fingerprint !== '' && skipDuplicateFingerprints.has(fingerprint)) {
+    if (fingerprint !== '' && duplicateFingerprints.has(fingerprint)) {
+      const skipFromUserReview = userReviewSkippedRows?.has(row.rowNumber) ?? false;
+      const skipFromAutoPolicy =
+        autoSkipDuplicateFingerprints?.has(fingerprint) ?? false;
+
+      if (skipFromUserReview || skipFromAutoPolicy) {
         skippedRowNumbers.add(row.rowNumber);
         rowResults.push({
           rowNumber: row.rowNumber,
@@ -149,12 +164,22 @@ export async function executeSalesImport(
     );
   }
 
+  const matchedImport = input.duplicateResult.matchedImport;
+  const forceNewSession =
+    userAcknowledgedDuplicateRisk &&
+    !resumeBlockedImport &&
+    matchedImport?.status === IMPORT_HISTORY_STATUS.COMPLETED &&
+    (input.duplicateResult.status === DUPLICATE_IMPORT_STATUS.EXACT_DUPLICATE ||
+      input.duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT);
+
   const session = await importHistoryRepository.beginOrResume(input.orgId, input.userId, {
     reportType: input.reportType,
     rowCount: input.resolvedReview.rows.length,
     fileFingerprint: fingerprints.fileFingerprint,
     invoiceNumbers: fingerprints.invoiceNumbers,
     rowFingerprints: fingerprints.rowFingerprints,
+    resumeImportId: resumeBlockedImport ? matchedImport?.importId : undefined,
+    forceNewSession,
   });
 
   if (session.alreadyCompleted) {

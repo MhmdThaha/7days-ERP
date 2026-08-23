@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { SALE_PAGE_SIZE } from '@/lib/domain/constants/sale';
 import { cn } from '@/lib/utils';
 import { useSales } from '@/hooks/queries/use-sales';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -240,7 +240,7 @@ export function SalesPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['sales'] }),
         queryClient.invalidateQueries({ queryKey: ['sale', completingSale.id] }),
-        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateProductStockQueries(queryClient),
         invalidateDashboardQueries(queryClient),
         invalidateDailyReportQueries(queryClient),
         invalidateMonthlyReportQueries(queryClient),

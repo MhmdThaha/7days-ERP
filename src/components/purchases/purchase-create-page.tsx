@@ -19,7 +19,7 @@ import {
 } from '@/lib/utils/purchase-form-errors';
 import { rememberSupplier } from '@/lib/utils/form-recent-values';
 import { toastFormError } from '@/lib/utils/toast-form-error';
-import { invalidateDailyReportQueries, invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'purchase-create-form';
 
@@ -60,8 +60,10 @@ export function PurchaseCreatePage() {
       supplierName: values.supplierName,
       invoiceNumber: values.invoiceNumber || null,
       paymentStatus: values.paymentStatus,
-      lineItems: values.lineItems,
-      notes: values.notes ?? null,
+        lineItems: values.lineItems,
+        discountAmount: values.discountAmount,
+        adjustmentAmount: values.adjustmentAmount,
+        notes: values.notes ?? null,
     });
 
     if (trialId) {
@@ -190,7 +192,7 @@ export function PurchaseCreatePage() {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['purchases'] }),
         queryClient.invalidateQueries({ queryKey: ['purchase', purchaseId] }),
-        queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+        invalidateRawMaterialStockQueries(queryClient),
         invalidateDashboardQueries(queryClient),
         invalidateDailyReportQueries(queryClient),
       ]);

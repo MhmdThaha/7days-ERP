@@ -25,6 +25,7 @@ import { previewPhysicalCountChange } from '@/lib/domain/inventory/adjustment';
 import { DomainError } from '@/lib/domain/errors';
 import type { InventoryAdjustmentReason } from '@/types/inventory-adjustment';
 import type { InventoryItemType } from '@/types/inventory';
+import { invalidateInventoryStockQueriesForItemType } from '@/lib/utils/query-invalidation';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
@@ -127,7 +128,7 @@ export function InventoryAdjustDialog({ target, open, onOpenChange }: InventoryA
       toastWorkflowComplete(
         `Stock updated to ${formatQty(result.data.quantityAfter, result.data.unit)}.`,
       );
-      await queryClient.invalidateQueries({ queryKey: ['stock-overview'] });
+      await invalidateInventoryStockQueriesForItemType(queryClient, target.itemType);
       handleOpenChange(false);
     } finally {
       setIsSubmitting(false);

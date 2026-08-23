@@ -272,6 +272,22 @@
         { "fieldPath": "deletedAt", "order": "ASCENDING" },
         { "fieldPath": "isActive", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "hits",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "invoiceHash", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hits",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "fingerprintHash", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

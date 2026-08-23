@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ReturnFormValues } from '@/lib/domain/schemas/return.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapReturnActionError, type ReturnFieldError } from '@/lib/utils/return-form-errors';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'return-create-form';
@@ -73,7 +73,7 @@ export function ReturnCreatePage() {
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ['returns'] }),
             queryClient.invalidateQueries({ queryKey: ['return-entry', returnId] }),
-            queryClient.invalidateQueries({ queryKey: ['products'] }),
+            invalidateProductStockQueries(queryClient),
             invalidateDashboardQueries(queryClient),
             invalidateDailyReportQueries(queryClient),
             invalidateMonthlyReportQueries(queryClient),

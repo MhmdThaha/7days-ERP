@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { PURCHASE_PAGE_SIZE } from '@/lib/domain/constants/purchase';
 import { cn } from '@/lib/utils';
 import { usePurchases } from '@/hooks/queries/use-purchases';
-import { invalidateDailyReportQueries, invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -175,7 +175,7 @@ export function PurchasesPage() {
   async function invalidateAfterMutation(purchaseId?: string) {
     const invalidations = [
       queryClient.invalidateQueries({ queryKey: ['purchases'] }),
-      queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
+      invalidateRawMaterialStockQueries(queryClient),
       invalidateDashboardQueries(queryClient),
       invalidateDailyReportQueries(queryClient),
     ];

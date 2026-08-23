@@ -26,6 +26,7 @@ import {
   mapRawMaterialActionError,
   type RawMaterialFieldError,
 } from '@/lib/utils/raw-material-form-errors';
+import { invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWithAction } from '@/lib/utils/workflow-toasts';
 import type { RawMaterial } from '@/types/raw-material';
@@ -115,7 +116,7 @@ export function RawMaterialFormDialog({
           onClick: () => router.push('/purchases/new'),
         });
       }
-      await queryClient.invalidateQueries({ queryKey: ['raw-materials'] });
+      await invalidateRawMaterialStockQueries(queryClient);
 
       if (isEditMode) {
         await queryClient.invalidateQueries({ queryKey: ['raw-material', rawMaterial!.id] });

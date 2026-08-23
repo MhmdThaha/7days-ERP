@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/table';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { formatMoney } from '@/lib/utils/money';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type SaleDetailPageProps = {
@@ -93,7 +93,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['sales'] }),
       queryClient.invalidateQueries({ queryKey: ['sale', saleId] }),
-      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      invalidateProductStockQueries(queryClient),
       invalidateDashboardQueries(queryClient),
       invalidateDailyReportQueries(queryClient),
       invalidateMonthlyReportQueries(queryClient),

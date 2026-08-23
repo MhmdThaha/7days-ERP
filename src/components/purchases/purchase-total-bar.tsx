@@ -7,12 +7,14 @@ type PurchaseTotalBarProps = {
   lineItemCount: number;
   grandTotal: number;
   variant?: 'default' | 'compact';
+  totalLabel?: string;
 };
 
 export function PurchaseTotalBar({
   lineItemCount,
   grandTotal,
   variant = 'default',
+  totalLabel = 'Final payable',
 }: PurchaseTotalBarProps) {
   const content = (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
@@ -29,7 +31,7 @@ export function PurchaseTotalBar({
         </p>
       </div>
       <div className="flex items-baseline gap-2">
-        <p className="text-sm font-medium text-muted-foreground">Grand total</p>
+        <p className="text-sm font-medium text-muted-foreground">{totalLabel}</p>
         <p
           className={
             variant === 'compact'
@@ -55,7 +57,7 @@ export function PurchaseTotalBar({
           <p className="text-lg font-semibold tabular-nums">{lineItemCount}</p>
         </div>
         <div className="text-left sm:text-right">
-          <p className="text-sm font-medium text-muted-foreground">Grand total</p>
+          <p className="text-sm font-medium text-muted-foreground">{totalLabel}</p>
           <p className="text-2xl font-semibold tabular-nums">
             <MoneyDisplay amount={grandTotal} />
           </p>

@@ -18,7 +18,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { WASTAGE_PAGE_SIZE } from '@/lib/domain/constants/wastage';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import { useWastage } from '@/hooks/queries/use-wastage';
@@ -126,7 +126,7 @@ export function WastagePage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['wastage'] }),
         queryClient.invalidateQueries({ queryKey: ['wastage-entry', completingWastage.id] }),
-        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateProductStockQueries(queryClient),
         invalidateDashboardQueries(queryClient),
         invalidateDailyReportQueries(queryClient),
         invalidateMonthlyReportQueries(queryClient),

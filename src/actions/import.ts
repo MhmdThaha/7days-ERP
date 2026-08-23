@@ -23,8 +23,7 @@ import {
   type ImportRunReport,
 } from '@/lib/import/services/import.service';
 import { buildMappingReviewBundle } from '@/lib/import/services/mapping-review.service';
-import { buildImportReview } from '@/lib/import/pipeline/analysis-pipeline';
-import { loadProductCatalogForReview } from '@/lib/import/integration/product-catalog-for-review';
+import { prepareSalesImportBaseReview } from '@/lib/import/integration/prepare-sales-import-review';
 import { buildImportGuidance } from '@/lib/import/services/import-guidance.service';
 import {
   buildImportDiagnostics,
@@ -36,6 +35,9 @@ import { getFirestore } from '@/lib/repositories/base.repository';
 import { importSavedMappingRepository } from '@/lib/repositories/import-saved-mapping.repository';
 import type { ActionResult } from '@/lib/utils/action-result';
 import type { ImportAnalysis, ImportAutoMappingSnapshot, ImportReviewBuildResult, SalesImportCommitOutcome } from '@/types/import';
+import type { DuplicateImportWarning } from '@/lib/import/duplicate/duplicate-import-review';
+import type { DuplicateImportResult } from '@/lib/import/duplicate';
+import { analyzeSalesImportDuplicates } from '@/lib/import/integration/analyze-sales-import-duplicates';
 import {
   commitSalesImportPipeline,
 } from '@/lib/import/integration/commit-sales-import';
@@ -384,37 +386,74 @@ export async function buildImportReviewAction(
     }
 
     const { bytes, fileName } = await readUpload(formData);
-    const { parsed, headerDetection, reportDetection } = prepareImportFile(bytes, entityType, {
+    const base = await prepareSalesImportBaseReview({
+      orgId,
+      bytes,
       fileName,
       sheetName,
-    });
-
-    const { catalogItems, stockByProductId } = await loadProductCatalogForReview(orgId);
-
-    const productCatalog = catalogItems.map(({ category: _category, ...entry }) => entry);
-
-    const { viewModel, pipelineErrors } = buildImportReview({
-      fileName,
-      entityType,
-      parsed,
-      headerDetection,
-      reportDetection,
       mapping,
-      productCatalog,
-      stockByProductId: new Map(Object.entries(stockByProductId)),
       preparation,
     });
 
     return {
-      fileName,
-      sheetName: parsed.sheetName,
+      fileName: base.fileName,
+      sheetName: base.sheetName,
       mapping,
-      viewModel,
-      catalogItems,
-      stockByProductId,
-      pipelineErrors,
-      preparationSummary: viewModel.overview.preparationSummary,
+      viewModel: base.viewModel,
+      catalogItems: base.catalogItems,
+      stockByProductId: base.stockByProductId,
+      pipelineErrors: base.pipelineErrors,
+      preparationSummary: base.viewModel.overview.preparationSummary,
       preparationContext: preparation,
+    };
+  });
+}
+
+/**
+ * Read-only duplicate analysis for the sales import review UI.
+ * No Sales documents are created.
+ */
+export async function analyzeSalesImportDuplicateReviewAction(
+  formData: FormData,
+  mapping: MappingConfig,
+  resolutions: readonly SalesImportResolutionInput[],
+  options: {
+    sheetName?: string;
+    preparation?: SalesImportPreparationContext;
+  } = {},
+): Promise<
+  ActionResult<{
+    status: 'ok';
+    duplicateResult: DuplicateImportResult;
+    warning: DuplicateImportWarning | null;
+  }>
+> {
+  return wrapImportAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'create', 'import');
+
+    if (mapping.columnMappings.length === 0) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'None of the columns in this file were mapped to sale fields.',
+      );
+    }
+
+    const { bytes, fileName } = await readUpload(formData);
+    const result = await analyzeSalesImportDuplicates({
+      orgId,
+      bytes,
+      fileName,
+      sheetName: options.sheetName,
+      mapping,
+      resolutions,
+      preparation: options.preparation ?? {},
+    });
+
+    return {
+      status: result.status,
+      duplicateResult: result.duplicateResult,
+      warning: result.warning,
     };
   });
 }
@@ -430,6 +469,7 @@ export async function commitSalesImportAction(
   options: {
     sheetName?: string;
     acknowledgeDuplicateRisk?: boolean;
+    duplicateReviewSkippedRowNumbers?: readonly number[];
     saveMapping?: boolean;
     reportType?: string;
     preparation?: SalesImportPreparationContext;
@@ -458,6 +498,7 @@ export async function commitSalesImportAction(
       mapping,
       resolutions,
       acknowledgeDuplicateRisk: options.acknowledgeDuplicateRisk,
+      duplicateReviewSkippedRowNumbers: options.duplicateReviewSkippedRowNumbers,
       preparation: options.preparation ?? {},
     });
 

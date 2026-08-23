@@ -2,7 +2,24 @@
  * Duplicate Import Protection tests — stateless analysis against import history.
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/import/integration/product-catalog-for-review', () => ({
+  loadProductCatalogForReview: vi.fn(async () => ({
+    catalogItems: [
+      {
+        id: 'prod-bread',
+        name: 'Milk Bread',
+        code: 'BRD-001',
+        unit: 'pcs',
+        isActive: true,
+        deletedAt: null,
+        category: 'Bread',
+      },
+    ],
+    stockByProductId: { 'prod-bread': 12 },
+  })),
+}));
 
 import {
   buildDuplicateImportFileFingerprint,
@@ -723,4 +740,129 @@ describe('shouldResumeBlockedDuplicateImport', () => {
       }),
     ).toBe(false);
   });
+});
+
+describe('prepareSalesImportBaseReview session cache', () => {
+  beforeEach(async () => {
+    const reviewModule = await import('@/lib/import/integration/prepare-sales-import-review');
+    reviewModule.resetSalesImportPrepareCacheForTests();
+    vi.clearAllMocks();
+  });
+
+  it('avoids repeated prepareImportFile and buildImportReview within one session', async () => {
+    const importService = await import('@/lib/import/services/import.service');
+    const analysisPipeline = await import('@/lib/import/pipeline/analysis-pipeline');
+    const reviewModule = await import('@/lib/import/integration/prepare-sales-import-review');
+
+    vi.spyOn(importService, 'prepareImportFile').mockReturnValue({
+      parsed: {
+        sheetName: 'Sales',
+        headers: ['Date'],
+        skippedEmptyRowCount: 0,
+        rows: [],
+      },
+      headerDetection: {
+        headerRowIndex: 0,
+        detectedHeaders: ['Date'],
+        confidence: 1,
+        matchedRequiredFields: [],
+        explanation: [],
+      },
+      reportDetection: {
+        profile: {
+          reportType: 'sales-detail',
+          displayName: 'Sales Detail',
+          requiredHeaders: [],
+          optionalHeaders: [],
+        },
+        reportType: 'sales-detail',
+        confidence: 0.9,
+        matchedColumns: [],
+        missingColumns: [],
+        matchedHeaders: [],
+        missingHeaders: [],
+        unmatchedHeaders: [],
+        explanation: [],
+        candidates: [],
+      },
+    });
+
+    vi.spyOn(analysisPipeline, 'buildImportReview').mockReturnValue({
+      viewModel: {
+        overview: {
+          fileName: 'session-sales.xlsx',
+          detectedReportName: 'Sales Detail',
+          detectedReportType: 'sales-detail',
+          reportConfidence: 0.9,
+          headerRowIndex: 0,
+          totalRows: 0,
+          readyRows: 0,
+          warningRows: 0,
+          errorRows: 0,
+          autoImportRecommendation: 'preview-first',
+        },
+        rows: [],
+      },
+      pipelineErrors: [],
+    });
+
+    const input = {
+      orgId: 'org-prepare-cache',
+      bytes: new Uint8Array([9, 8, 7, 6]),
+      fileName: 'session-sales.xlsx',
+      sheetName: 'Sales',
+      mapping: {
+        columnMappings: [{ sourceHeader: 'Date', targetField: 'saleDate' }],
+      },
+      preparation: {},
+    };
+
+    await reviewModule.prepareSalesImportBaseReview(input);
+    await reviewModule.prepareSalesImportBaseReview(input);
+
+    const metrics = reviewModule.getSalesImportPrepareCacheMetricsForTests();
+
+    expect(importService.prepareImportFile).toHaveBeenCalledTimes(1);
+    expect(analysisPipeline.buildImportReview).toHaveBeenCalledTimes(1);
+    expect(metrics.prepareImportFileCalls).toBe(1);
+    expect(metrics.buildImportReviewCalls).toBe(1);
+    expect(metrics.cacheHits).toBe(1);
+    expect(metrics.cacheMisses).toBe(1);
+  });
+});
+
+describe('buildImportReview stage profiler — synthetic sales Excel', () => {
+  const PROFILE_ROWS: Array<ReturnType<typeof profileBuildImportReviewPath>> = [];
+
+  for (const rowCount of [2_500, 5_000, 10_000] as const) {
+    it(`profiles ${rowCount} rows (1-product catalog, barcode match)`, async () => {
+      const { profileBuildImportReviewPath } = await import(
+        '@/lib/import/duplicate/sales-import-performance-audit.helpers'
+      );
+      const row = profileBuildImportReviewPath(rowCount);
+      PROFILE_ROWS.push(row);
+
+      expect(row.buildImportReviewStages.processRowsMs).toBeGreaterThanOrEqual(0);
+      expect(row.excelRows).toBe(rowCount);
+    }, rowCount >= 5_000 ? 180_000 : 90_000);
+  }
+
+  it('logs stage breakdown for synthetic benchmark', async () => {
+    const { profileBuildImportReviewPath, buildSyntheticProductCatalog } = await import(
+      '@/lib/import/duplicate/sales-import-performance-audit.helpers'
+    );
+
+    const catalogStress = profileBuildImportReviewPath(2_500, buildSyntheticProductCatalog(500));
+
+    // eslint-disable-next-line no-console
+    console.info('\n[buildImportReview profile 1-product]', JSON.stringify(PROFILE_ROWS, null, 2));
+    // eslint-disable-next-line no-console
+    console.info(
+      '[buildImportReview profile 500-product catalog @ 2500 rows]',
+      JSON.stringify(catalogStress, null, 2),
+    );
+
+    expect(PROFILE_ROWS.length).toBe(3);
+    expect(catalogStress.catalogSize).toBe(500);
+  }, 120_000);
 });

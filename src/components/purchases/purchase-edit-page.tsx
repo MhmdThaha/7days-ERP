@@ -71,6 +71,8 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
         invoiceNumber: values.invoiceNumber || null,
         paymentStatus: values.paymentStatus,
         lineItems: values.lineItems,
+        discountAmount: values.discountAmount,
+        adjustmentAmount: values.adjustmentAmount,
         notes: values.notes ?? null,
       });
 

@@ -2,8 +2,10 @@ import 'server-only';
 
 import {
   calculatePurchaseLineTotal,
+  calculatePurchaseTotals,
   derivePurchaseQuantity,
   derivePurchaseUnitCost,
+  getPurchaseTotalsValidationError,
 } from '@/lib/domain/calculations/purchase-pricing';
 import { DomainError } from '@/lib/domain/errors';
 import { convertToCanonicalQuantity } from '@/lib/domain/units/uom-conversion';
@@ -25,8 +27,27 @@ import type {
   UpdatePurchaseInput,
 } from '@/types/purchase';
 
-function calculateTotalAmount(lineItems: PurchaseLineItem[]): number {
+function calculateLineItemsSubtotal(lineItems: PurchaseLineItem[]): number {
   return lineItems.reduce((sum, lineItem) => sum + lineItem.lineTotal, 0);
+}
+
+function resolvePurchaseTotals(
+  lineItems: PurchaseLineItem[],
+  discountAmount: number | undefined,
+  adjustmentAmount: number | undefined,
+) {
+  const totals = calculatePurchaseTotals({
+    subtotal: calculateLineItemsSubtotal(lineItems),
+    discountAmount,
+    adjustmentAmount,
+  });
+  const error = getPurchaseTotalsValidationError(totals);
+
+  if (error) {
+    throw new DomainError('VALIDATION_ERROR', error.message);
+  }
+
+  return totals;
 }
 
 async function resolveLineItems(
@@ -132,14 +153,16 @@ export const purchaseService = {
 
   async create(orgId: string, input: CreatePurchaseInput, userId: string): Promise<Purchase> {
     const lineItems = await resolveLineItems(orgId, input.lineItems);
-    const totalAmount = calculateTotalAmount(lineItems);
+    const totals = resolvePurchaseTotals(lineItems, input.discountAmount, input.adjustmentAmount);
 
     return purchaseRepository.create(
       orgId,
       {
         ...input,
         lineItems,
-        totalAmount,
+        totalAmount: totals.finalPayable,
+        discountAmount: totals.discountAmount,
+        adjustmentAmount: totals.adjustmentAmount,
       },
       userId,
     );
@@ -160,11 +183,27 @@ export const purchaseService = {
     assertDraftPurchase(existing);
 
     let lineItems = existing.lineItems;
+    let discountAmount = existing.discountAmount;
+    let adjustmentAmount = existing.adjustmentAmount;
     let totalAmount = existing.totalAmount;
+    const shouldRecalculateTotals =
+      input.lineItems !== undefined ||
+      input.discountAmount !== undefined ||
+      input.adjustmentAmount !== undefined;
 
     if (input.lineItems) {
       lineItems = await resolveLineItems(orgId, input.lineItems);
-      totalAmount = calculateTotalAmount(lineItems);
+    }
+
+    if (shouldRecalculateTotals) {
+      const totals = resolvePurchaseTotals(
+        lineItems,
+        input.discountAmount !== undefined ? input.discountAmount : discountAmount,
+        input.adjustmentAmount !== undefined ? input.adjustmentAmount : adjustmentAmount,
+      );
+      discountAmount = totals.discountAmount;
+      adjustmentAmount = totals.adjustmentAmount;
+      totalAmount = totals.finalPayable;
     }
 
     return purchaseRepository.update(
@@ -173,7 +212,9 @@ export const purchaseService = {
       {
         ...input,
         lineItems: input.lineItems ? lineItems : undefined,
-        totalAmount: input.lineItems ? totalAmount : undefined,
+        totalAmount: shouldRecalculateTotals ? totalAmount : undefined,
+        discountAmount: shouldRecalculateTotals ? discountAmount : undefined,
+        adjustmentAmount: shouldRecalculateTotals ? adjustmentAmount : undefined,
       },
       userId,
     );

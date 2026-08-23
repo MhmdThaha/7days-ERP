@@ -23,6 +23,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { RAW_MATERIAL_PAGE_SIZE } from '@/lib/domain/constants/raw-material';
 import { useRawMaterials } from '@/hooks/queries/use-raw-materials';
+import { invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import type { RawMaterialListItem, RawMaterialStatusFilter } from '@/types/raw-material';
 
@@ -114,7 +115,7 @@ export function RawMaterialsPage() {
         setPage((currentPage) => currentPage - 1);
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['raw-materials'] });
+      await invalidateRawMaterialStockQueries(queryClient);
     } finally {
       setIsDeleting(false);
     }

@@ -78,36 +78,43 @@ export function focusFirstPurchaseFormError(errors: FieldErrors<PurchaseFormValu
 
   const lineItemsErrors = errors.lineItems;
 
-  if (!Array.isArray(lineItemsErrors)) {
+  if (Array.isArray(lineItemsErrors)) {
+    for (let index = 0; index < lineItemsErrors.length; index += 1) {
+      const lineItemErrors = lineItemsErrors[index];
+
+      if (!lineItemErrors) {
+        continue;
+      }
+
+      if (lineItemErrors.rawMaterialId) {
+        focusPurchaseLineItemField(index, 'rawMaterialId');
+        return;
+      }
+
+      if (lineItemErrors.packCount) {
+        focusPurchaseLineItemField(index, 'packCount');
+        return;
+      }
+
+      if (lineItemErrors.packSize) {
+        focusPurchaseLineItemField(index, 'packSize');
+        return;
+      }
+
+      if (lineItemErrors.packPrice) {
+        focusPurchaseLineItemField(index, 'packPrice');
+        return;
+      }
+    }
+  }
+
+  if (errors.discountAmount) {
+    focusPurchaseFormField('discountAmount');
     return;
   }
 
-  for (let index = 0; index < lineItemsErrors.length; index += 1) {
-    const lineItemErrors = lineItemsErrors[index];
-
-    if (!lineItemErrors) {
-      continue;
-    }
-
-    if (lineItemErrors.rawMaterialId) {
-      focusPurchaseLineItemField(index, 'rawMaterialId');
-      return;
-    }
-
-    if (lineItemErrors.packCount) {
-      focusPurchaseLineItemField(index, 'packCount');
-      return;
-    }
-
-    if (lineItemErrors.packSize) {
-      focusPurchaseLineItemField(index, 'packSize');
-      return;
-    }
-
-    if (lineItemErrors.packPrice) {
-      focusPurchaseLineItemField(index, 'packPrice');
-      return;
-    }
+  if (errors.adjustmentAmount) {
+    focusPurchaseFormField('adjustmentAmount');
   }
 }
 

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import {
   analyzeImportAction,
+  analyzeSalesImportDuplicateReviewAction,
   buildImportReviewAction,
   commitImportWithResolutionAction,
   commitSalesImportAction,
@@ -30,10 +31,7 @@ import {
 import { SheetSelectionStep } from '@/components/import/sheet-selection-step';
 import { getImportDefinition, type ImportEntityType } from '@/lib/import/definitions';
 import { getImportUiCopy } from '@/lib/import/import-ui-copy';
-import {
-  planSkipDuplicates,
-  type DuplicateImportResult,
-} from '@/lib/import/duplicate';
+import type { DuplicateImportWarning } from '@/lib/import/duplicate/duplicate-import-review';
 import type { MappingReviewBaseline, MappingReviewBundle, MappingReviewEditState } from '@/lib/import/mapping-review/types';
 import type { ImportResolutionStrategy } from '@/lib/import/services/conflict-resolution.service';
 import type { ImportConflictDetectionOutcome } from '@/lib/import/services/import-entity-outcomes';
@@ -125,7 +123,7 @@ export function ImportWizard({
   const [salesReview, setSalesReview] = useState<ImportReviewBuildResult | null>(null);
   const [pendingSalesReview, setPendingSalesReview] =
     useState<ImportReviewViewModelWithResolution | null>(null);
-  const [duplicateReview, setDuplicateReview] = useState<DuplicateImportResult | null>(null);
+  const [duplicateReview, setDuplicateReview] = useState<DuplicateImportWarning | null>(null);
   const [salesCommitOutcome, setSalesCommitOutcome] = useState<SalesImportCommitOutcome | null>(null);
   const [importedSalesRowNumbers, setImportedSalesRowNumbers] = useState<number[]>([]);
   const [isBusy, setIsBusy] = useState(false);
@@ -374,17 +372,19 @@ export function ImportWizard({
     }
   }
 
-  async function runSalesImportCommit(
+  async function commitSalesImportFromReview(
     viewModel: ImportReviewViewModelWithResolution,
-    acknowledgeDuplicateRisk = false,
+    options: {
+      acknowledgeDuplicateRisk?: boolean;
+      duplicateReviewSkippedRowNumbers?: readonly number[];
+    } = {},
   ) {
-    if (!file || !salesReview || isCommitting) {
+    if (!file || !salesReview) {
       return;
     }
 
     setIsCommitting(true);
     setStep('committing');
-    setPendingSalesReview(viewModel);
 
     try {
       const result = await commitSalesImportAction(
@@ -396,7 +396,8 @@ export function ImportWizard({
         ),
         {
           sheetName: selectedSheet ?? undefined,
-          acknowledgeDuplicateRisk,
+          acknowledgeDuplicateRisk: options.acknowledgeDuplicateRisk,
+          duplicateReviewSkippedRowNumbers: options.duplicateReviewSkippedRowNumbers,
           saveMapping: saveMappingEnabled,
           reportType: salesReview.viewModel.overview.detectedReportType,
           preparation: salesReview.preparationContext ?? {},
@@ -405,12 +406,12 @@ export function ImportWizard({
 
       if (!result.success) {
         toast.error(result.error);
-        setStep(acknowledgeDuplicateRisk ? 'duplicate-review' : 'preview');
+        setStep(options.acknowledgeDuplicateRisk ? 'duplicate-review' : 'preview');
         return;
       }
 
       if (result.data.status === 'duplicate_review') {
-        setDuplicateReview(result.data.duplicateResult);
+        toast.error('Please review similar sales before importing.');
         setStep('duplicate-review');
         return;
       }
@@ -440,16 +441,59 @@ export function ImportWizard({
     }
   }
 
-  function handleSalesImport(viewModel: ImportReviewViewModelWithResolution) {
-    void runSalesImportCommit(viewModel, false);
+  async function runSalesImportCommit(viewModel: ImportReviewViewModelWithResolution) {
+    if (!file || !salesReview || isCommitting) {
+      return;
+    }
+
+    setPendingSalesReview(viewModel);
+    setIsCommitting(true);
+    setStep('committing');
+
+    try {
+      const analysisResult = await analyzeSalesImportDuplicateReviewAction(
+        toFormData(file),
+        salesReview.mapping,
+        mergeResolutionsWithImportedSkips(
+          extractSalesImportResolutions(viewModel),
+          importedSalesRowNumbers,
+        ),
+        {
+          sheetName: selectedSheet ?? undefined,
+          preparation: salesReview.preparationContext ?? {},
+        },
+      );
+
+      if (!analysisResult.success) {
+        toast.error(analysisResult.error);
+        setStep('preview');
+        return;
+      }
+
+      if (analysisResult.data.warning) {
+        setDuplicateReview(analysisResult.data.warning);
+        setStep('duplicate-review');
+        return;
+      }
+
+      await commitSalesImportFromReview(viewModel);
+    } finally {
+      setIsCommitting(false);
+    }
   }
 
-  function handleSalesImportDespiteDuplicate() {
+  function handleSalesImport(viewModel: ImportReviewViewModelWithResolution) {
+    void runSalesImportCommit(viewModel);
+  }
+
+  function handleImportAnywayDuplicates() {
     if (!pendingSalesReview) {
       return;
     }
 
-    void runSalesImportCommit(pendingSalesReview, true);
+    void commitSalesImportFromReview(pendingSalesReview, {
+      acknowledgeDuplicateRisk: true,
+    });
   }
 
   function handleReviewRemainingSales() {
@@ -734,19 +778,9 @@ export function ImportWizard({
 
       {step === 'duplicate-review' && duplicateReview ? (
         <SalesImportDuplicateStep
-          duplicateResult={duplicateReview}
-          newSalesCount={
-            pendingSalesReview
-              ? planSkipDuplicates(pendingSalesReview.rows, duplicateReview).newSalesCount
-              : 0
-          }
-          duplicateSalesCount={
-            pendingSalesReview
-              ? planSkipDuplicates(pendingSalesReview.rows, duplicateReview).duplicateSalesCount
-              : duplicateReview.matchedRows
-          }
+          warning={duplicateReview}
           onCancel={() => setStep('preview')}
-          onImportAnyway={handleSalesImportDespiteDuplicate}
+          onImportAnyway={handleImportAnywayDuplicates}
           isBusy={isCommitting}
         />
       ) : null}

@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/table';
 import { RETURN_REASON_LABELS } from '@/lib/domain/constants/return';
 import { toastFormError } from '@/lib/utils/toast-form-error';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type ReturnDetailPageProps = {
@@ -88,7 +88,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['returns'] }),
       queryClient.invalidateQueries({ queryKey: ['return-entry', returnId] }),
-      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      invalidateProductStockQueries(queryClient),
       invalidateDashboardQueries(queryClient),
       invalidateDailyReportQueries(queryClient),
       invalidateMonthlyReportQueries(queryClient),

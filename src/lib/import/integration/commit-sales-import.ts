@@ -6,11 +6,11 @@ import 'server-only';
 
 import { DomainError } from '@/lib/domain/errors';
 import {
-  detectDuplicateImport,
   DUPLICATE_IMPORT_RECOMMENDATION,
-  shouldResumeBlockedDuplicateImport,
   type DuplicateImportResult,
 } from '@/lib/import/duplicate';
+import { duplicateResultNeedsUserConfirmation } from '@/lib/import/duplicate/duplicate-import-review';
+import { detectDuplicateImportWithCandidateLookup } from '@/lib/import/duplicate/import-duplicate-index-candidate.service';
 import { executeSalesImport } from '@/lib/import/execution/sales-import-execution.service';
 import {
   IMPORT_EXECUTION_STATUS,
@@ -18,17 +18,14 @@ import {
 } from '@/lib/import/execution/sales-import-execution.types';
 import { finalizeSalesImportInventory } from '@/lib/import/finalization/inventory-finalization.service';
 import type { InventoryFinalizationResult } from '@/lib/import/finalization/inventory-finalization.types';
-import { loadProductCatalogForReview } from '@/lib/import/integration/product-catalog-for-review';
+import { importIndexHealthService } from '@/lib/import/duplicate/import-index-repair.service';
 import {
-  applySalesImportResolutions,
-  type SalesImportResolutionInput,
-} from '@/lib/import/integration/sales-import-resolutions';
-import { validateSalesImportReview } from '@/lib/import/integration/validate-sales-import-review';
-import type { MappingConfig } from '@/lib/import/engine/types';
-import { buildImportReview } from '@/lib/import/pipeline/analysis-pipeline';
+  prepareSalesImportResolvedReview,
+} from '@/lib/import/integration/prepare-sales-import-review';
+import type { SalesImportResolutionInput } from '@/lib/import/integration/sales-import-resolutions';
 import type { SalesImportPreparationContext } from '@/lib/import/preparation/sales-import-preparation.types';
-import { prepareImportFile } from '@/lib/import/services/import.service';
-import { importHistoryRepository } from '@/lib/repositories/import-history.repository';
+
+import type { MappingConfig } from '@/lib/import/engine/types';
 
 export type CommitSalesImportInput = {
   orgId: string;
@@ -39,6 +36,8 @@ export type CommitSalesImportInput = {
   mapping: MappingConfig;
   resolutions: readonly SalesImportResolutionInput[];
   acknowledgeDuplicateRisk?: boolean;
+  /** Row numbers the user chose not to import during duplicate review. */
+  duplicateReviewSkippedRowNumbers?: readonly number[];
   preparation?: SalesImportPreparationContext;
 };
 
@@ -54,80 +53,44 @@ export type SalesImportCommitPipelineResult = {
 export async function commitSalesImportPipeline(
   input: CommitSalesImportInput,
 ): Promise<SalesImportCommitPipelineResult> {
-  const { parsed, headerDetection, reportDetection } = prepareImportFile(
-    input.bytes,
-    'sale',
-    {
-      fileName: input.fileName,
-      sheetName: input.sheetName,
-    },
-  );
-
-  const { catalogItems, stockByProductId } = await loadProductCatalogForReview(input.orgId);
-  const productCatalog = catalogItems.map(({ category: _category, ...entry }) => entry);
-
-  const { viewModel } = buildImportReview({
+  const { resolvedReview, reportType } = await prepareSalesImportResolvedReview({
+    orgId: input.orgId,
+    bytes: input.bytes,
     fileName: input.fileName,
-    entityType: 'sale',
-    parsed,
-    headerDetection,
-    reportDetection,
+    sheetName: input.sheetName,
     mapping: input.mapping,
-    productCatalog,
-    stockByProductId: new Map(Object.entries(stockByProductId)),
-    preparation: input.preparation ?? {},
+    resolutions: input.resolutions,
+    preparation: input.preparation,
   });
 
-  const resolvedReview = applySalesImportResolutions(
-    viewModel,
-    catalogItems,
-    new Map(Object.entries(stockByProductId)),
-    input.resolutions,
+  const duplicateResult = await detectDuplicateImportWithCandidateLookup(
+    input.orgId,
+    resolvedReview,
   );
 
-  validateSalesImportReview(resolvedReview);
+  const needsDuplicateConfirmation =
+    duplicateResultNeedsUserConfirmation(duplicateResult) &&
+    !input.acknowledgeDuplicateRisk;
 
-  const importHistory = await importHistoryRepository.list(input.orgId);
-  const duplicateResult = detectDuplicateImport({
-    resolvedReview,
-    importHistory,
-  });
-
-  if (
-    duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.BLOCK_IMPORT &&
-    !shouldResumeBlockedDuplicateImport(duplicateResult)
-  ) {
-    return {
-      status: 'blocked',
-      duplicateResult,
-      execution: null,
-      finalization: null,
-      fileName: input.fileName,
-      reportType: viewModel.overview.detectedReportType,
-    };
-  }
-
-  if (
-    (duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.REVIEW ||
-      duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES) &&
-    !input.acknowledgeDuplicateRisk
-  ) {
+  if (needsDuplicateConfirmation) {
     return {
       status: 'duplicate_review',
       duplicateResult,
       execution: null,
       finalization: null,
       fileName: input.fileName,
-      reportType: viewModel.overview.detectedReportType,
+      reportType,
     };
   }
 
   const execution = await executeSalesImport({
     resolvedReview,
     duplicateResult,
-    reportType: viewModel.overview.detectedReportType,
+    reportType,
     orgId: input.orgId,
     userId: input.userId,
+    duplicateReviewSkippedRowNumbers: input.duplicateReviewSkippedRowNumbers,
+    acknowledgeDuplicateRisk: input.acknowledgeDuplicateRisk,
   });
 
   if (execution.status === IMPORT_EXECUTION_STATUS.BLOCKED) {
@@ -137,7 +100,7 @@ export async function commitSalesImportPipeline(
       execution,
       finalization: null,
       fileName: input.fileName,
-      reportType: viewModel.overview.detectedReportType,
+      reportType,
     };
   }
 
@@ -145,26 +108,41 @@ export async function commitSalesImportPipeline(
   if (
     execution.imported === 0 &&
     execution.failed === 0 &&
-    duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES
+    (duplicateResult.recommendation === DUPLICATE_IMPORT_RECOMMENDATION.SKIP_DUPLICATES ||
+      (input.duplicateReviewSkippedRowNumbers?.length ?? 0) > 0)
   ) {
+    scheduleDeferredImportDuplicateIndexIfNeeded({
+      orgId: input.orgId,
+      userId: input.userId,
+      execution,
+      pipelineStatus: 'success',
+    });
+
     return {
       status: 'success',
       duplicateResult,
       execution,
       finalization: null,
       fileName: input.fileName,
-      reportType: viewModel.overview.detectedReportType,
+      reportType,
     };
   }
 
   if (execution.imported === 0) {
+    scheduleDeferredImportDuplicateIndexIfNeeded({
+      orgId: input.orgId,
+      userId: input.userId,
+      execution,
+      pipelineStatus: 'failed',
+    });
+
     return {
       status: 'failed',
       duplicateResult,
       execution,
       finalization: null,
       fileName: input.fileName,
-      reportType: viewModel.overview.detectedReportType,
+      reportType,
     };
   }
 
@@ -181,14 +159,48 @@ export async function commitSalesImportPipeline(
         ? 'partial'
         : 'failed';
 
-  return {
+  const result = {
     status,
     duplicateResult,
     execution,
     finalization,
     fileName: input.fileName,
-    reportType: viewModel.overview.detectedReportType,
-  };
+    reportType,
+  } as const;
+
+  scheduleDeferredImportDuplicateIndexIfNeeded({
+    orgId: input.orgId,
+    userId: input.userId,
+    execution,
+    pipelineStatus: result.status,
+  });
+
+  return result;
+}
+
+function scheduleDeferredImportDuplicateIndexIfNeeded(input: {
+  orgId: string;
+  userId: string;
+  execution: ImportExecutionResult;
+  pipelineStatus: SalesImportCommitPipelineResult['status'];
+}): void {
+  if (!input.execution.importId) {
+    return;
+  }
+
+  if (input.execution.status === IMPORT_EXECUTION_STATUS.BLOCKED) {
+    return;
+  }
+
+  if (input.pipelineStatus === 'duplicate_review' || input.pipelineStatus === 'blocked') {
+    return;
+  }
+
+  importIndexHealthService.scheduleDeferredImportDuplicateIndexWrite({
+    orgId: input.orgId,
+    userId: input.userId,
+    importId: input.execution.importId,
+  });
 }
 
 export function salesImportCommitErrorMessage(result: SalesImportCommitPipelineResult): string {

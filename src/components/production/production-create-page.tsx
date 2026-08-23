@@ -22,6 +22,7 @@ import {
 import {
   invalidateDailyReportQueries,
   invalidateDashboardQueries,
+  invalidateInventoryStockQueries,
   invalidateMonthlyReportQueries,
 } from '@/lib/utils/query-invalidation';
 
@@ -35,6 +36,8 @@ export function ProductionCreatePage() {
   const queryClient = useQueryClient();
   const submitIntentRef = useRef<'draft' | 'complete'>('draft');
   const pendingDraftIdRef = useRef<string | null>(null);
+  /** Synchronous lock — blocks a second confirm before isSubmitting re-renders. */
+  const confirmCompleteInFlightRef = useRef(false);
   const [submitMode, setSubmitMode] = useState<'draft' | 'complete' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<ProductionFieldError | null>(null);
@@ -106,10 +109,11 @@ export function ProductionCreatePage() {
   }
 
   async function handleConfirmComplete() {
-    if (!pendingValues || isSubmitting) {
+    if (!pendingValues || confirmCompleteInFlightRef.current) {
       return;
     }
 
+    confirmCompleteInFlightRef.current = true;
     setIsSubmitting(true);
     setServerFieldError(null);
     setSubmitMode('complete');
@@ -138,8 +142,7 @@ export function ProductionCreatePage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['productions'] }),
         queryClient.invalidateQueries({ queryKey: ['production', productionId] }),
-        queryClient.invalidateQueries({ queryKey: ['raw-materials'] }),
-        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        invalidateInventoryStockQueries(queryClient),
         invalidateDashboardQueries(queryClient),
         invalidateDailyReportQueries(queryClient),
         invalidateMonthlyReportQueries(queryClient),
@@ -151,6 +154,7 @@ export function ProductionCreatePage() {
       setConfirmOpen(false);
       setFormKey((current) => current + 1);
     } finally {
+      confirmCompleteInFlightRef.current = false;
       setIsSubmitting(false);
       setSubmitMode(null);
     }
