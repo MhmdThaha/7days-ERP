@@ -24,6 +24,70 @@ export function resolveCostTotal(
   return movementTotal;
 }
 
+type ReturnRevenueSaleLine = {
+  productId: string;
+  quantity: number;
+  sellingPriceSnapshot: number;
+};
+
+type ReturnRevenueReturnLine = {
+  productId: string;
+  quantity: number;
+};
+
+/**
+ * Prices returned units against same-day completed sale lines (FIFO per product).
+ * Used to reduce net sales without linking return documents to sale IDs.
+ */
+export function calculateReturnRevenueFromDaySales(
+  daySales: Array<{ lines: ReturnRevenueSaleLine[] }>,
+  dayReturns: Array<{ lines: ReturnRevenueReturnLine[] }>,
+): number {
+  const pool = new Map<string, Array<{ remaining: number; price: number }>>();
+
+  for (const sale of daySales) {
+    for (const line of sale.lines) {
+      const buckets = pool.get(line.productId) ?? [];
+      buckets.push({ remaining: line.quantity, price: line.sellingPriceSnapshot });
+      pool.set(line.productId, buckets);
+    }
+  }
+
+  let returnRevenue = 0;
+
+  for (const returnEntry of dayReturns) {
+    for (const line of returnEntry.lines) {
+      let quantityLeft = line.quantity;
+      const buckets = pool.get(line.productId) ?? [];
+
+      for (const bucket of buckets) {
+        if (quantityLeft <= 0) {
+          break;
+        }
+
+        const matchedQuantity = Math.min(quantityLeft, bucket.remaining);
+
+        if (matchedQuantity <= 0) {
+          continue;
+        }
+
+        returnRevenue += Math.round(matchedQuantity * bucket.price);
+        bucket.remaining -= matchedQuantity;
+        quantityLeft -= matchedQuantity;
+      }
+    }
+  }
+
+  return returnRevenue;
+}
+
+export function calculateNetCogsAfterReturns(
+  saleCogs: number,
+  returnCogs: number,
+): number {
+  return Math.max(0, saleCogs - returnCogs);
+}
+
 export type AggregatedProfitSummary = {
   netSales: number;
   totalCogs: number;

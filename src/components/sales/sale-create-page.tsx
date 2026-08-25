@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,13 +10,15 @@ import { toast } from 'sonner';
 import { createSaleAction, completeSaleAction } from '@/actions/sales';
 import { SaleForm } from '@/components/sales/sale-form';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
 import { rememberCustomer } from '@/lib/utils/form-recent-values';
 import { mapSaleActionError, type SaleFieldError } from '@/lib/utils/sale-form-errors';
 import { toastFormError } from '@/lib/utils/toast-form-error';
+import { resolveDraftIdForCompletion } from '@/lib/utils/sale-complete-draft';
+import { moduleDetailPath, moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import {
   invalidateDailyReportQueries,
   invalidateDashboardQueries,
@@ -25,11 +28,8 @@ import {
 
 const FORM_ID = 'sale-create-form';
 
-type SuccessState = {
-  saleNumber: string;
-};
-
 export function SaleCreatePage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const submitIntentRef = useRef<'draft' | 'complete'>('draft');
   const pendingDraftIdRef = useRef<string | null>(null);
@@ -40,7 +40,6 @@ export function SaleCreatePage() {
   const [serverFieldError, setServerFieldError] = useState<SaleFieldError | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingValues, setPendingValues] = useState<SaleFormValues | null>(null);
-  const [successState, setSuccessState] = useState<SuccessState | null>(null);
   const [formKey, setFormKey] = useState(0);
 
   async function saveDraft(values: SaleFormValues) {
@@ -80,7 +79,6 @@ export function SaleCreatePage() {
     }
 
     if (submitIntentRef.current === 'complete') {
-      pendingDraftIdRef.current = null;
       setPendingValues(values);
       setConfirmOpen(true);
       submitIntentRef.current = 'draft';
@@ -89,7 +87,6 @@ export function SaleCreatePage() {
 
     setIsSubmitting(true);
     setServerFieldError(null);
-    setSuccessState(null);
     setSubmitMode('draft');
 
     try {
@@ -100,6 +97,7 @@ export function SaleCreatePage() {
       }
 
       toast.success('Sale saved as draft');
+      router.replace(moduleDetailPath('sales', sale.id));
     } finally {
       setIsSubmitting(false);
       setSubmitMode(null);
@@ -126,7 +124,12 @@ export function SaleCreatePage() {
           return;
         }
 
-        saleId = sale.id;
+        saleId = resolveDraftIdForCompletion(pendingDraftIdRef.current, sale.id);
+
+        if (!saleId) {
+          return;
+        }
+
         pendingDraftIdRef.current = saleId;
       }
 
@@ -147,20 +150,16 @@ export function SaleCreatePage() {
       ]);
 
       pendingDraftIdRef.current = null;
-      setSuccessState({ saleNumber: completeResult.data.saleNumber });
       setPendingValues(null);
       setConfirmOpen(false);
-      setFormKey((current) => current + 1);
+      toast.success('Sale completed. Product stock has been updated.');
+      clearModuleWorkflowOnExit('sales');
+      router.push(moduleListPath('sales'));
     } finally {
       confirmCompleteInFlightRef.current = false;
       setIsSubmitting(false);
       setSubmitMode(null);
     }
-  }
-
-  function handleNewSale() {
-    setSuccessState(null);
-    setFormKey((current) => current + 1);
   }
 
   function handleSaveDraftClick() {
@@ -186,15 +185,6 @@ export function SaleCreatePage() {
         title="Record Sale"
         description="Add customer and products, then complete to update stock."
       />
-
-      {successState ? (
-        <EntrySuccessBanner
-          title="Sale completed"
-          description={`${successState.saleNumber} completed. Product stock has been updated.`}
-          actionLabel="Record another sale"
-          onAction={handleNewSale}
-        />
-      ) : null}
 
       <SaleForm
         key={formKey}
@@ -246,7 +236,6 @@ export function SaleCreatePage() {
           if (!open) {
             setConfirmOpen(false);
             setPendingValues(null);
-            pendingDraftIdRef.current = null;
           }
         }}
         title="Complete Sale"

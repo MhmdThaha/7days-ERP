@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeExpenseAction, deleteExpenseAction, getExpenseAction } from '@/actions/expenses';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
 import { ExpenseStatusBadge } from '@/components/expenses/expense-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -24,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/domain/constants/expense';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type ExpenseDetailPageProps = {
@@ -73,6 +75,8 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
     enabled: isAuthenticated,
   });
 
+  useClearWorkflowResumeOnFailure('expenses', Boolean(error || !expense));
+
   async function invalidateExpenseQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['expenses'] }),
@@ -107,6 +111,9 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
       setIsCompleteOpen(false);
 
       await invalidateExpenseQueries();
+
+      clearModuleWorkflowOnExit('expenses');
+      router.push('/expenses');
     } finally {
       setIsCompleting(false);
     }
@@ -137,6 +144,7 @@ export function ExpenseDetailPage({ expenseId }: ExpenseDetailPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      clearModuleWorkflowOnExit('expenses');
       router.push('/expenses');
     } finally {
       setIsDeleting(false);

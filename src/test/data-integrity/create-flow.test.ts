@@ -1,15 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-/**
- * Pure helper mirroring save-and-complete retry behavior in create pages.
- * Retries must reuse an existing draft instead of creating duplicates.
- */
-function resolveDraftIdForCompletion(
-  pendingDraftId: string | null,
-  newlyCreatedDraftId: string | null,
-): string | null {
-  return pendingDraftId ?? newlyCreatedDraftId;
-}
+import { resolveDraftIdForCompletion } from '@/lib/utils/sale-complete-draft';
 
 describe('save-and-complete draft reuse', () => {
   it('uses a newly created draft on first attempt', () => {

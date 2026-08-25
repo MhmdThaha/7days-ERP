@@ -15,4 +15,6 @@ export const RETURN_REASON_LABELS: Record<ReturnReason, string> = {
   other: 'Other',
 };
 
+export const DUPLICATE_SALE_LINE_MESSAGE = 'This sale line is already added to this return.';
+/** @deprecated Legacy product-only returns */
 export const DUPLICATE_PRODUCT_MESSAGE = 'This product is already added to this return.';

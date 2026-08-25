@@ -2,8 +2,10 @@ import 'server-only';
 
 import {
   buildDailySummaryMetrics,
+  calculateNetCogsAfterReturns,
   resolveCostTotal,
 } from '@/lib/domain/calculations/summary-aggregation';
+import { calculateReturnRevenueFromReturns } from '@/lib/domain/calculations/return-sale-linkage';
 import {
   dailySummaryRepository,
   isDailySummaryVersionConflictError,
@@ -12,6 +14,7 @@ import { expenseRepository } from '@/lib/repositories/expense.repository';
 import { inventoryMovementRepository } from '@/lib/repositories/inventory-movement.repository';
 import { productionRepository } from '@/lib/repositories/production.repository';
 import { purchaseRepository } from '@/lib/repositories/purchase.repository';
+import { returnRepository } from '@/lib/repositories/return.repository';
 import { saleRepository } from '@/lib/repositories/sale.repository';
 import { wastageRepository } from '@/lib/repositories/wastage.repository';
 import { scheduleAfterResponse } from '@/lib/server/schedule-after-response';
@@ -142,20 +145,24 @@ export const dailySummaryService = {
 
       const [
         daySales,
+        dayReturns,
         dayExpenses,
         dayProduction,
         dayWastage,
         dayPurchases,
         saleOutCogsFromMovements,
+        returnInCogsFromMovements,
         productionCostFromMovements,
         wastageCostFromMovements,
       ] = await Promise.all([
-        saleRepository.listCompletedByDate(orgId, date),
+        saleRepository.listCompletedByDateWithLines(orgId, date),
+        returnRepository.listCompletedByDateWithLines(orgId, date),
         expenseRepository.listCompletedByDate(orgId, date),
         productionRepository.listCompletedByDate(orgId, date),
         wastageRepository.listCompletedByDate(orgId, date),
         purchaseRepository.listReceivedByDate(orgId, date),
         inventoryMovementRepository.sumTotalCostByMovementType(orgId, date, 'SALE_OUT'),
+        inventoryMovementRepository.sumTotalCostByMovementType(orgId, date, 'RETURN_IN'),
         inventoryMovementRepository.sumTotalCostByMovementType(
           orgId,
           date,
@@ -165,10 +172,12 @@ export const dailySummaryService = {
       ]);
 
       const totalSalesRevenue = daySales.reduce((sum, sale) => sum + sale.subtotal, 0);
+      const totalReturnRevenue = calculateReturnRevenueFromReturns(dayReturns, daySales);
       const totalSalesDiscount = 0;
-      const totalNetSales = totalSalesRevenue - totalSalesDiscount;
+      const totalNetSales = totalSalesRevenue - totalSalesDiscount - totalReturnRevenue;
       const totalCogsFromDocuments = daySales.reduce((sum, sale) => sum + sale.totalCogs, 0);
-      const totalCogs = resolveCostTotal(totalCogsFromDocuments, saleOutCogsFromMovements);
+      const saleCogs = resolveCostTotal(totalCogsFromDocuments, saleOutCogsFromMovements);
+      const totalCogs = calculateNetCogsAfterReturns(saleCogs, returnInCogsFromMovements);
 
       const expensesByCategory: DailySummaryExpensesByCategory = {};
 

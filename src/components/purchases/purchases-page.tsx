@@ -21,6 +21,7 @@ import { PURCHASE_PAGE_SIZE } from '@/lib/domain/constants/purchase';
 import { cn } from '@/lib/utils';
 import { usePurchases } from '@/hooks/queries/use-purchases';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowResumeForRecord } from '@/lib/navigation/module-workflow-resume';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -202,6 +203,7 @@ export function PurchasesPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('purchases', deletingPurchase.id);
       toast.success('Purchase deleted successfully');
       setDeletingPurchase(null);
 
@@ -244,6 +246,7 @@ export function PurchasesPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('purchases', receivingPurchase.id);
       toastWorkflowComplete('Purchase received. Raw material stock has been updated.', {
         nextStep: {
           label: 'Record Production',

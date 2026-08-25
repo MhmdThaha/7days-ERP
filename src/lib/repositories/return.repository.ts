@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 
 import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
 
+import { aggregateReturnedQuantitiesBySaleLineId } from '@/lib/domain/calculations/return-sale-linkage';
 import { RETURN_REASON_LABELS } from '@/lib/domain/constants/return';
 import { DomainError } from '@/lib/domain/errors';
 import { normalizeNullableString, timestampToDate } from '@/lib/firebase/converters';
@@ -25,11 +26,14 @@ import type {
 
 type ReturnLineDocument = {
   id: string;
+  saleLineId: string | null;
   productId: string;
   productNameSnapshot: string;
   productCodeSnapshot: string;
   quantity: number;
   unit: string;
+  sellingPriceSnapshot: number | null;
+  unitCostSnapshot: number | null;
 };
 
 type ReturnDocument = {
@@ -38,6 +42,8 @@ type ReturnDocument = {
   returnDate: string;
   reason: ReturnReason;
   status: ReturnStatus;
+  sourceSaleId: string | null;
+  sourceSaleNumberSnapshot: string | null;
   lines: ReturnLineDocument[];
   lineCount: number;
   totalUnits: number;
@@ -60,14 +66,100 @@ type ProductDocument = {
   unit: string;
 };
 
+type SaleLineDocument = {
+  id: string;
+  productId: string;
+  productNameSnapshot: string;
+  productCodeSnapshot: string;
+  sellingPriceSnapshot: number;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  cogs: number;
+};
+
+type SaleDocument = {
+  organizationId: string;
+  status: ReturnStatus | 'draft' | 'completed';
+  deletedAt: Timestamp | null;
+  lines: SaleLineDocument[];
+};
+
+type SiblingReturnSnapshot = {
+  id: string;
+  status: ReturnStatus;
+  lines: ReturnLineItem[];
+};
+
+function validateLinkedReturnQuantitiesInTransaction(
+  sale: SaleDocument,
+  returnId: string,
+  returnData: ReturnDocument,
+  siblings: SiblingReturnSnapshot[],
+): ReturnLineDocument[] {
+  const returnedBySaleLineId = aggregateReturnedQuantitiesBySaleLineId(
+    siblings.filter((entry) => entry.id !== returnId),
+    { includeDrafts: true },
+  );
+
+  const resolvedLines: ReturnLineDocument[] = [];
+
+  for (const line of returnData.lines) {
+    if (!line.saleLineId) {
+      throw new DomainError('VALIDATION_ERROR', 'Sale-linked return lines must reference a sale line');
+    }
+
+    const saleLine = sale.lines.find((entry) => entry.id === line.saleLineId);
+
+    if (!saleLine) {
+      throw new DomainError('NOT_FOUND', 'One or more sale lines were not found');
+    }
+
+    if (saleLine.productId !== line.productId) {
+      throw new DomainError('VALIDATION_ERROR', 'Return line product does not match the original sale line');
+    }
+
+    const remaining = saleLine.quantity - (returnedBySaleLineId.get(line.saleLineId) ?? 0);
+
+    if (line.quantity > remaining) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `Only ${remaining} ${saleLine.unit} of "${saleLine.productNameSnapshot}" remain available to return from this sale`,
+      );
+    }
+
+    resolvedLines.push({
+      ...line,
+      sellingPriceSnapshot: saleLine.sellingPriceSnapshot,
+      unitCostSnapshot: saleLine.unitCost,
+      productNameSnapshot: saleLine.productNameSnapshot,
+      productCodeSnapshot: saleLine.productCodeSnapshot,
+      unit: saleLine.unit,
+    });
+  }
+
+  return resolvedLines;
+}
+
 function toLineItem(data: ReturnLineDocument): ReturnLineItem {
   return {
     id: data.id,
+    saleLineId: data.saleLineId ?? null,
     productId: data.productId,
     productNameSnapshot: data.productNameSnapshot,
     productCodeSnapshot: data.productCodeSnapshot,
     quantity: data.quantity,
     unit: data.unit,
+    sellingPriceSnapshot: data.sellingPriceSnapshot ?? null,
+    unitCostSnapshot: data.unitCostSnapshot ?? null,
+  };
+}
+
+function toSiblingReturnSnapshot(id: string, data: ReturnDocument): SiblingReturnSnapshot {
+  return {
+    id,
+    status: data.status,
+    lines: data.lines.map(toLineItem),
   };
 }
 
@@ -79,6 +171,8 @@ function toReturnEntry(id: string, data: ReturnDocument): ReturnEntry {
     returnDate: data.returnDate,
     reason: data.reason,
     status: data.status,
+    sourceSaleId: data.sourceSaleId ?? null,
+    sourceSaleNumberSnapshot: data.sourceSaleNumberSnapshot ?? null,
     lines: data.lines.map(toLineItem),
     lineCount: data.lineCount,
     totalUnits: data.totalUnits,
@@ -103,6 +197,8 @@ function toListItem(returnEntry: ReturnEntry): ReturnListItem {
     lineCount: returnEntry.lineCount,
     totalUnits: returnEntry.totalUnits,
     status: returnEntry.status,
+    sourceSaleId: returnEntry.sourceSaleId,
+    sourceSaleNumberSnapshot: returnEntry.sourceSaleNumberSnapshot,
     createdAt: returnEntry.createdAt,
     updatedAt: returnEntry.updatedAt,
   };
@@ -189,6 +285,16 @@ export const returnRepository = {
     return entries.map(toListItem);
   },
 
+  /** Returns linked to a completed sale (for returnable-qty aggregation). */
+  async listBySourceSaleId(orgId: string, sourceSaleId: string): Promise<ReturnEntry[]> {
+    const snapshot = await getOrgCollection(orgId, 'returns')
+      .where('deletedAt', '==', null)
+      .where('sourceSaleId', '==', sourceSaleId)
+      .get();
+
+    return snapshot.docs.map((doc) => toReturnEntry(doc.id, doc.data() as ReturnDocument));
+  },
+
   async getById(orgId: string, returnId: string): Promise<ReturnEntry | null> {
     const doc = await getOrgCollection(orgId, 'returns').doc(returnId).get();
 
@@ -259,6 +365,8 @@ export const returnRepository = {
       returnNumber: string;
       returnDate: string;
       reason: ReturnReason;
+      sourceSaleId: string | null;
+      sourceSaleNumberSnapshot: string | null;
       lines: ReturnLineItem[];
       totalUnits: number;
       notes?: string | null;
@@ -275,13 +383,18 @@ export const returnRepository = {
       returnDate: input.returnDate,
       reason: input.reason,
       status: 'draft',
+      sourceSaleId: input.sourceSaleId,
+      sourceSaleNumberSnapshot: input.sourceSaleNumberSnapshot,
       lines: input.lines.map((line) => ({
         id: line.id,
+        saleLineId: line.saleLineId,
         productId: line.productId,
         productNameSnapshot: line.productNameSnapshot,
         productCodeSnapshot: line.productCodeSnapshot,
         quantity: line.quantity,
         unit: line.unit,
+        sellingPriceSnapshot: line.sellingPriceSnapshot,
+        unitCostSnapshot: line.unitCostSnapshot,
       })),
       lineCount: input.lines.length,
       totalUnits: input.totalUnits,
@@ -334,11 +447,14 @@ export const returnRepository = {
     if (input.lines !== undefined) {
       updates.lines = input.lines.map((line) => ({
         id: line.id,
+        saleLineId: line.saleLineId,
         productId: line.productId,
         productNameSnapshot: line.productNameSnapshot,
         productCodeSnapshot: line.productCodeSnapshot,
         quantity: line.quantity,
         unit: line.unit,
+        sellingPriceSnapshot: line.sellingPriceSnapshot,
+        unitCostSnapshot: line.unitCostSnapshot,
       }));
       updates.lineCount = input.lines.length;
     }
@@ -419,7 +535,55 @@ export const returnRepository = {
         throw new DomainError('VALIDATION_ERROR', 'Return must have at least one product line');
       }
 
-      const uniqueProductIds = [...new Set(returnData.lines.map((line) => line.productId))];
+      const isLinkedReturn = Boolean(returnData.sourceSaleId);
+
+      let resolvedLines = returnData.lines;
+
+      if (isLinkedReturn) {
+        const sourceSaleId = returnData.sourceSaleId;
+
+        if (!sourceSaleId) {
+          throw new DomainError('VALIDATION_ERROR', 'Sale-linked return is missing its source sale');
+        }
+
+        const saleRef = getOrgCollection(orgId, 'sales').doc(sourceSaleId);
+        const saleSnap = await transaction.get(saleRef);
+
+        if (!saleSnap.exists) {
+          throw new DomainError('NOT_FOUND', 'Sale not found');
+        }
+
+        const saleData = saleSnap.data() as SaleDocument;
+
+        if (saleData.deletedAt) {
+          throw new DomainError('NOT_FOUND', 'Sale not found');
+        }
+
+        if (saleData.status !== 'completed') {
+          throw new DomainError('VALIDATION_ERROR', 'Returns can only be recorded against completed sales');
+        }
+
+        if (saleData.organizationId !== orgId) {
+          throw new DomainError('NOT_FOUND', 'Sale not found');
+        }
+
+        const siblingsQuery = getOrgCollection(orgId, 'returns')
+          .where('deletedAt', '==', null)
+          .where('sourceSaleId', '==', sourceSaleId);
+        const siblingsSnap = await transaction.get(siblingsQuery);
+        const siblings = siblingsSnap.docs.map((doc) =>
+          toSiblingReturnSnapshot(doc.id, doc.data() as ReturnDocument),
+        );
+
+        resolvedLines = validateLinkedReturnQuantitiesInTransaction(
+          saleData,
+          returnId,
+          returnData,
+          siblings,
+        );
+      }
+
+      const uniqueProductIds = [...new Set(resolvedLines.map((line) => line.productId))];
       const productRefs = new Map<string, DocumentReference>();
       const initialProductState = new Map<string, { currentStock: number; averageCost: number }>();
       const runningProductState = new Map<string, { qty: number; avgCost: number }>();
@@ -438,7 +602,7 @@ export const returnRepository = {
           throw new DomainError('NOT_FOUND', 'One or more products were not found');
         }
 
-        if (!productData.isActive) {
+        if (!isLinkedReturn && !productData.isActive) {
           throw new DomainError('VALIDATION_ERROR', 'One or more products are inactive');
         }
 
@@ -453,7 +617,7 @@ export const returnRepository = {
         });
       }
 
-      for (const line of returnData.lines) {
+      for (const line of resolvedLines) {
         const state = runningProductState.get(line.productId);
 
         if (!state) {
@@ -461,7 +625,9 @@ export const returnRepository = {
         }
 
         const newQty = state.qty + line.quantity;
-        const unitCost = state.avgCost;
+        const unitCost = isLinkedReturn
+          ? (line.unitCostSnapshot ?? state.avgCost)
+          : state.avgCost;
         const totalCost = Math.round(line.quantity * unitCost);
 
         runningProductState.set(line.productId, {
@@ -515,6 +681,7 @@ export const returnRepository = {
 
       transaction.update(returnRef, {
         status: 'completed',
+        lines: resolvedLines,
         completedAt: now,
         completedBy: userId,
         updatedAt: now,
@@ -524,6 +691,7 @@ export const returnRepository = {
       const updatedReturn: ReturnDocument = {
         ...returnData,
         status: 'completed',
+        lines: resolvedLines,
         completedAt: now,
         completedBy: userId,
         updatedAt: now,

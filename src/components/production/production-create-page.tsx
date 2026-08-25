@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,12 +10,13 @@ import { toast } from 'sonner';
 import { completeProductionAction, createProductionAction, getLatestProductionForRepeatAction, getProductionAction } from '@/actions/production';
 import { ProductionForm } from '@/components/production/production-form';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { EntrySuccessBanner } from '@/components/shared/entry-success-banner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { toRepeatLastFormLines } from '@/lib/domain/production/repeat-last';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
+import { moduleDetailPath, moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import {
   mapProductionActionError,
   type ProductionFieldError,
@@ -28,11 +30,8 @@ import {
 
 const FORM_ID = 'production-create-form';
 
-type SuccessState = {
-  productionNumber: string;
-};
-
 export function ProductionCreatePage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const submitIntentRef = useRef<'draft' | 'complete'>('draft');
   const pendingDraftIdRef = useRef<string | null>(null);
@@ -43,7 +42,6 @@ export function ProductionCreatePage() {
   const [serverFieldError, setServerFieldError] = useState<ProductionFieldError | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingValues, setPendingValues] = useState<ProductionFormValues | null>(null);
-  const [successState, setSuccessState] = useState<SuccessState | null>(null);
   const [formKey, setFormKey] = useState(0);
   const [repeatLines, setRepeatLines] = useState<ProductionFormValues['lines'] | null>(null);
   const [isRepeating, setIsRepeating] = useState(false);
@@ -91,7 +89,6 @@ export function ProductionCreatePage() {
 
     setIsSubmitting(true);
     setServerFieldError(null);
-    setSuccessState(null);
     setSubmitMode('draft');
 
     try {
@@ -102,6 +99,7 @@ export function ProductionCreatePage() {
       }
 
       toast.success('Production saved as draft');
+      router.replace(moduleDetailPath('production', production.id));
     } finally {
       setIsSubmitting(false);
       setSubmitMode(null);
@@ -149,21 +147,16 @@ export function ProductionCreatePage() {
       ]);
 
       pendingDraftIdRef.current = null;
-      setSuccessState({ productionNumber: completeResult.data.productionNumber });
       setPendingValues(null);
       setConfirmOpen(false);
-      setFormKey((current) => current + 1);
+      toast.success('Production completed. Raw materials deducted and product stock updated.');
+      clearModuleWorkflowOnExit('production');
+      router.push(moduleListPath('production'));
     } finally {
       confirmCompleteInFlightRef.current = false;
       setIsSubmitting(false);
       setSubmitMode(null);
     }
-  }
-
-  function handleNewProduction() {
-    setSuccessState(null);
-    setRepeatLines(null);
-    setFormKey((current) => current + 1);
   }
 
   async function handleRepeatLastProduction() {
@@ -197,7 +190,6 @@ export function ProductionCreatePage() {
 
       const lines = toRepeatLastFormLines(productionResult.data.lines);
 
-      setSuccessState(null);
       setRepeatLines(lines);
       setFormKey((current) => current + 1);
       toast.success(
@@ -241,15 +233,6 @@ export function ProductionCreatePage() {
           {isRepeating ? 'Loading…' : 'Repeat Last Production'}
         </Button>
       </PageHeader>
-
-      {successState ? (
-        <EntrySuccessBanner
-          title="Production completed"
-          description={`${successState.productionNumber} completed. Raw materials deducted and product stock updated.`}
-          actionLabel="Record another production"
-          onAction={handleNewProduction}
-        />
-      ) : null}
 
       <ProductionForm
         key={formKey}

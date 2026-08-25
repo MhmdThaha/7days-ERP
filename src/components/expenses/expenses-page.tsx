@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_PAGE_SIZE } from '@/lib/domain/constants/expense';
 import { useExpenses } from '@/hooks/queries/use-expenses';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowResumeForRecord } from '@/lib/navigation/module-workflow-resume';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -93,6 +94,7 @@ export function ExpensesPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('expenses', deletingExpense.id);
       toast.success('Expense draft deleted successfully');
       setDeletingExpense(null);
 
@@ -126,6 +128,7 @@ export function ExpensesPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('expenses', completingExpense.id);
       toastWorkflowComplete('Expense completed and recorded in reports.', {
         recordAnother: {
           label: 'Record another',

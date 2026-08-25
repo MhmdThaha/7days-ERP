@@ -2,8 +2,11 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
+
+import { useReportFormDirtyChange } from '@/hooks/use-report-form-dirty-change';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 
 import { ReturnLineItemRow } from '@/components/returns/return-line-item-row';
 import { ReturnTotalBar } from '@/components/returns/return-total-bar';
@@ -25,7 +28,10 @@ import {
   RETURN_REASONS,
   RETURN_REASON_LABELS,
 } from '@/lib/domain/constants/return';
-import { returnFormSchema, type ReturnFormValues } from '@/lib/domain/schemas/return.schema';
+import {
+  legacyReturnFormSchema,
+  type LegacyReturnFormValues,
+} from '@/lib/domain/schemas/return.schema';
 import {
   focusFirstReturnFormError,
   focusReturnFormField,
@@ -37,14 +43,15 @@ import type { ReturnEntry } from '@/types/return';
 
 type ReturnFormProps = {
   returnEntry?: ReturnEntry;
-  onSubmit: (values: ReturnFormValues) => Promise<void>;
+  onSubmit: (values: LegacyReturnFormValues) => Promise<void>;
   isSubmitting?: boolean;
   formId: string;
   serverFieldError?: ReturnFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
-const defaultValues: ReturnFormValues = {
+const defaultValues: LegacyReturnFormValues = {
   returnDate: getLocalReturnDateString(),
   reason: 'damaged',
   lines: [],
@@ -63,6 +70,7 @@ export function ReturnForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  onDirtyChange,
 }: ReturnFormProps) {
   const {
     register,
@@ -74,8 +82,8 @@ export function ReturnForm({
     reset,
     control,
     formState: { errors },
-  } = useForm<ReturnFormValues>({
-    resolver: zodResolver(returnFormSchema),
+  } = useForm<LegacyReturnFormValues>({
+    resolver: zodResolver(legacyReturnFormSchema),
     defaultValues,
   });
 
@@ -83,6 +91,10 @@ export function ReturnForm({
     control,
     name: 'lines',
   });
+
+  useReportFormDirtyChange(control, onDirtyChange);
+
+  const loadedReturnIdRef = useRef<string | null>(null);
 
   const lines = watch('lines');
   const reason = watch('reason');
@@ -131,6 +143,11 @@ export function ReturnForm({
 
   useEffect(() => {
     if (returnEntry) {
+      if (loadedReturnIdRef.current === returnEntry.id) {
+        return;
+      }
+
+      loadedReturnIdRef.current = returnEntry.id;
       reset({
         returnDate: returnEntry.returnDate,
         reason: returnEntry.reason,
@@ -144,6 +161,7 @@ export function ReturnForm({
       return;
     }
 
+    loadedReturnIdRef.current = null;
     reset(defaultValues);
   }, [returnEntry, reset]);
 
@@ -152,7 +170,7 @@ export function ReturnForm({
       return;
     }
 
-    setError(serverFieldError.field as FieldPath<ReturnFormValues>, {
+    setError(serverFieldError.field as FieldPath<LegacyReturnFormValues>, {
       message: serverFieldError.message,
     });
     focusReturnFormField(serverFieldError.field);
@@ -223,7 +241,7 @@ export function ReturnForm({
               items={reasonSelectItems}
               onValueChange={(value) => {
                 if (value) {
-                  setValue('reason', value, { shouldValidate: true });
+                  setValue('reason', value, USER_FIELD_SET_VALUE_OPTIONS);
                 }
               }}
               disabled={isFormDisabled}

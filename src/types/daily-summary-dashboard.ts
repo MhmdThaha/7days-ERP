@@ -1,4 +1,6 @@
 export type DailySummaryDashboardKpis = {
+  grossSales: number;
+  returnRevenue: number;
   netSales: number;
   netProfit: number;
   grossProfit: number;

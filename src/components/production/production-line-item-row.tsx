@@ -18,6 +18,7 @@ import {
 } from '@/components/shared/line-items-grid/line-items-grid';
 import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Input } from '@/components/ui/input';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/production';
 import type { ProductionFormValues } from '@/lib/domain/schemas/production.schema';
 import { focusProductionLineField } from '@/lib/utils/production-form-errors';
@@ -85,7 +86,7 @@ export function ProductionLineItemRow({
     }
 
     onProductChange(value);
-    setValue(`lines.${index}.productId`, value, { shouldValidate: true });
+    setValue(`lines.${index}.productId`, value, USER_FIELD_SET_VALUE_OPTIONS);
     focusProductionLineField(index, 'quantity');
   }
 

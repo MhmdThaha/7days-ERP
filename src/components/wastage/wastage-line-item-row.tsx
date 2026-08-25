@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/wastage';
 import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
 import { cn } from '@/lib/utils';
@@ -58,7 +59,7 @@ export function WastageLineItemRow({
     }
 
     onProductChange(value);
-    setValue(`lines.${index}.productId`, value, { shouldValidate: true });
+    setValue(`lines.${index}.productId`, value, USER_FIELD_SET_VALUE_OPTIONS);
   }
 
   return (

@@ -37,6 +37,8 @@ export function buildDailyReportWorkbook(report: DailyReportData): XLSX.WorkBook
   const summarySheet = XLSX.utils.aoa_to_sheet([
     ['Metric', 'Value'],
     ['Report date', report.reportDate],
+    ['Gross sales', formatMoney(report.financial.grossSales)],
+    ['Returns', formatMoney(report.financial.returnRevenue)],
     ['Net sales', formatMoney(report.financial.netSales)],
     ['COGS', formatMoney(report.financial.totalCogs)],
     ['Gross profit', formatMoney(report.financial.grossProfit)],

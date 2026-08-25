@@ -58,9 +58,9 @@ export function DashboardKpiSection({ summary, counts }: DashboardKpiSectionProp
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardStatCard
-          title="Today's Sales"
+          title="Today's Gross Sales"
           value={<MoneyDisplay amount={summary.todaySalesTotal} />}
-          description="Completed sales today"
+          description="Completed sales before returns"
           icon={Banknote}
           href="/sales"
           variant="metric"

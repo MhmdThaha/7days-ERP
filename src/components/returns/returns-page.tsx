@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { RETURN_PAGE_SIZE } from '@/lib/domain/constants/return';
 import { useReturns } from '@/hooks/queries/use-returns';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowResumeForRecord } from '@/lib/navigation/module-workflow-resume';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import type { ReturnListItem } from '@/types/return';
@@ -78,6 +79,7 @@ export function ReturnsPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('returns', deletingReturn.id);
       toast.success('Return draft deleted successfully');
       setDeletingReturn(null);
 
@@ -111,6 +113,7 @@ export function ReturnsPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('returns', completingReturn.id);
       toastWorkflowComplete('Return completed. Product stock has been restored.', {
         recordAnother: {
           label: 'Record another',

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { ReportExecutiveKpiCard } from '@/components/reports/report-executive-kpi-card';
 import { ReportMetricCard } from '@/components/reports/report-metric-card';
+import { buildSalesFlowPrefixSteps } from '@/components/reports/report-profit-flow-section';
 import { MoneyDisplay } from '@/components/shared/money-display';
 import { formatMoney } from '@/lib/utils/money';
 
@@ -37,9 +38,9 @@ describe('report KPI visual hierarchy', () => {
   it('applies semantic value colors on executive KPI cards', () => {
     const { container, rerender } = render(
       <ReportExecutiveKpiCard
-        title="Today's Sales"
+        title="Today's Net Sales"
         value={<MoneyDisplay amount={9_999_999_900} />}
-        description="Money received today"
+        description="After returns today"
         icon={Banknote}
         tone="sales"
       />,
@@ -79,9 +80,9 @@ describe('report KPI visual hierarchy', () => {
     for (const amount of STRESS_AMOUNTS) {
       const { container, unmount } = render(
         <ReportExecutiveKpiCard
-          title="Today's Sales"
+          title="Today's Net Sales"
           value={<MoneyDisplay amount={amount} />}
-          description="Money received today"
+          description="After returns today"
           icon={Banknote}
           tone="sales"
         />,
@@ -128,5 +129,14 @@ describe('report KPI visual hierarchy', () => {
 
     expect(wastage.container.querySelector('.text-warning-foreground')).toBeTruthy();
     expect(wastage.container.querySelector('.truncate')).toBeTruthy();
+  });
+
+  it('builds gross-returns-net profit flow steps from summary-derived amounts', () => {
+    const steps = buildSalesFlowPrefixSteps(16_000, 8_000, 8_000);
+
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toMatchObject({ label: 'Gross Sales', amount: 16_000 });
+    expect(steps[1]).toMatchObject({ label: 'Returns', amount: 8_000, tone: 'expense' });
+    expect(steps[2]).toMatchObject({ label: 'Net Sales', amount: 8_000 });
   });
 });

@@ -26,6 +26,7 @@ import {
   invalidateInventoryStockQueries,
   invalidateMonthlyReportQueries,
 } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowResumeForRecord } from '@/lib/navigation/module-workflow-resume';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -192,6 +193,7 @@ export function ProductionsPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('production', deletingProduction.id);
       toast.success('Production draft deleted successfully');
       setDeletingProduction(null);
 
@@ -236,6 +238,7 @@ export function ProductionsPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('production', completingProduction.id);
       toastWorkflowComplete(
         'Production completed. Raw materials deducted and product stock updated.',
         {

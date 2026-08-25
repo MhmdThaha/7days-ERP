@@ -146,6 +146,8 @@ describe('dailyReportRepository.getDailyReport date-bounded loading', () => {
 
     expect(report.sales.count).toBe(1);
     expect(report.production.totalUnits).toBe(12);
+    expect(report.financial.grossSales).toBe(500);
+    expect(report.financial.returnRevenue).toBe(0);
     expect(report.financial.netSales).toBe(500);
     expect(report.transactions).toHaveLength(2);
   });

@@ -20,6 +20,7 @@ import {
 import { rememberSupplier } from '@/lib/utils/form-recent-values';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 
 const FORM_ID = 'purchase-create-form';
 
@@ -208,7 +209,8 @@ export function PurchaseCreatePage() {
       });
 
       toast.success('Purchase received. Raw material stock has been updated.');
-      router.push(`/purchases/${purchaseId}`);
+      clearModuleWorkflowOnExit('purchases');
+      router.push('/purchases');
     } finally {
       confirmReceiveInFlightRef.current = false;
       setIsSubmitting(false);

@@ -15,6 +15,7 @@ import { MoneyDisplay } from '@/components/shared/money-display';
 import { MoneyInput } from '@/components/shared/money-input';
 import { RawMaterialPickerCombobox } from '@/components/shared/raw-material-picker-combobox';
 import { Input } from '@/components/ui/input';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 import { DUPLICATE_RAW_MATERIAL_MESSAGE } from '@/lib/domain/constants/purchase';
 import type { PurchaseFormValues } from '@/lib/domain/schemas/purchase.schema';
 import {
@@ -113,7 +114,7 @@ export function PurchaseLineItemRow({
     }
 
     onRawMaterialChange(value);
-    setValue(`lineItems.${index}.rawMaterialId`, value, { shouldValidate: true });
+    setValue(`lineItems.${index}.rawMaterialId`, value, USER_FIELD_SET_VALUE_OPTIONS);
     rememberRawMaterial(value);
     focusPurchaseLineItemField(index, 'packSize');
   }
@@ -128,13 +129,13 @@ export function PurchaseLineItemRow({
     if (Number.isFinite(currentSize) && currentSize > 0) {
       try {
         const converted = convertQuantity(currentSize, unit, nextUnit);
-        setValue(`lineItems.${index}.packSize`, converted, { shouldValidate: true });
+        setValue(`lineItems.${index}.packSize`, converted, USER_FIELD_SET_VALUE_OPTIONS);
       } catch {
         // Keep numeric value if conversion is unavailable; unit still updates for entry.
       }
     }
 
-    setValue(`lineItems.${index}.unit`, nextUnit, { shouldValidate: true });
+    setValue(`lineItems.${index}.unit`, nextUnit, USER_FIELD_SET_VALUE_OPTIONS);
   }
 
   const unitOptions = listCompatibleUnits(unit);
@@ -227,7 +228,7 @@ export function PurchaseLineItemRow({
           value={packPrice}
           onChange={(value) => {
             onPackPriceChange(value);
-            setValue(`lineItems.${index}.packPrice`, value, { shouldValidate: true });
+            setValue(`lineItems.${index}.packPrice`, value, USER_FIELD_SET_VALUE_OPTIONS);
           }}
           disabled={disabled}
           aria-invalid={Boolean(lineItemErrors?.packPrice)}

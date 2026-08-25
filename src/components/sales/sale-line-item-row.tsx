@@ -16,6 +16,7 @@ import { MoneyDisplay } from '@/components/shared/money-display';
 import { MoneyInput } from '@/components/shared/money-input';
 import { ProductPickerCombobox } from '@/components/shared/product-picker-combobox';
 import { Input } from '@/components/ui/input';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/sale';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
 import { handleEnterAsTab } from '@/lib/utils/line-item-keyboard';
@@ -180,7 +181,7 @@ export function SaleLineItemRow({
           value={sellingPrice}
           onChange={(value) => {
             onSellingPriceChange(value);
-            setValue(`lines.${index}.sellingPrice`, value, { shouldValidate: true });
+            setValue(`lines.${index}.sellingPrice`, value, USER_FIELD_SET_VALUE_OPTIONS);
           }}
           disabled={disabled}
           aria-invalid={Boolean(lineErrors?.sellingPrice)}

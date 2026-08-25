@@ -9,7 +9,9 @@ import { toast } from 'sonner';
 
 import { getSaleAction, updateSaleAction } from '@/actions/sales';
 import { SaleForm } from '@/components/sales/sale-form';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -18,6 +20,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { SaleFormValues } from '@/lib/domain/schemas/sale.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapSaleActionError, type SaleFieldError } from '@/lib/utils/sale-form-errors';
+import { moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'sale-edit-form';
@@ -31,7 +35,9 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<SaleFieldError | null>(null);
+  const { allowNavigation, unsavedChangesDialog } = useUnsavedChangesGuard(isDirty);
 
   const {
     data: sale,
@@ -52,6 +58,11 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
     },
     enabled: isAuthenticated,
   });
+
+  useClearWorkflowResumeOnFailure(
+    'sales',
+    Boolean(error || !sale || (sale && sale.status !== 'draft')),
+  );
 
   async function handleSubmit(values: SaleFormValues) {
     if (isSubmitting || !sale) {
@@ -90,6 +101,7 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      allowNavigation();
       router.push(`/sales/${saleId}`);
     } finally {
       setIsSubmitting(false);
@@ -135,15 +147,21 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
 
   return (
     <div className="space-y-6">
+      {unsavedChangesDialog}
       <div className="flex items-center gap-2">
         <Button
           nativeButton={false}
           variant="ghost"
           size="sm"
-          render={<Link href={`/sales/${saleId}`} />}
+          render={
+            <Link
+              href={moduleListPath('sales')}
+              onClick={() => clearModuleWorkflowOnExit('sales')}
+            />
+          }
         >
           <ArrowLeft />
-          Back to Sale
+          Back to Sales
         </Button>
       </div>
 
@@ -159,12 +177,18 @@ export function SaleEditPage({ saleId }: SaleEditPageProps) {
         isSubmitting={isSubmitting}
         serverFieldError={serverFieldError}
         onServerFieldErrorHandled={() => setServerFieldError(null)}
+        onDirtyChange={setIsDirty}
         footerActions={
           <>
             <Button
               nativeButton={false}
               variant="ghost"
-              render={<Link href={`/sales/${saleId}`} />}
+              render={
+                <Link
+                  href={moduleListPath('sales')}
+                  onClick={() => clearModuleWorkflowOnExit('sales')}
+                />
+              }
               disabled={isSubmitting}
             >
               Cancel

@@ -5,12 +5,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Info, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Info, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeSaleAction, deleteSaleAction, getSaleAction } from '@/actions/sales';
+import { getSaleReturnContextAction } from '@/actions/returns';
 import { SaleDetailSummary } from '@/components/sales/sale-detail-summary';
 import { SaleStatusBadge } from '@/components/sales/sale-status-badge';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DraftActionBanner } from '@/components/shared/draft-action-banner';
@@ -33,6 +35,7 @@ import {
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { formatMoney } from '@/lib/utils/money';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type SaleDetailPageProps = {
@@ -89,6 +92,22 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
     enabled: isAuthenticated,
   });
 
+  const { data: returnContext } = useQuery({
+    queryKey: ['sale-return-context', saleId],
+    queryFn: async () => {
+      const result = await getSaleReturnContextAction(saleId);
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    },
+    enabled: isAuthenticated && sale?.status === 'completed',
+  });
+
+  useClearWorkflowResumeOnFailure('sales', Boolean(error || !sale));
+
   async function invalidateSaleQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['sales'] }),
@@ -125,6 +144,7 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      clearModuleWorkflowOnExit('sales');
       router.push('/sales');
     } finally {
       setIsDeleting(false);
@@ -155,6 +175,9 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
       setIsCompleteOpen(false);
 
       await invalidateSaleQueries();
+
+      clearModuleWorkflowOnExit('sales');
+      router.push('/sales');
     } finally {
       setIsCompleting(false);
     }
@@ -245,7 +268,21 @@ export function SaleDetailPage({ saleId }: SaleDetailPageProps) {
               Delete
             </Button>
           </div>
-        ) : null}
+        ) : (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {returnContext?.hasReturnableQuantity ? (
+              <Button
+                nativeButton={false}
+                variant="outline"
+                size="xl"
+                render={<Link href={`/returns/new?saleId=${saleId}`} />}
+              >
+                <RotateCcw />
+                Return
+              </Button>
+            ) : null}
+          </div>
+        )}
       </PageHeader>
 
       {canEdit ? (

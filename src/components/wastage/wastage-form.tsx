@@ -2,8 +2,11 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
+
+import { useReportFormDirtyChange } from '@/hooks/use-report-form-dirty-change';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 
 import { WastageLineItemRow } from '@/components/wastage/wastage-line-item-row';
 import { WastageTotalBar } from '@/components/wastage/wastage-total-bar';
@@ -47,6 +50,7 @@ type WastageFormProps = {
   serverFieldError?: WastageFieldError | null;
   onServerFieldErrorHandled?: () => void;
   onStockValidationChange?: (hasErrors: boolean) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 const defaultValues: WastageFormValues = {
@@ -69,6 +73,7 @@ export function WastageForm({
   serverFieldError,
   onServerFieldErrorHandled,
   onStockValidationChange,
+  onDirtyChange,
 }: WastageFormProps) {
   const {
     register,
@@ -89,6 +94,10 @@ export function WastageForm({
     control,
     name: 'lines',
   });
+
+  useReportFormDirtyChange(control, onDirtyChange);
+
+  const loadedWastageIdRef = useRef<string | null>(null);
 
   const lines = watch('lines');
   const reason = watch('reason');
@@ -151,6 +160,11 @@ export function WastageForm({
 
   useEffect(() => {
     if (wastage) {
+      if (loadedWastageIdRef.current === wastage.id) {
+        return;
+      }
+
+      loadedWastageIdRef.current = wastage.id;
       reset({
         wastageDate: wastage.wastageDate,
         reason: wastage.reason,
@@ -164,6 +178,7 @@ export function WastageForm({
       return;
     }
 
+    loadedWastageIdRef.current = null;
     reset(defaultValues);
   }, [wastage, reset]);
 
@@ -243,7 +258,7 @@ export function WastageForm({
               items={reasonSelectItems}
               onValueChange={(value) => {
                 if (value) {
-                  setValue('reason', value, { shouldValidate: true });
+                  setValue('reason', value, USER_FIELD_SET_VALUE_OPTIONS);
                 }
               }}
               disabled={isFormDisabled}

@@ -7,19 +7,33 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { getReturnAction, updateReturnAction } from '@/actions/returns';
+import { getReturnAction, getSaleReturnContextAction, updateReturnAction } from '@/actions/returns';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { ReturnForm } from '@/components/returns/return-form';
+import { SaleReturnForm } from '@/components/returns/sale-return-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ReturnFormValues } from '@/lib/domain/schemas/return.schema';
+import {
+  createReturnSchema,
+  legacyReturnFormSchema,
+  type LegacyReturnFormValues,
+  type ReturnFormValues,
+} from '@/lib/domain/schemas/return.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapReturnActionError, type ReturnFieldError } from '@/lib/utils/return-form-errors';
-import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
+import {
+  invalidateDailyReportQueries,
+  invalidateDashboardQueries,
+  invalidateMonthlyReportQueries,
+} from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'return-edit-form';
 
@@ -32,7 +46,11 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLegacyDirty, setIsLegacyDirty] = useState(false);
+  const [isLinkedDirty, setIsLinkedDirty] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<ReturnFieldError | null>(null);
+  const isDirty = isLegacyDirty || isLinkedDirty;
+  const { allowNavigation, unsavedChangesDialog } = useUnsavedChangesGuard(isDirty);
 
   const {
     data: returnEntry,
@@ -54,8 +72,40 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
     enabled: isAuthenticated,
   });
 
-  async function handleSubmit(values: ReturnFormValues) {
+  useClearWorkflowResumeOnFailure(
+    'returns',
+    Boolean(error || !returnEntry || (returnEntry && returnEntry.status !== 'draft')),
+  );
+
+  const { data: saleContext, isLoading: isLoadingSaleContext } = useQuery({
+    queryKey: ['sale-return-context', returnEntry?.sourceSaleId],
+    queryFn: async () => {
+      if (!returnEntry?.sourceSaleId) {
+        return null;
+      }
+
+      const result = await getSaleReturnContextAction(returnEntry.sourceSaleId);
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    },
+    enabled: isAuthenticated && Boolean(returnEntry?.sourceSaleId),
+  });
+
+  async function handleLinkedSubmit(values: ReturnFormValues) {
     if (isSubmitting || !returnEntry) {
+      return;
+    }
+
+    const lines = values.lines.filter(
+      (line) => Number.isFinite(line.quantity) && line.quantity > 0,
+    );
+
+    if (lines.length === 0) {
+      toastFormError('Enter a return quantity for at least one product.');
       return;
     }
 
@@ -63,11 +113,17 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
     setServerFieldError(null);
 
     try {
-      const result = await updateReturnAction(returnId, {
-        returnDate: values.returnDate,
-        reason: values.reason,
-        lines: values.lines,
+      const parsed = createReturnSchema.parse({
+        ...values,
+        lines,
         notes: values.notes ?? null,
+      });
+
+      const result = await updateReturnAction(returnId, {
+        returnDate: parsed.returnDate,
+        reason: parsed.reason,
+        lines: parsed.lines,
+        notes: parsed.notes ?? null,
       });
 
       if (!result.success) {
@@ -91,7 +147,29 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      allowNavigation();
       router.push(`/returns/${returnId}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleLegacySubmit(values: LegacyReturnFormValues) {
+    if (isSubmitting || !returnEntry) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setServerFieldError(null);
+
+    try {
+      const parsed = legacyReturnFormSchema.parse({
+        ...values,
+        notes: values.notes ?? null,
+      });
+
+      toastFormError('Legacy returns cannot change product lines. Create a new sale-linked return instead.');
+      void parsed;
     } finally {
       setIsSubmitting(false);
     }
@@ -134,17 +212,25 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
     );
   }
 
+  const isLinked = Boolean(returnEntry.sourceSaleId);
+
   return (
     <div className="space-y-6">
+      {unsavedChangesDialog}
       <div className="flex items-center gap-2">
         <Button
           nativeButton={false}
           variant="ghost"
           size="sm"
-          render={<Link href={`/returns/${returnId}`} />}
+          render={
+            <Link
+              href={moduleListPath('returns')}
+              onClick={() => clearModuleWorkflowOnExit('returns')}
+            />
+          }
         >
           <ArrowLeft />
-          Back to Return
+          Back to Customer Returns
         </Button>
       </div>
 
@@ -158,30 +244,53 @@ export function ReturnEditPage({ returnId }: ReturnEditPageProps) {
           <CardTitle>Return Details</CardTitle>
         </CardHeader>
         <CardContent>
-          <ReturnForm
-            formId={FORM_ID}
-            returnEntry={returnEntry}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            serverFieldError={serverFieldError}
-            onServerFieldErrorHandled={() => setServerFieldError(null)}
-          />
+          {isLinked ? (
+            isLoadingSaleContext || !saleContext ? (
+              <Skeleton className="h-64 w-full" />
+            ) : (
+              <SaleReturnForm
+                formId={FORM_ID}
+                saleContext={saleContext}
+                returnEntry={returnEntry}
+                onSubmit={handleLinkedSubmit}
+                isSubmitting={isSubmitting}
+                onDirtyChange={setIsLinkedDirty}
+              />
+            )
+          ) : (
+            <ReturnForm
+              formId={FORM_ID}
+              returnEntry={returnEntry}
+              onSubmit={handleLegacySubmit}
+              isSubmitting={isSubmitting}
+              serverFieldError={serverFieldError}
+              onServerFieldErrorHandled={() => setServerFieldError(null)}
+              onDirtyChange={setIsLegacyDirty}
+            />
+          )}
         </CardContent>
       </Card>
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href={`/returns/${returnId}`} />}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
+      {isLinked ? (
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            nativeButton={false}
+            variant="outline"
+            render={
+              <Link
+                href={moduleListPath('returns')}
+                onClick={() => clearModuleWorkflowOnExit('returns')}
+              />
+            }
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -8,7 +8,9 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getPurchaseAction, updatePurchaseAction } from '@/actions/purchases';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { PurchaseForm } from '@/components/purchases/purchase-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -21,6 +23,8 @@ import {
   mapPurchaseActionError,
   type PurchaseFieldError,
 } from '@/lib/utils/purchase-form-errors';
+import { moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { invalidateDashboardQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'purchase-edit-form';
@@ -34,7 +38,9 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<PurchaseFieldError | null>(null);
+  const { allowNavigation, unsavedChangesDialog } = useUnsavedChangesGuard(isDirty);
 
   const {
     data: purchase,
@@ -55,6 +61,11 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
     },
     enabled: isAuthenticated,
   });
+
+  useClearWorkflowResumeOnFailure(
+    'purchases',
+    Boolean(error || !purchase || (purchase != null && purchase.status !== 'draft')),
+  );
 
   async function handleSubmit(values: PurchaseFormValues) {
     if (isSubmitting || !purchase) {
@@ -95,6 +106,7 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
         invalidateDashboardQueries(queryClient),
       ]);
 
+      allowNavigation();
       router.push(`/purchases/${purchaseId}`);
     } finally {
       setIsSubmitting(false);
@@ -140,15 +152,21 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
 
   return (
     <div className="space-y-6">
+      {unsavedChangesDialog}
       <div className="flex items-center gap-2">
         <Button
           nativeButton={false}
           variant="ghost"
           size="sm"
-          render={<Link href={`/purchases/${purchaseId}`} />}
+          render={
+            <Link
+              href={moduleListPath('purchases')}
+              onClick={() => clearModuleWorkflowOnExit('purchases')}
+            />
+          }
         >
           <ArrowLeft />
-          Back to Purchase
+          Back to Purchases
         </Button>
       </div>
 
@@ -164,12 +182,18 @@ export function PurchaseEditPage({ purchaseId }: PurchaseEditPageProps) {
         isSubmitting={isSubmitting}
         serverFieldError={serverFieldError}
         onServerFieldErrorHandled={() => setServerFieldError(null)}
+        onDirtyChange={setIsDirty}
         footerActions={
           <>
             <Button
               nativeButton={false}
               variant="ghost"
-              render={<Link href={`/purchases/${purchaseId}`} />}
+              render={
+            <Link
+              href={moduleListPath('purchases')}
+              onClick={() => clearModuleWorkflowOnExit('purchases')}
+            />
+          }
               disabled={isSubmitting}
             >
               Cancel

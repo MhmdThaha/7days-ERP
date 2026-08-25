@@ -8,6 +8,8 @@ import type {
 } from '@/types/daily-summary-dashboard';
 
 const kpis: DailySummaryDashboardKpis = {
+  grossSales: 1000,
+  returnRevenue: 0,
   netSales: 1000,
   netProfit: 100,
   grossProfit: 200,

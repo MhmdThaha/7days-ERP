@@ -24,6 +24,10 @@ export type DailyReportReturnsSummary = {
 };
 
 export type DailyReportFinancialSummary = {
+  /** Completed sale subtotals before returns (from daily summary totalSalesRevenue). */
+  grossSales: number;
+  /** Return revenue applied today (grossSales − netSales). */
+  returnRevenue: number;
   netSales: number;
   totalCogs: number;
   grossProfit: number;

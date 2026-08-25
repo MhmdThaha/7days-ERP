@@ -9,6 +9,7 @@ import { ArrowLeft, Info, PackageCheck, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { deletePurchaseAction, getPurchaseAction, receivePurchaseAction } from '@/actions/purchases';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
 import { PaymentStatusBadge } from '@/components/purchases/payment-status-badge';
 import { PurchaseDetailSummary } from '@/components/purchases/purchase-detail-summary';
@@ -36,6 +37,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { formatMoney } from '@/lib/utils/money';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateRawMaterialStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type PurchaseDetailPageProps = {
@@ -92,6 +94,8 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
     enabled: isAuthenticated,
   });
 
+  useClearWorkflowResumeOnFailure('purchases', Boolean(error || !purchase));
+
   async function invalidatePurchaseQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['purchases'] }),
@@ -125,6 +129,7 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
         invalidateDashboardQueries(queryClient),
       ]);
 
+      clearModuleWorkflowOnExit('purchases');
       router.push('/purchases');
     } finally {
       setIsDeleting(false);
@@ -155,6 +160,9 @@ export function PurchaseDetailPage({ purchaseId }: PurchaseDetailPageProps) {
       setIsReceiveOpen(false);
 
       await invalidatePurchaseQueries();
+
+      clearModuleWorkflowOnExit('purchases');
+      router.push('/purchases');
     } finally {
       setIsReceiving(false);
     }

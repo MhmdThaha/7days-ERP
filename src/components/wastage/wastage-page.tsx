@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { WASTAGE_PAGE_SIZE } from '@/lib/domain/constants/wastage';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowResumeForRecord } from '@/lib/navigation/module-workflow-resume';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import { useWastage } from '@/hooks/queries/use-wastage';
@@ -82,6 +83,7 @@ export function WastagePage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('wastage', deletingWastage.id);
       toast.success('Wastage draft deleted successfully');
       setDeletingWastage(null);
 
@@ -115,6 +117,7 @@ export function WastagePage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('wastage', completingWastage.id);
       toastWorkflowComplete('Wastage completed. Product stock has been deducted.', {
         recordAnother: {
           label: 'Record another',

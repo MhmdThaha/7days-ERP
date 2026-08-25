@@ -1,9 +1,16 @@
 import 'server-only';
 
 import { RETURN_NUMBER_PREFIX } from '@/lib/domain/constants/return';
+import {
+  aggregateReturnedQuantitiesBySaleLineId,
+  findSaleLine,
+  getRemainingReturnableQuantity,
+  saleHasReturnableQuantity,
+} from '@/lib/domain/calculations/return-sale-linkage';
 import { DomainError } from '@/lib/domain/errors';
-import { productRepository } from '@/lib/repositories/product.repository';
 import { generateReturnLineId, returnRepository } from '@/lib/repositories/return.repository';
+import { saleRepository } from '@/lib/repositories/sale.repository';
+import { dailySummaryService } from '@/lib/services/daily-summary.service';
 import type {
   CreateReturnInput,
   ReturnEntry,
@@ -11,8 +18,11 @@ import type {
   ReturnLineItemInput,
   ReturnListParams,
   ReturnListResult,
+  SaleReturnContext,
+  SaleReturnLineContext,
   UpdateReturnInput,
 } from '@/types/return';
+import type { Sale } from '@/types/sale';
 
 function formatGeneratedNumber(sequence: number): string {
   return `${RETURN_NUMBER_PREFIX}-${String(sequence).padStart(3, '0')}`;
@@ -35,34 +45,82 @@ async function resolveReturnNumber(orgId: string): Promise<string> {
   return generated;
 }
 
-async function resolveLineItems(
+async function getCompletedSale(orgId: string, saleId: string): Promise<Sale> {
+  const sale = await saleRepository.getById(orgId, saleId);
+
+  if (!sale) {
+    throw new DomainError('NOT_FOUND', 'Sale not found');
+  }
+
+  if (sale.status !== 'completed') {
+    throw new DomainError('VALIDATION_ERROR', 'Returns can only be recorded against completed sales');
+  }
+
+  return sale;
+}
+
+async function resolveLinkedLineItems(
   orgId: string,
+  sourceSaleId: string,
   lines: ReturnLineItemInput[],
-): Promise<ReturnLineItem[]> {
+  options?: { excludeReturnId?: string },
+): Promise<{ sale: Sale; lines: ReturnLineItem[] }> {
+  const sale = await getCompletedSale(orgId, sourceSaleId);
+
+  if (lines.length === 0) {
+    throw new DomainError('VALIDATION_ERROR', 'Return must have at least one sale line');
+  }
+
+  const siblingReturns = await returnRepository.listBySourceSaleId(orgId, sourceSaleId);
+  const returnedBySaleLineId = aggregateReturnedQuantitiesBySaleLineId(siblingReturns, {
+    excludeReturnId: options?.excludeReturnId,
+    includeDrafts: true,
+  });
+
   const resolved: ReturnLineItem[] = [];
+  const seenSaleLineIds = new Set<string>();
 
   for (const line of lines) {
-    const product = await productRepository.getById(orgId, line.productId);
-
-    if (!product) {
-      throw new DomainError('NOT_FOUND', 'One or more products were not found');
+    if (seenSaleLineIds.has(line.saleLineId)) {
+      throw new DomainError('VALIDATION_ERROR', 'Each sale line can only appear once on a return');
     }
 
-    if (!product.isActive) {
-      throw new DomainError('VALIDATION_ERROR', `Product "${product.name}" is inactive`);
+    seenSaleLineIds.add(line.saleLineId);
+
+    const saleLine = findSaleLine(sale, line.saleLineId);
+
+    if (!saleLine) {
+      throw new DomainError('NOT_FOUND', 'One or more sale lines were not found');
     }
+
+    const remaining = getRemainingReturnableQuantity(saleLine, returnedBySaleLineId);
+
+    if (line.quantity > remaining) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `Only ${remaining} ${saleLine.unit} of "${saleLine.productNameSnapshot}" remain available to return from this sale`,
+      );
+    }
+
+    returnedBySaleLineId.set(
+      saleLine.id,
+      (returnedBySaleLineId.get(saleLine.id) ?? 0) + line.quantity,
+    );
 
     resolved.push({
       id: line.id ?? generateReturnLineId(),
-      productId: product.id,
-      productNameSnapshot: product.name,
-      productCodeSnapshot: product.code,
+      saleLineId: saleLine.id,
+      productId: saleLine.productId,
+      productNameSnapshot: saleLine.productNameSnapshot,
+      productCodeSnapshot: saleLine.productCodeSnapshot,
       quantity: line.quantity,
-      unit: product.unit,
+      unit: saleLine.unit,
+      sellingPriceSnapshot: saleLine.sellingPriceSnapshot,
+      unitCostSnapshot: saleLine.unitCost,
     });
   }
 
-  return resolved;
+  return { sale, lines: resolved };
 }
 
 function assertDraftReturn(returnEntry: ReturnEntry): void {
@@ -86,9 +144,38 @@ export const returnService = {
     return returnEntry;
   },
 
+  async getSaleReturnContext(orgId: string, saleId: string): Promise<SaleReturnContext> {
+    const sale = await getCompletedSale(orgId, saleId);
+    const siblingReturns = await returnRepository.listBySourceSaleId(orgId, saleId);
+    const returnedBySaleLineId = aggregateReturnedQuantitiesBySaleLineId(siblingReturns, {
+      includeDrafts: true,
+    });
+
+    const lines: SaleReturnLineContext[] = sale.lines.map((saleLine) => ({
+      saleLineId: saleLine.id,
+      productId: saleLine.productId,
+      productNameSnapshot: saleLine.productNameSnapshot,
+      productCodeSnapshot: saleLine.productCodeSnapshot,
+      unit: saleLine.unit,
+      soldQuantity: saleLine.quantity,
+      returnedQuantity: returnedBySaleLineId.get(saleLine.id) ?? 0,
+      remainingReturnableQuantity: getRemainingReturnableQuantity(saleLine, returnedBySaleLineId),
+      sellingPriceSnapshot: saleLine.sellingPriceSnapshot,
+    }));
+
+    return {
+      saleId: sale.id,
+      saleNumber: sale.saleNumber,
+      saleDate: sale.saleDate,
+      customerNameSnapshot: sale.customerNameSnapshot,
+      lines,
+      hasReturnableQuantity: saleHasReturnableQuantity(sale, returnedBySaleLineId),
+    };
+  },
+
   async create(orgId: string, input: CreateReturnInput, userId: string): Promise<ReturnEntry> {
+    const { sale, lines } = await resolveLinkedLineItems(orgId, input.sourceSaleId, input.lines);
     const returnNumber = await resolveReturnNumber(orgId);
-    const lines = await resolveLineItems(orgId, input.lines);
     const totalUnits = calculateTotalUnits(lines);
 
     return returnRepository.create(
@@ -97,6 +184,8 @@ export const returnService = {
         returnNumber,
         returnDate: input.returnDate,
         reason: input.reason,
+        sourceSaleId: sale.id,
+        sourceSaleNumberSnapshot: sale.saleNumber,
         lines,
         totalUnits,
         notes: input.notes,
@@ -123,7 +212,17 @@ export const returnService = {
     let totalUnits = existing.totalUnits;
 
     if (input.lines) {
-      lines = await resolveLineItems(orgId, input.lines);
+      if (!existing.sourceSaleId) {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          'Legacy returns cannot change lines. Create a new sale-linked return instead.',
+        );
+      }
+
+      const resolved = await resolveLinkedLineItems(orgId, existing.sourceSaleId, input.lines, {
+        excludeReturnId: returnId,
+      });
+      lines = resolved.lines;
       totalUnits = calculateTotalUnits(lines);
     }
 
@@ -166,6 +265,8 @@ export const returnService = {
       throw new DomainError('VALIDATION_ERROR', 'Return must have at least one product line');
     }
 
-    return returnRepository.complete(orgId, returnId, userId);
+    const completed = await returnRepository.complete(orgId, returnId, userId);
+    await dailySummaryService.scheduleRecalculationAfterCommit(orgId, completed.returnDate);
+    return completed;
   },
 };

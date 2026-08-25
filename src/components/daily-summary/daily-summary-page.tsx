@@ -24,7 +24,7 @@ import {
   ReportExecutiveKpiGrid,
 } from '@/components/reports/report-executive-kpi-card';
 import { ReportExecutiveVerdict } from '@/components/reports/report-executive-verdict';
-import { ReportProfitFlowSection } from '@/components/reports/report-profit-flow-section';
+import { ReportProfitFlowSection, buildSalesFlowPrefixSteps } from '@/components/reports/report-profit-flow-section';
 import { getProfitTone } from '@/components/reports/report-tone-utils';
 import { ReportMetricCard } from '@/components/reports/report-metric-card';
 import { reportPrimaryMetricGridClass } from '@/components/reports/report-kpi-value';
@@ -193,9 +193,9 @@ export function DailySummaryPage() {
         </h2>
         <ReportExecutiveKpiGrid>
           <ReportExecutiveKpiCard
-            title="Today's Sales"
+            title="Today's Net Sales"
             value={<MoneyDisplay amount={kpis.netSales} />}
-            description="Money received today"
+            description="After returns today"
             icon={Banknote}
             tone="sales"
             actionHref="/sales"
@@ -240,7 +240,7 @@ export function DailySummaryPage() {
       <ReportProfitFlowSection
         description="How today's sales became profit — step by step."
         steps={[
-          { label: 'Sales', amount: kpis.netSales, tone: 'sales' },
+          ...buildSalesFlowPrefixSteps(kpis.grossSales, kpis.returnRevenue, kpis.netSales),
           {
             label: 'Cost of Goods Sold',
             amount: kpis.totalCogs,

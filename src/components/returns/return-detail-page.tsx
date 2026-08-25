@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeReturnAction, deleteReturnAction, getReturnAction } from '@/actions/returns';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
 import { ReturnStatusBadge } from '@/components/returns/return-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -31,6 +32,7 @@ import {
 import { RETURN_REASON_LABELS } from '@/lib/domain/constants/return';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type ReturnDetailPageProps = {
@@ -84,6 +86,8 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
     enabled: isAuthenticated,
   });
 
+  useClearWorkflowResumeOnFailure('returns', Boolean(error || !returnEntry));
+
   async function invalidateReturnQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['returns'] }),
@@ -119,6 +123,9 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
       setIsCompleteOpen(false);
 
       await invalidateReturnQueries();
+
+      clearModuleWorkflowOnExit('returns');
+      router.push('/returns');
     } finally {
       setIsCompleting(false);
     }
@@ -149,6 +156,7 @@ export function ReturnDetailPage({ returnId }: ReturnDetailPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      clearModuleWorkflowOnExit('returns');
       router.push('/returns');
     } finally {
       setIsDeleting(false);

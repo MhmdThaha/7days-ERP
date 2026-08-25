@@ -1,8 +1,11 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+
+import { useReportFormDirtyChange } from '@/hooks/use-report-form-dirty-change';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 
 import { MoneyInput } from '@/components/shared/money-input';
 import { Input } from '@/components/ui/input';
@@ -35,6 +38,7 @@ type ExpenseFormProps = {
   formId: string;
   serverFieldError?: ExpenseFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 const defaultValues: ExpenseFormValues = {
@@ -56,6 +60,7 @@ export function ExpenseForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  onDirtyChange,
 }: ExpenseFormProps) {
   const {
     register,
@@ -65,17 +70,27 @@ export function ExpenseForm({
     trigger,
     watch,
     reset,
+    control,
     formState: { errors },
   } = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
     defaultValues,
   });
 
+  useReportFormDirtyChange(control, onDirtyChange);
+
+  const loadedExpenseIdRef = useRef<string | null>(null);
+
   const category = watch('category');
   const amount = watch('amount');
 
   useEffect(() => {
     if (expense) {
+      if (loadedExpenseIdRef.current === expense.id) {
+        return;
+      }
+
+      loadedExpenseIdRef.current = expense.id;
       reset({
         expenseDate: expense.expenseDate,
         category: expense.category,
@@ -85,6 +100,7 @@ export function ExpenseForm({
       return;
     }
 
+    loadedExpenseIdRef.current = null;
     reset(defaultValues);
   }, [expense, reset]);
 
@@ -128,7 +144,7 @@ export function ExpenseForm({
           <Select
             value={category}
             onValueChange={(value) =>
-              setValue('category', value ?? 'rent', { shouldValidate: true })
+              setValue('category', value ?? 'rent', USER_FIELD_SET_VALUE_OPTIONS)
             }
             disabled={isSubmitting}
           >

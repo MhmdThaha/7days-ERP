@@ -6,11 +6,14 @@ export type ReturnStatus = 'draft' | 'completed';
 
 export type ReturnLineItem = {
   id: string;
+  saleLineId: string | null;
   productId: string;
   productNameSnapshot: string;
   productCodeSnapshot: string;
   quantity: number;
   unit: string;
+  sellingPriceSnapshot: number | null;
+  unitCostSnapshot: number | null;
 };
 
 export type ReturnEntry = {
@@ -20,6 +23,8 @@ export type ReturnEntry = {
   returnDate: string;
   reason: ReturnReason;
   status: ReturnStatus;
+  sourceSaleId: string | null;
+  sourceSaleNumberSnapshot: string | null;
   lines: ReturnLineItem[];
   lineCount: number;
   totalUnits: number;
@@ -42,6 +47,8 @@ export type ReturnListItem = {
   lineCount: number;
   totalUnits: number;
   status: ReturnStatus;
+  sourceSaleId: string | null;
+  sourceSaleNumberSnapshot: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -62,11 +69,12 @@ export type ReturnListResult = {
 
 export type ReturnLineItemInput = {
   id?: string;
-  productId: string;
+  saleLineId: string;
   quantity: number;
 };
 
 export type CreateReturnInput = {
+  sourceSaleId: string;
   returnDate: string;
   reason: ReturnReason;
   lines: ReturnLineItemInput[];
@@ -78,4 +86,25 @@ export type UpdateReturnInput = {
   reason?: ReturnReason;
   lines?: ReturnLineItemInput[];
   notes?: string | null;
+};
+
+export type SaleReturnLineContext = {
+  saleLineId: string;
+  productId: string;
+  productNameSnapshot: string;
+  productCodeSnapshot: string;
+  unit: string;
+  soldQuantity: number;
+  returnedQuantity: number;
+  remainingReturnableQuantity: number;
+  sellingPriceSnapshot: number;
+};
+
+export type SaleReturnContext = {
+  saleId: string;
+  saleNumber: string;
+  saleDate: string;
+  customerNameSnapshot: string | null;
+  lines: SaleReturnLineContext[];
+  hasReturnableQuantity: boolean;
 };

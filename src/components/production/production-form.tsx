@@ -2,9 +2,12 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { useReportFormDirtyChange } from '@/hooks/use-report-form-dirty-change';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 
 import { useAuth } from '@/hooks/use-auth';
 import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
@@ -59,6 +62,7 @@ type ProductionFormProps = {
   formId: string;
   serverFieldError?: ProductionFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   footerActions?: ReactNode;
 };
 
@@ -90,6 +94,7 @@ export function ProductionForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  onDirtyChange,
   footerActions,
 }: ProductionFormProps) {
   const { user, isAuthenticated } = useAuth();
@@ -112,6 +117,11 @@ export function ProductionForm({
     control,
     name: 'lines',
   });
+
+  useReportFormDirtyChange(control, onDirtyChange);
+
+  const loadedProductionIdRef = useRef<string | null>(null);
+  const loadedInitialLinesKeyRef = useRef<string | null>(null);
 
   const lines = useWatch({ control, name: 'lines', defaultValue: defaultValues.lines }) ?? [];
   const productionDate =
@@ -241,6 +251,12 @@ export function ProductionForm({
 
   useEffect(() => {
     if (production) {
+      if (loadedProductionIdRef.current === production.id) {
+        return;
+      }
+
+      loadedProductionIdRef.current = production.id;
+      loadedInitialLinesKeyRef.current = null;
       reset({
         productionDate: production.productionDate,
         lines: production.lines.map((line) => ({
@@ -254,7 +270,18 @@ export function ProductionForm({
       return;
     }
 
+    loadedProductionIdRef.current = null;
+
     if (initialLines && initialLines.length > 0) {
+      const initialLinesKey = initialLines
+        .map((line) => `${line.productId}:${line.quantity}:${line.unit}`)
+        .join('|');
+
+      if (loadedInitialLinesKeyRef.current === initialLinesKey) {
+        return;
+      }
+
+      loadedInitialLinesKeyRef.current = initialLinesKey;
       reset({
         ...defaultValues,
         lines: initialLines.map((line) => ({
@@ -266,6 +293,7 @@ export function ProductionForm({
       return;
     }
 
+    loadedInitialLinesKeyRef.current = null;
     reset(defaultValues);
   }, [production, initialLines, reset]);
 
@@ -291,7 +319,7 @@ export function ProductionForm({
         queryClient.setQueryData(['product', user.uid, product.id], product);
       }
 
-      setValue(`lines.${index}.unit`, product.unit, { shouldValidate: true });
+      setValue(`lines.${index}.unit`, product.unit, USER_FIELD_SET_VALUE_OPTIONS);
 
       if (!isAuthenticated || !product.activeRecipeId) {
         return;

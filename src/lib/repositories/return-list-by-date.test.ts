@@ -36,6 +36,8 @@ describe('returnRepository.listCompletedByDate', () => {
             returnDate: '2026-08-13',
             reason: 'damaged',
             status: 'completed',
+            sourceSaleId: null,
+            sourceSaleNumberSnapshot: null,
             lines: [],
             lineCount: 0,
             totalUnits: 3,

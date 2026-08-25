@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { completeWastageAction, deleteWastageAction, getWastageAction } from '@/actions/wastage';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
 import { WastageStatusBadge } from '@/components/wastage/wastage-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -37,6 +38,7 @@ import {
 } from '@/lib/utils/wastage-stock-validation';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 type WastageDetailPageProps = {
@@ -89,6 +91,8 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
     },
     enabled: isAuthenticated,
   });
+
+  useClearWorkflowResumeOnFailure('wastage', Boolean(error || !wastage));
 
   const isDraft = wastage?.status === 'draft';
 
@@ -164,6 +168,9 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
       setIsCompleteOpen(false);
 
       await invalidateWastageQueries();
+
+      clearModuleWorkflowOnExit('wastage');
+      router.push('/wastage');
     } finally {
       setIsCompleting(false);
     }
@@ -194,6 +201,7 @@ export function WastageDetailPage({ wastageId }: WastageDetailPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      clearModuleWorkflowOnExit('wastage');
       router.push('/wastage');
     } finally {
       setIsDeleting(false);

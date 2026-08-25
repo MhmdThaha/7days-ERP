@@ -8,7 +8,9 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getWastageAction, updateWastageAction } from '@/actions/wastage';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { WastageForm } from '@/components/wastage/wastage-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -19,6 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapWastageActionError, type WastageFieldError } from '@/lib/utils/wastage-form-errors';
+import { moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'wastage-edit-form';
@@ -33,7 +37,9 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasStockErrors, setHasStockErrors] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<WastageFieldError | null>(null);
+  const { allowNavigation, unsavedChangesDialog } = useUnsavedChangesGuard(isDirty);
 
   const {
     data: wastage,
@@ -54,6 +60,11 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
     },
     enabled: isAuthenticated,
   });
+
+  useClearWorkflowResumeOnFailure(
+    'wastage',
+    Boolean(error || !wastage || (wastage && wastage.status !== 'draft')),
+  );
 
   async function handleSubmit(values: WastageFormValues) {
     if (isSubmitting || !wastage) {
@@ -92,6 +103,7 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      allowNavigation();
       router.push(`/wastage/${wastageId}`);
     } finally {
       setIsSubmitting(false);
@@ -137,12 +149,18 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
 
   return (
     <div className="space-y-6">
+      {unsavedChangesDialog}
       <div className="flex items-center gap-2">
         <Button
           nativeButton={false}
           variant="ghost"
           size="sm"
-          render={<Link href={`/wastage/${wastageId}`} />}
+          render={
+            <Link
+              href={moduleListPath('wastage')}
+              onClick={() => clearModuleWorkflowOnExit('wastage')}
+            />
+          }
         >
           <ArrowLeft />
           Back to Waste & Spoilage
@@ -167,6 +185,7 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
             onStockValidationChange={setHasStockErrors}
+            onDirtyChange={setIsDirty}
           />
         </CardContent>
       </Card>
@@ -175,7 +194,12 @@ export function WastageEditPage({ wastageId }: WastageEditPageProps) {
         <Button
           nativeButton={false}
           variant="outline"
-          render={<Link href={`/wastage/${wastageId}`} />}
+          render={
+            <Link
+              href={moduleListPath('wastage')}
+              onClick={() => clearModuleWorkflowOnExit('wastage')}
+            />
+          }
           disabled={isSubmitting}
         >
           Cancel

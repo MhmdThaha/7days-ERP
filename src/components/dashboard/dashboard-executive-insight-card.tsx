@@ -60,7 +60,7 @@ export function DashboardExecutiveInsightCard({
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1">
               <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Sales
+                Gross Sales
               </p>
               <p className="text-2xl font-bold tracking-tight text-primary tabular-nums">
                 <MoneyDisplay amount={summary.todaySalesTotal} />

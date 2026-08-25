@@ -14,6 +14,7 @@ import {
   getProductionAction,
   getProductionConsumedMaterialsAction,
 } from '@/actions/production';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
 import { ProductionDetailSummary } from '@/components/production/production-detail-summary';
 import { ProductionMaterialPreview } from '@/components/production/production-material-preview';
@@ -51,6 +52,7 @@ import {
   invalidateInventoryStockQueries,
   invalidateMonthlyReportQueries,
 } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 import type { Recipe } from '@/types/recipe';
 
@@ -193,6 +195,8 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
     queryClient,
   });
 
+  useClearWorkflowResumeOnFailure('production', Boolean(error || !production));
+
   async function invalidateProductionQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['productions'] }),
@@ -229,6 +233,7 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      clearModuleWorkflowOnExit('production');
       router.push('/production');
     } finally {
       setIsDeleting(false);
@@ -262,6 +267,9 @@ export function ProductionDetailPage({ productionId }: ProductionDetailPageProps
       setIsCompleteOpen(false);
 
       await invalidateProductionQueries();
+
+      clearModuleWorkflowOnExit('production');
+      router.push('/production');
     } finally {
       setIsCompleting(false);
     }

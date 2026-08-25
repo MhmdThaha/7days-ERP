@@ -2,8 +2,11 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
+
+import { useReportFormDirtyChange } from '@/hooks/use-report-form-dirty-change';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 
 import { getRawMaterialAction } from '@/actions/raw-materials';
 import { PurchaseDetailSummary } from '@/components/purchases/purchase-detail-summary';
@@ -58,6 +61,7 @@ type PurchaseFormProps = {
   formId: string;
   serverFieldError?: PurchaseFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   footerActions?: ReactNode;
 };
 
@@ -89,6 +93,7 @@ export function PurchaseForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  onDirtyChange,
   footerActions,
 }: PurchaseFormProps) {
   const {
@@ -112,6 +117,9 @@ export function PurchaseForm({
     name: 'lineItems',
   });
 
+  useReportFormDirtyChange(control, onDirtyChange);
+
+  const loadedPurchaseIdRef = useRef<string | null>(null);
   const [recentSuppliers, setRecentSuppliers] = useState<string[]>([]);
 
   const lineItems = watch('lineItems');
@@ -182,30 +190,36 @@ export function PurchaseForm({
   );
 
   useEffect(() => {
-    if (purchase) {
-      reset({
-        purchaseDate: purchase.purchaseDate,
-        supplierName: purchase.supplierName,
-        invoiceNumber: purchase.invoiceNumber ?? '',
-        paymentStatus: purchase.paymentStatus,
-        // Legacy drafts (no pack metadata) load as 1 pack whose size is the full
-        // quantity and whose price is the line total — same money, same stock.
-        lineItems: purchase.lineItems.map((lineItem) => ({
-          id: lineItem.id,
-          rawMaterialId: lineItem.rawMaterialId,
-          packCount: lineItem.packCount ?? 1,
-          packSize: lineItem.packSize ?? lineItem.quantity,
-          unit: lineItem.unit,
-          packPrice: lineItem.packPrice ?? lineItem.lineTotal,
-        })),
-        discountAmount: purchase.discountAmount ?? 0,
-        adjustmentAmount: purchase.adjustmentAmount ?? 0,
-        notes: purchase.notes ?? '',
-      });
+    if (!purchase) {
+      loadedPurchaseIdRef.current = null;
+      reset(defaultValues);
       return;
     }
 
-    reset(defaultValues);
+    if (loadedPurchaseIdRef.current === purchase.id) {
+      return;
+    }
+
+    loadedPurchaseIdRef.current = purchase.id;
+    reset({
+      purchaseDate: purchase.purchaseDate,
+      supplierName: purchase.supplierName,
+      invoiceNumber: purchase.invoiceNumber ?? '',
+      paymentStatus: purchase.paymentStatus,
+      // Legacy drafts (no pack metadata) load as 1 pack whose size is the full
+      // quantity and whose price is the line total — same money, same stock.
+      lineItems: purchase.lineItems.map((lineItem) => ({
+        id: lineItem.id,
+        rawMaterialId: lineItem.rawMaterialId,
+        packCount: lineItem.packCount ?? 1,
+        packSize: lineItem.packSize ?? lineItem.quantity,
+        unit: lineItem.unit,
+        packPrice: lineItem.packPrice ?? lineItem.lineTotal,
+      })),
+      discountAmount: purchase.discountAmount ?? 0,
+      adjustmentAmount: purchase.adjustmentAmount ?? 0,
+      notes: purchase.notes ?? '',
+    });
   }, [purchase, reset]);
 
   useEffect(() => {
@@ -240,7 +254,7 @@ export function PurchaseForm({
     }
 
     if (material) {
-      setValue(`lineItems.${index}.unit`, material.unit, { shouldValidate: true });
+      setValue(`lineItems.${index}.unit`, material.unit, USER_FIELD_SET_VALUE_OPTIONS);
     }
 
     clearErrors(`lineItems.${index}.rawMaterialId`);
@@ -367,7 +381,7 @@ export function PurchaseForm({
                   items={paymentSelectItems}
                   onValueChange={(value) => {
                     if (value === 'paid' || value === 'credit') {
-                      setValue('paymentStatus', value, { shouldValidate: true });
+                      setValue('paymentStatus', value, USER_FIELD_SET_VALUE_OPTIONS);
                     }
                   }}
                 >
@@ -486,7 +500,7 @@ export function PurchaseForm({
                   }
                   onDuplicateRawMaterial={handleDuplicateRawMaterial}
                   onPackPriceChange={(packPrice) =>
-                    setValue(`lineItems.${index}.packPrice`, packPrice)
+                    setValue(`lineItems.${index}.packPrice`, packPrice, USER_FIELD_SET_VALUE_OPTIONS)
                   }
                   onAdvanceToNextLine={() => {
                     const nextIndex = index + 1;

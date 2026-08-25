@@ -61,6 +61,8 @@ export const dailySummaryDashboardRepository = {
     ]);
 
     const kpis = {
+      grossSales: dailySummary.totalSalesRevenue,
+      returnRevenue: dailySummary.totalSalesRevenue - dailySummary.totalNetSales,
       netSales: dailySummary.totalNetSales,
       netProfit: dailySummary.netProfit,
       grossProfit: dailySummary.grossProfit,

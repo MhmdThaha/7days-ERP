@@ -8,7 +8,9 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getProductionAction, updateProductionAction } from '@/actions/production';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { ProductionForm } from '@/components/production/production-form';
 import { RecipeChangedDialog } from '@/components/production/recipe-changed-dialog';
 import { useDraftRecipeVersionCheck } from '@/components/production/use-draft-recipe-version-check';
@@ -23,6 +25,8 @@ import {
   mapProductionActionError,
   type ProductionFieldError,
 } from '@/lib/utils/production-form-errors';
+import { moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'production-edit-form';
@@ -36,7 +40,9 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<ProductionFieldError | null>(null);
+  const { allowNavigation, unsavedChangesDialog } = useUnsavedChangesGuard(isDirty);
 
   const {
     data: production,
@@ -57,6 +63,11 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
     },
     enabled: isAuthenticated,
   });
+
+  useClearWorkflowResumeOnFailure(
+    'production',
+    Boolean(error || !production || (production && production.status !== 'draft')),
+  );
 
   const {
     dialogOpen: recipeChangedDialogOpen,
@@ -108,6 +119,7 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      allowNavigation();
       router.push(`/production/${productionId}`);
     } finally {
       setIsSubmitting(false);
@@ -153,12 +165,18 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
 
   return (
     <div className="space-y-6">
+      {unsavedChangesDialog}
       <div className="flex items-center gap-2">
         <Button
           nativeButton={false}
           variant="ghost"
           size="sm"
-          render={<Link href={`/production/${productionId}`} />}
+          render={
+            <Link
+              href={moduleListPath('production')}
+              onClick={() => clearModuleWorkflowOnExit('production')}
+            />
+          }
         >
           <ArrowLeft />
           Back to Production
@@ -177,12 +195,18 @@ export function ProductionEditPage({ productionId }: ProductionEditPageProps) {
         isSubmitting={isSubmitting}
         serverFieldError={serverFieldError}
         onServerFieldErrorHandled={() => setServerFieldError(null)}
+        onDirtyChange={setIsDirty}
         footerActions={
           <>
             <Button
               nativeButton={false}
               variant="ghost"
-              render={<Link href={`/production/${productionId}`} />}
+              render={
+                <Link
+                  href={moduleListPath('production')}
+                  onClick={() => clearModuleWorkflowOnExit('production')}
+                />
+              }
               disabled={isSubmitting}
             >
               Cancel

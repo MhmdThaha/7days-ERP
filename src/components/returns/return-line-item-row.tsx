@@ -7,15 +7,16 @@ import { ProductPickerCombobox } from '@/components/shared/product-picker-combob
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 import { DUPLICATE_PRODUCT_MESSAGE } from '@/lib/domain/constants/return';
-import type { ReturnFormValues } from '@/lib/domain/schemas/return.schema';
+import type { LegacyReturnFormValues } from '@/lib/domain/schemas/return.schema';
 import { cn } from '@/lib/utils';
 
 type ReturnLineItemRowProps = {
   index: number;
-  register: UseFormRegister<ReturnFormValues>;
-  setValue: UseFormSetValue<ReturnFormValues>;
-  errors: FieldErrors<ReturnFormValues>;
+  register: UseFormRegister<LegacyReturnFormValues>;
+  setValue: UseFormSetValue<LegacyReturnFormValues>;
+  errors: FieldErrors<LegacyReturnFormValues>;
   productId: string;
   unit: string;
   selectedProductIds: string[];
@@ -49,7 +50,7 @@ export function ReturnLineItemRow({
     }
 
     onProductChange(value);
-    setValue(`lines.${index}.productId`, value, { shouldValidate: true });
+    setValue(`lines.${index}.productId`, value, USER_FIELD_SET_VALUE_OPTIONS);
   }
 
   return (

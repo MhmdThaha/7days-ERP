@@ -15,6 +15,7 @@ import type { WastageFormValues } from '@/lib/domain/schemas/wastage.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapWastageActionError, type WastageFieldError } from '@/lib/utils/wastage-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'wastage-create-form';
@@ -79,6 +80,9 @@ export function WastageCreatePage() {
             invalidateDailyReportQueries(queryClient),
             invalidateMonthlyReportQueries(queryClient),
           ]);
+
+          clearModuleWorkflowOnExit('wastage');
+          router.push('/wastage');
         })();
       });
 

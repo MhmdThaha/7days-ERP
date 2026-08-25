@@ -33,9 +33,9 @@ export function DailySummaryKpisSection({ kpis }: DailySummaryKpisSectionProps) 
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ReportMetricCard
-          title="Today's Sales"
+          title="Today's Net Sales"
           value={<MoneyDisplay amount={kpis.netSales} />}
-          description="Net sales completed today"
+          description="After returns today"
           icon={Banknote}
         />
         <ReportMetricCard

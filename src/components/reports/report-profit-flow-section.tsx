@@ -12,6 +12,45 @@ export type ReportProfitFlowStep = {
   tone: 'sales' | 'expense' | 'profit' | 'wastage' | 'neutral';
 };
 
+/** Gross → Returns → Net prefix for profit flow (reuses summary-derived amounts). */
+export function buildSalesFlowPrefixSteps(
+  grossSales: number,
+  returnRevenue: number,
+  netSales: number,
+): ReportProfitFlowStep[] {
+  if (returnRevenue > 0) {
+    return [
+      {
+        label: 'Gross Sales',
+        amount: grossSales,
+        description: 'Completed sales before returns',
+        tone: 'sales',
+      },
+      {
+        label: 'Returns',
+        amount: returnRevenue,
+        description: 'Subtracted from gross sales',
+        tone: 'expense',
+      },
+      {
+        label: 'Net Sales',
+        amount: netSales,
+        description: 'After returns',
+        tone: 'sales',
+      },
+    ];
+  }
+
+  return [
+    {
+      label: 'Net Sales',
+      amount: netSales,
+      description: 'No returns today',
+      tone: 'sales',
+    },
+  ];
+}
+
 type ReportProfitFlowSectionProps = {
   steps: ReportProfitFlowStep[];
   description?: string;

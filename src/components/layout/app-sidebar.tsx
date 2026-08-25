@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { NAV_ICONS } from '@/components/layout/nav-icons';
 import type { NavGroupConfig } from '@/components/layout/nav-items';
-import { isNavItemActive } from '@/components/layout/nav-utils';
+import { SidebarNavItem } from '@/components/layout/sidebar-nav-item';
 import {
   Sidebar,
   SidebarContent,
@@ -53,22 +52,9 @@ export function AppSidebar({ navGroups }: AppSidebarProps) {
             {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => {
-                  const Icon = NAV_ICONS[item.icon];
-
-                  return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        isActive={isNavItemActive(pathname, item.href)}
-                        tooltip={item.label}
-                        render={<Link href={item.href} />}
-                      >
-                        <Icon className="size-4" aria-hidden="true" />
-                        <span>{item.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
+                {group.items.map((item) => (
+                  <SidebarNavItem key={item.href} item={item} pathname={pathname} />
+                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

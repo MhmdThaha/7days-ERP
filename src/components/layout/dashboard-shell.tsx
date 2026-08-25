@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { AppBreadcrumbs } from '@/components/layout/app-breadcrumbs';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import type { NavGroupConfig } from '@/components/layout/nav-items';
+import { WorkflowResumeRecorder } from '@/components/layout/workflow-resume-recorder';
 import { TopBar } from '@/components/layout/top-bar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 
@@ -21,6 +22,7 @@ export function DashboardShell({ children, navGroups, quickAddModules }: Dashboa
 
   return (
     <SidebarProvider>
+      <WorkflowResumeRecorder />
       <AppSidebar navGroups={navGroups} />
       <SidebarInset>
         <TopBar quickAddModules={quickAddModules} />

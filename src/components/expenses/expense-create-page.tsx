@@ -15,6 +15,7 @@ import type { ExpenseFormValues } from '@/lib/domain/schemas/expense.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapExpenseActionError, type ExpenseFieldError } from '@/lib/utils/expense-form-errors';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { toastDraftSaved, toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
 
 const FORM_ID = 'expense-create-form';
@@ -77,6 +78,9 @@ export function ExpenseCreatePage() {
             invalidateDailyReportQueries(queryClient),
             invalidateMonthlyReportQueries(queryClient),
           ]);
+
+          clearModuleWorkflowOnExit('expenses');
+          router.push('/expenses');
         })();
       });
 

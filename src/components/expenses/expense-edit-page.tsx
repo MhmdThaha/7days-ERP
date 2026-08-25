@@ -8,7 +8,9 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { getExpenseAction, updateExpenseAction } from '@/actions/expenses';
+import { useClearWorkflowResumeOnFailure } from '@/hooks/use-clear-workflow-resume-on-failure';
 import { useAuth } from '@/hooks/use-auth';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { ExpenseForm } from '@/components/expenses/expense-form';
 import { LoadErrorAlert } from '@/components/shared/load-error-alert';
 import { PageHeader } from '@/components/shared/page-header';
@@ -19,6 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { ExpenseFormValues } from '@/lib/domain/schemas/expense.schema';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { mapExpenseActionError, type ExpenseFieldError } from '@/lib/utils/expense-form-errors';
+import { moduleListPath } from '@/lib/navigation/module-workflow-navigation';
+import { clearModuleWorkflowOnExit } from '@/lib/navigation/module-workflow-resume';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries } from '@/lib/utils/query-invalidation';
 
 const FORM_ID = 'expense-edit-form';
@@ -32,7 +36,9 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [serverFieldError, setServerFieldError] = useState<ExpenseFieldError | null>(null);
+  const { allowNavigation, unsavedChangesDialog } = useUnsavedChangesGuard(isDirty);
 
   const {
     data: expense,
@@ -53,6 +59,11 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
     },
     enabled: isAuthenticated,
   });
+
+  useClearWorkflowResumeOnFailure(
+    'expenses',
+    Boolean(error || !expense || (expense && expense.status !== 'draft')),
+  );
 
   async function handleSubmit(values: ExpenseFormValues) {
     if (isSubmitting || !expense) {
@@ -91,6 +102,7 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
         invalidateMonthlyReportQueries(queryClient),
       ]);
 
+      allowNavigation();
       router.push(`/expenses/${expenseId}`);
     } finally {
       setIsSubmitting(false);
@@ -136,15 +148,21 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
 
   return (
     <div className="space-y-6">
+      {unsavedChangesDialog}
       <div className="flex items-center gap-2">
         <Button
           nativeButton={false}
           variant="ghost"
           size="sm"
-          render={<Link href={`/expenses/${expenseId}`} />}
+          render={
+            <Link
+              href={moduleListPath('expenses')}
+              onClick={() => clearModuleWorkflowOnExit('expenses')}
+            />
+          }
         >
           <ArrowLeft />
-          Back to Expense
+          Back to Expenses
         </Button>
       </div>
 
@@ -165,6 +183,7 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
             isSubmitting={isSubmitting}
             serverFieldError={serverFieldError}
             onServerFieldErrorHandled={() => setServerFieldError(null)}
+            onDirtyChange={setIsDirty}
           />
         </CardContent>
       </Card>
@@ -173,7 +192,12 @@ export function ExpenseEditPage({ expenseId }: ExpenseEditPageProps) {
         <Button
           nativeButton={false}
           variant="outline"
-          render={<Link href={`/expenses/${expenseId}`} />}
+          render={
+            <Link
+              href={moduleListPath('expenses')}
+              onClick={() => clearModuleWorkflowOnExit('expenses')}
+            />
+          }
           disabled={isSubmitting}
         >
           Cancel

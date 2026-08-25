@@ -112,6 +112,8 @@ export const dailyReportRepository = {
         totalUnits: returnsUnits,
       },
       financial: {
+        grossSales: dailySummary.totalSalesRevenue,
+        returnRevenue: dailySummary.totalSalesRevenue - dailySummary.totalNetSales,
         netSales: dailySummary.totalNetSales,
         totalCogs: dailySummary.totalCogs,
         grossProfit: dailySummary.grossProfit,

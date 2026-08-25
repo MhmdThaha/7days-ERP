@@ -21,6 +21,7 @@ import { SALE_PAGE_SIZE } from '@/lib/domain/constants/sale';
 import { cn } from '@/lib/utils';
 import { useSales } from '@/hooks/queries/use-sales';
 import { invalidateDailyReportQueries, invalidateDashboardQueries, invalidateMonthlyReportQueries, invalidateProductStockQueries } from '@/lib/utils/query-invalidation';
+import { clearModuleWorkflowResumeForRecord } from '@/lib/navigation/module-workflow-resume';
 import { useStatusFilterFromSearchParams } from '@/lib/utils/list-url-filters';
 import { toastFormError } from '@/lib/utils/toast-form-error';
 import { toastWorkflowComplete } from '@/lib/utils/workflow-toasts';
@@ -182,6 +183,7 @@ export function SalesPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('sales', deletingSale.id);
       toast.success('Sale draft deleted successfully');
       setDeletingSale(null);
 
@@ -229,6 +231,7 @@ export function SalesPage() {
         return;
       }
 
+      clearModuleWorkflowResumeForRecord('sales', completingSale.id);
       toastWorkflowComplete('Sale completed. Product stock has been updated.', {
         recordAnother: {
           label: 'Record another',

@@ -44,6 +44,8 @@ function makeReport(overrides: Partial<DailyReportData> = {}): DailyReportData {
     wastage: { totalUnits: 5 },
     returns: { totalUnits: 2 },
     financial: {
+      grossSales: 10_000,
+      returnRevenue: 0,
       netSales: 10_000,
       totalCogs: 4_000,
       grossProfit: 6_000,
@@ -70,6 +72,8 @@ describe('buildDailyReportWorkbook', () => {
   it('copies summary values from DailyReportData without recalculating profit', () => {
     const report = makeReport({
       financial: {
+        grossSales: 10_000,
+        returnRevenue: 0,
         netSales: 10_000,
         totalCogs: 1_000,
         grossProfit: 999,
@@ -82,6 +86,8 @@ describe('buildDailyReportWorkbook', () => {
     const summary = summaryMap(buildDailyReportWorkbook(report));
 
     expect(summary.get('Report date')).toBe('2026-08-14');
+    expect(summary.get('Gross sales')).toBe(formatMoney(10_000));
+    expect(summary.get('Returns')).toBe(formatMoney(0));
     expect(summary.get('Net sales')).toBe(formatMoney(10_000));
     expect(summary.get('COGS')).toBe(formatMoney(1_000));
     expect(summary.get('Gross profit')).toBe(formatMoney(999));
@@ -131,6 +137,8 @@ describe('buildDailyReportWorkbook', () => {
   it('serializes a real xlsx that still contains Summary and Activity after write', () => {
     const report = makeReport({
       financial: {
+        grossSales: 10_000,
+        returnRevenue: 0,
         netSales: 10_000,
         totalCogs: 1_000,
         grossProfit: 999,

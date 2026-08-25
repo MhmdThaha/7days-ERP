@@ -15,6 +15,7 @@ import type {
   ReturnEntry,
   ReturnListParams,
   ReturnListResult,
+  SaleReturnContext,
   UpdateReturnInput,
 } from '@/types/return';
 
@@ -37,6 +38,16 @@ export async function getReturnAction(returnId: string): Promise<ActionResult<Re
   });
 }
 
+export async function getSaleReturnContextAction(
+  saleId: string,
+): Promise<ActionResult<SaleReturnContext>> {
+  return wrapAction(async () => {
+    const { orgId, role } = await getAuthenticatedContext();
+    assertCan(role, 'read', 'return');
+    return returnService.getSaleReturnContext(orgId, saleId);
+  });
+}
+
 export async function createReturnAction(input: CreateReturnInput): Promise<ActionResult<ReturnEntry>> {
   return wrapAction(async () => {
     const { orgId, userId, role } = await getAuthenticatedContext();
@@ -49,6 +60,7 @@ export async function createReturnAction(input: CreateReturnInput): Promise<Acti
     return returnService.create(
       orgId,
       {
+        sourceSaleId: validated.sourceSaleId,
         returnDate: validated.returnDate,
         reason: validated.reason,
         lines: validated.lines,

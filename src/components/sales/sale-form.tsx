@@ -2,9 +2,12 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
+
+import { useReportFormDirtyChange } from '@/hooks/use-report-form-dirty-change';
+import { USER_FIELD_SET_VALUE_OPTIONS } from '@/lib/forms/user-field-set-value-options';
 
 import { getProductAction } from '@/actions/products';
 import { SaleDetailSummary } from '@/components/sales/sale-detail-summary';
@@ -46,6 +49,7 @@ type SaleFormProps = {
   formId: string;
   serverFieldError?: SaleFieldError | null;
   onServerFieldErrorHandled?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   footerActions?: ReactNode;
 };
 
@@ -76,6 +80,7 @@ export function SaleForm({
   formId,
   serverFieldError,
   onServerFieldErrorHandled,
+  onDirtyChange,
   footerActions,
 }: SaleFormProps) {
   const queryClient = useQueryClient();
@@ -99,6 +104,9 @@ export function SaleForm({
     name: 'lines',
   });
 
+  useReportFormDirtyChange(control, onDirtyChange);
+
+  const loadedSaleIdRef = useRef<string | null>(null);
   const [recentCustomers, setRecentCustomers] = useState<string[]>([]);
   const [selectedProductsById, setSelectedProductsById] = useState<
     Map<string, ProductListItem>
@@ -111,6 +119,38 @@ export function SaleForm({
   const customerName =
     useWatch({ control, name: 'customerName', defaultValue: defaultValues.customerName }) ??
     defaultValues.customerName;
+
+  useEffect(() => {
+    debugLog('SaleForm', 'reset() effect fired', {
+      isEditMode: Boolean(sale),
+      resetTarget: sale ? 'sale values' : 'defaultValues (lines: [1 empty row])',
+      fieldsLengthAtEffectCreation: fields.length,
+    });
+
+    if (!sale) {
+      loadedSaleIdRef.current = null;
+      reset(defaultValues);
+      return;
+    }
+
+    if (loadedSaleIdRef.current === sale.id) {
+      return;
+    }
+
+    loadedSaleIdRef.current = sale.id;
+    reset({
+      saleDate: sale.saleDate,
+      customerName: sale.customerNameSnapshot ?? '',
+      lines: sale.lines.map((line) => ({
+        id: line.id,
+        productId: line.productId,
+        quantity: line.quantity,
+        sellingPrice: line.sellingPriceSnapshot,
+      })),
+      notes: sale.notes ?? '',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sale, reset]);
 
   useEffect(() => {
     debugLog('SaleForm', 'MOUNTED', { navType: debugNavType(), isEditMode: Boolean(sale) });
@@ -184,30 +224,6 @@ export function SaleForm({
   });
 
   useEffect(() => {
-    debugLog('SaleForm', 'reset() effect fired', {
-      isEditMode: Boolean(sale),
-      resetTarget: sale ? 'sale values' : 'defaultValues (lines: [1 empty row])',
-      fieldsLengthAtEffectCreation: fields.length,
-    });
-
-    if (sale) {
-      reset({
-        saleDate: sale.saleDate,
-        customerName: sale.customerNameSnapshot ?? '',
-        lines: sale.lines.map((line) => ({
-          id: line.id,
-          productId: line.productId,
-          quantity: line.quantity,
-          sellingPrice: line.sellingPriceSnapshot,
-        })),
-        notes: sale.notes ?? '',
-      });
-      return;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sale, reset]);
-
-  useEffect(() => {
     if (!serverFieldError) {
       return;
     }
@@ -246,7 +262,7 @@ export function SaleForm({
     }
 
     if (product) {
-      setValue(`lines.${index}.sellingPrice`, product.sellingPrice, { shouldValidate: true });
+      setValue(`lines.${index}.sellingPrice`, product.sellingPrice, USER_FIELD_SET_VALUE_OPTIONS);
     }
 
     clearErrors(`lines.${index}.productId`);

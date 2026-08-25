@@ -181,6 +181,14 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "sourceSaleId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "returns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
         { "fieldPath": "returnDate", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
       ]
